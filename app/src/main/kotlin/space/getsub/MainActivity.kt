@@ -163,10 +163,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Transparent bars, with icon contrast following [dark], not the system mode. */
+    /**
+     * Icon contrast follows [dark] (the in-app theme), not the system mode.
+     *
+     * The status bar is transparent. The navigation bar keeps androidx.activity's
+     * own default scrims: below API 29 the scrim is the only thing giving the
+     * 3-button navigation icons contrast, and API 26 cannot draw light-background
+     * (dark) navigation icons at all — a transparent bar under the in-app Light
+     * theme would leave white icons on a white surface on API 26–28. From API 29
+     * androidx.activity draws an `auto` style's bar transparent anyway and turns
+     * on the system's own navigation-bar contrast enforcement, so the scrims only
+     * take effect below 29.
+     */
     private fun applySystemBarIcons(dark: Boolean) {
-        val style = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark }
-        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+            navigationBarStyle = SystemBarStyle.auto(NAV_BAR_LIGHT_SCRIM, NAV_BAR_DARK_SCRIM) { dark },
+        )
     }
 
     /**
@@ -211,3 +224,13 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 }
+
+/*
+ * androidx.activity's own defaults for SystemBarStyle.auto's navigation bar
+ * (EdgeToEdge.kt, DefaultLightScrim / DefaultDarkScrim). Checked against the
+ * bytecode of activity 1.13.0 on 2026-10-04: Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
+ * and Color.argb(0x80, 0x1B, 0x1B, 0x1B). The defaults are internal, so they are
+ * restated here rather than referenced.
+ */
+private const val NAV_BAR_LIGHT_SCRIM: Int = 0xE6FFFFFF.toInt()
+private const val NAV_BAR_DARK_SCRIM: Int = 0x801B1B1B.toInt()
