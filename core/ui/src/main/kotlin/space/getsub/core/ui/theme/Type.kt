@@ -65,8 +65,7 @@ val RobotoMonoFontFamily =
     )
 
 /**
- * The 15 M3 type roles, mapped from `tokens/typography.css`'s
- * `--type-*-size` / `-line` / `-weight` / `-tracking` quadruples.
+ * The 15 M3 type roles, mapped from the M8.6 spec §2.4.
  */
 val SubspaceTypography =
     Typography(
@@ -171,8 +170,18 @@ val SubspaceTypography =
         labelSmall = TextStyle(
             fontFamily = RobotoFlexFontFamily,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             lineHeight = 16.sp,
             letterSpacing = 0.5.sp,
         ),
     )
+
+/** OpenType feature for tabular (fixed-width) figures (M8.6 spec §2.4). */
+@Suppress("TopLevelPropertyNaming")
+const val TabularFigures: String = "tnum"
+
+/** Same style, figures fixed-width, so changing numbers do not jitter. */
+fun TextStyle.tabular(): TextStyle = copy(fontFeatureSettings = TabularFigures)
+
+/** Same size and weight in Roboto Mono, for machine strings only (M8.6 spec §2.4). */
+fun TextStyle.mono(): TextStyle = copy(fontFamily = RobotoMonoFontFamily)

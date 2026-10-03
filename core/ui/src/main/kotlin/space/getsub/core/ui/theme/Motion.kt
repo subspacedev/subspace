@@ -55,3 +55,15 @@ fun <T> motionSpringSpec(visibilityThreshold: T? = null): FiniteAnimationSpec<T>
         stiffness = Spring.StiffnessMedium,
         visibilityThreshold = visibilityThreshold,
     )
+
+/**
+ * ConnectBlob's decorative timings (M8.6 spec §2.6), from the design
+ * snapshot's `morph` and `breath` keyframes. Ignored when
+ * LocalReducedMotion is true.
+ */
+object BlobTiming {
+    const val IDLE_DRIFT_MILLIS: Int = 14_000
+    const val CONNECTING_DRIFT_MILLIS: Int = 5_000
+    const val CONNECTED_DRIFT_MILLIS: Int = 11_000
+    const val HALO_BREATH_MILLIS: Int = 3_200
+}

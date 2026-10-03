@@ -46,6 +46,21 @@ val SubspaceShapes =
     )
 
 /**
+ * The design's "one tight corner" shapes (M8.6 spec §2.5). Screens use these
+ * by name and never write corner values themselves. Order of arguments is
+ * topStart, topEnd, bottomEnd, bottomStart.
+ */
+object SubspaceShapeTokens {
+    val dialog = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp, bottomEnd = 32.dp, bottomStart = 12.dp)
+    val card = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomEnd = 28.dp, bottomStart = 10.dp)
+    val cardLead = RoundedCornerShape(topStart = 12.dp, topEnd = 34.dp, bottomEnd = 34.dp, bottomStart = 34.dp)
+    val cardTail = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
+    val tile = RoundedCornerShape(topStart = 20.dp, topEnd = 8.dp, bottomEnd = 20.dp, bottomStart = 20.dp)
+    val bubble = RoundedCornerShape(topStart = 15.dp, topEnd = 6.dp, bottomEnd = 15.dp, bottomStart = 15.dp)
+    val pill = ShapeCornerFull
+}
+
+/**
  * `--shape-mask-bun` (`tokens/shape-library.css`, alias for `--shape-mask-3`)
  * — the one expressive, non-rounded-rectangle silhouette in use, on the
  * Settings "Always on" tile.
