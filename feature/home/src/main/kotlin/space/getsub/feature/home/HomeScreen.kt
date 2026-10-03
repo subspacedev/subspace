@@ -3,7 +3,6 @@
 package space.getsub.feature.home
 
 import android.text.format.DateUtils
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -45,6 +43,7 @@ import space.getsub.core.ui.component.ConnectVisualState
 import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
 import space.getsub.core.ui.component.StatTile
 import space.getsub.core.ui.format.formatByteCount
+import space.getsub.core.ui.icon.SubspaceIcons
 
 private const val UPTIME_TICK_MILLIS = 1_000L
 
@@ -342,31 +341,27 @@ private fun StatTilesRow(
     val latencyHint = stringResource(R.string.home_latency_test_description)
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         StatTile(
+            icon = SubspaceIcons.NetworkPing,
             value = latencyValue,
             label = stringResource(R.string.home_latency_label),
-            accent = false,
-            modifier =
-            Modifier
-                .clickable(
-                    enabled = state.activeProfile != null && !state.isMeasuringLatency,
-                    role = Role.Button,
-                    onClick = onTest,
-                )
-                .semantics { contentDescription = latencyHint },
+            modifier = Modifier.weight(1f).semantics { contentDescription = latencyHint },
+            onClick = onTest.takeIf { state.activeProfile != null && !state.isMeasuringLatency },
         )
         if (state.connection is ConnectionState.Connected && !state.trafficHidden) {
             StatTile(
+                icon = SubspaceIcons.SouthEast,
                 value = formatByteCount(state.traffic?.downlinkBytes ?: 0),
                 label = stringResource(R.string.home_traffic_down),
-                accent = false,
+                modifier = Modifier.weight(1f),
             )
             StatTile(
+                icon = SubspaceIcons.NorthEast,
                 value = formatByteCount(state.traffic?.uplinkBytes ?: 0),
                 label = stringResource(R.string.home_traffic_up),
-                accent = false,
+                modifier = Modifier.weight(1f),
             )
         }
     }

@@ -2,6 +2,8 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.ui.component
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -52,24 +54,29 @@ class QuotaBarTest {
         composeRule.onNodeWithText("used", substring = true).assertDoesNotExist()
     }
 
+    /**
+     * The subscription slots now live in the card's `header`, the way the Servers
+     * screen fills them; these tests build the same header around the new GroupCard.
+     */
+    @Composable
+    private fun Card(
+        name: String = "Local configs",
+        header: @Composable ColumnScope.() -> Unit,
+    ) = GroupCard(
+        title = name,
+        subtitle = "1 server",
+        expanded = false,
+        onToggle = {},
+        menuItems = emptyList(),
+        header = header,
+    ) {}
+
     @Test
     fun groupCardWithNoQuotaBytesDrawsNoSubscriptionAffordances() {
-        // A MANUAL group's call site never passes quotaUsedBytes/quotaTotalBytes,
-        // so both default to null here too — GroupCard must draw nothing extra.
+        // A MANUAL group passes null quota bytes — the header must draw nothing extra.
         composeRule.setContent {
             SubspaceTheme {
-                GroupCard(
-                    name = "Local configs",
-                    profileCount = 1,
-                    expanded = false,
-                    actions =
-                    GroupCardActions(
-                        onToggleExpand = {},
-                        onRename = {},
-                        onDelete = {},
-                        onAddProfile = {},
-                    ),
-                ) {}
+                Card { QuotaBar(usedBytes = null, totalBytes = null) }
             }
         }
         composeRule.onNodeWithText("used", substring = true).assertDoesNotExist()
@@ -79,45 +86,33 @@ class QuotaBarTest {
     fun groupCardWithAMeasurableQuotaRendersTheBar() {
         composeRule.setContent {
             SubspaceTheme {
-                GroupCard(
-                    name = "My subscription",
-                    profileCount = 4,
-                    expanded = false,
-                    actions =
-                    GroupCardActions(
-                        onToggleExpand = {},
-                        onRename = {},
-                        onDelete = {},
-                        onAddProfile = {},
-                    ),
-                    quotaUsedBytes = 1_073_741_824L,
-                    quotaTotalBytes = 5_368_709_120L,
-                ) {}
+                Card(name = "My subscription") { QuotaBar(usedBytes = 1_073_741_824L, totalBytes = 5_368_709_120L) }
             }
         }
         composeRule.onNodeWithText("1.0 GB of 5.0 GB used").assertExists()
     }
 
-    // Fix round, Important 1/2: onUpdate/lastFetchedAtEpochMillis coverage.
-    // Same MANUAL-shaped call as groupCardWithNoQuotaBytesDrawsNoSubscriptionAffordances
-    // above, checking the other two subscription slots this time.
+    @Test
+    fun theFractionOverloadShowsItsLabelAndToleratesAnOverrun() {
+        composeRule.setContent {
+            SubspaceTheme {
+                QuotaBar(fraction = 1.3f, label = "65 GB of 50 GB used")
+            }
+        }
+        composeRule.onNodeWithText("65 GB of 50 GB used").assertExists()
+    }
+
+    // onUpdate/lastFetchedAtEpochMillis coverage. Same MANUAL-shaped call as
+    // groupCardWithNoQuotaBytesDrawsNoSubscriptionAffordances above, checking the other
+    // two subscription slots this time.
 
     @Test
     fun groupCardWithNoSubscriptionContextDrawsNoUpdateAffordance() {
         composeRule.setContent {
             SubspaceTheme {
-                GroupCard(
-                    name = "Local configs",
-                    profileCount = 1,
-                    expanded = false,
-                    actions =
-                    GroupCardActions(
-                        onToggleExpand = {},
-                        onRename = {},
-                        onDelete = {},
-                        onAddProfile = {},
-                    ),
-                ) {}
+                Card {
+                    GroupCardUpdateRow(groupName = "Local configs", lastFetchedAtEpochMillis = null, onUpdate = null)
+                }
             }
         }
         composeRule.onNodeWithContentDescription("Update Local configs").assertDoesNotExist()
@@ -129,19 +124,13 @@ class QuotaBarTest {
         var updated = false
         composeRule.setContent {
             SubspaceTheme {
-                GroupCard(
-                    name = "My subscription",
-                    profileCount = 2,
-                    expanded = false,
-                    actions =
-                    GroupCardActions(
-                        onToggleExpand = {},
-                        onRename = {},
-                        onDelete = {},
-                        onAddProfile = {},
-                    ),
-                    onUpdate = { updated = true },
-                ) {}
+                Card(name = "My subscription") {
+                    GroupCardUpdateRow(
+                        groupName = "My subscription",
+                        lastFetchedAtEpochMillis = null,
+                        onUpdate = { updated = true },
+                    )
+                }
             }
         }
         composeRule.onNodeWithContentDescription("Update My subscription").performClick()
@@ -152,19 +141,13 @@ class QuotaBarTest {
     fun aLastFetchedTimestampRendersAnAgeText() {
         composeRule.setContent {
             SubspaceTheme {
-                GroupCard(
-                    name = "My subscription",
-                    profileCount = 2,
-                    expanded = false,
-                    actions =
-                    GroupCardActions(
-                        onToggleExpand = {},
-                        onRename = {},
-                        onDelete = {},
-                        onAddProfile = {},
-                    ),
-                    lastFetchedAtEpochMillis = System.currentTimeMillis() - 5_000L,
-                ) {}
+                Card(name = "My subscription") {
+                    GroupCardUpdateRow(
+                        groupName = "My subscription",
+                        lastFetchedAtEpochMillis = System.currentTimeMillis() - 5_000L,
+                        onUpdate = null,
+                    )
+                }
             }
         }
         composeRule.onNodeWithText("Updated", substring = true).assertExists()

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -21,16 +22,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
 import space.getsub.core.ui.component.GroupCard
-import space.getsub.core.ui.component.GroupCardActions
+import space.getsub.core.ui.component.GroupCardUpdateRow
+import space.getsub.core.ui.component.MenuItem
+import space.getsub.core.ui.component.QuotaBar
+import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.profiles.R
+import space.getsub.core.ui.R as CoreR
 
 private val LIST_TOP_PADDING = 8.dp
 private val GROUP_GAP = 8.dp
 private val MEASURE_BAR_GAP = 8.dp
+private val GROUP_HEADER_GAP = 8.dp
 
 /**
  * [ServersGroupList]'s callbacks, grouped for the same reason
@@ -99,26 +106,32 @@ internal fun ServersGroupList(
         verticalArrangement = Arrangement.spacedBy(GROUP_GAP),
     ) {
         items(groups, key = { it.id }) { group ->
+            val menuItems = groupMenuItems(group, actions)
             GroupCard(
-                name = group.name,
-                profileCount = group.totalProfileCount,
-                expanded = group.id in expandedGroups,
-                actions =
-                GroupCardActions(
-                    onToggleExpand = { actions.onToggleExpand(group.id) },
-                    onRename = { actions.onRename(group) },
-                    onDelete = { actions.onDelete(group) },
-                    onAddProfile = actions.onAddProfile,
+                title = group.name,
+                subtitle =
+                pluralStringResource(
+                    CoreR.plurals.group_card_profile_count,
+                    group.totalProfileCount,
+                    group.totalProfileCount,
                 ),
-                quotaUsedBytes = group.quotaUsedBytes,
-                quotaTotalBytes = group.quotaTotalBytes,
-                lastFetchedAtEpochMillis = group.lastFetchedAtEpochMillis,
-                // null for a MANUAL group (subscriptionId is null there) —
-                // GroupCard draws no Update affordance without an id to sync.
-                onUpdate = group.subscriptionId?.let { id -> { actions.onUpdateSubscription(id) } },
-                // Task 15: same null-for-MANUAL reasoning as onUpdate just above — a MANUAL
-                // group has no subscription detail screen to open.
-                onOpenDetail = group.subscriptionId?.let { id -> { actions.onOpenSubscriptionDetail(id) } },
+                expanded = group.id in expandedGroups,
+                onToggle = { actions.onToggleExpand(group.id) },
+                menuItems = menuItems,
+                header = {
+                    QuotaBar(
+                        usedBytes = group.quotaUsedBytes,
+                        totalBytes = group.quotaTotalBytes,
+                        modifier = Modifier.padding(top = GROUP_HEADER_GAP),
+                    )
+                    // onUpdate is null for a MANUAL group (subscriptionId is null there) —
+                    // no Update affordance without an id to sync.
+                    GroupCardUpdateRow(
+                        groupName = group.name,
+                        lastFetchedAtEpochMillis = group.lastFetchedAtEpochMillis,
+                        onUpdate = group.subscriptionId?.let { id -> { actions.onUpdateSubscription(id) } },
+                    )
+                },
             ) {
                 GroupMeasureBar(
                     group = group,
@@ -138,6 +151,33 @@ internal fun ServersGroupList(
         }
     }
 }
+
+/**
+ * The overflow menu of a [GroupCard]: rename, delete and add-profile for every
+ * group, plus "Subscription details" for a SUBSCRIPTION one (a MANUAL group has
+ * no detail screen, and its [ServersGroup.subscriptionId] is null).
+ */
+@Composable
+private fun groupMenuItems(
+    group: ServersGroup,
+    actions: ServersGroupListActions,
+): List<MenuItem> =
+    buildList {
+        add(MenuItem(SubspaceIcons.Edit, stringResource(CoreR.string.group_card_rename)) { actions.onRename(group) })
+        add(
+            MenuItem(SubspaceIcons.Delete, stringResource(CoreR.string.group_card_delete), destructive = true) {
+                actions.onDelete(group)
+            },
+        )
+        add(MenuItem(SubspaceIcons.Add, stringResource(CoreR.string.group_card_add_profile)) { actions.onAddProfile() })
+        group.subscriptionId?.let { id ->
+            add(
+                MenuItem(SubspaceIcons.OpenInNew, stringResource(CoreR.string.group_card_open_detail)) {
+                    actions.onOpenSubscriptionDetail(id)
+                },
+            )
+        }
+    }
 
 /**
  * This group's measurement and ordering controls.
