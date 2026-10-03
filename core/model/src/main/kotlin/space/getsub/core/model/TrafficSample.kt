@@ -32,6 +32,14 @@ public data class TrafficSample(
      * `ARCHITECTURE.md` §10.1's signature failure.
      */
     val perTag: List<TagTraffic> = emptyList(),
+    /**
+     * Bytes (down + up) per [ThroughputWindow.BUCKET_MILLIS] bucket over the
+     * last [ThroughputWindow.WINDOW_MILLIS], oldest first (M8.6 spec §4.1.1).
+     * Either empty (no history, for example from a sampler built before it
+     * existed) or exactly [ThroughputWindow.BUCKET_COUNT] long. Kept in `:bg`'s
+     * memory only and reset with the session, like every other field here.
+     */
+    val throughput: List<Long> = emptyList(),
 )
 
 /**
@@ -51,3 +59,12 @@ public data class TagTraffic(
     val uplinkBytes: Long,
     val downlinkBytes: Long,
 )
+
+/** The throughput history's geometry (M8.6 spec §4.1.1): 28 bars over 60 minutes. */
+public object ThroughputWindow {
+    public const val BUCKET_COUNT: Int = 28
+    public const val WINDOW_MILLIS: Long = 3_600_000L
+
+    /** 128 571 ms. Integer division, so the window is 59.9998 minutes (M8.6 Part 2 ruling R8). */
+    public const val BUCKET_MILLIS: Long = WINDOW_MILLIS / BUCKET_COUNT
+}
