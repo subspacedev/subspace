@@ -379,6 +379,14 @@ later one that restores the correct terminal state. Source:
 Part 3, Task 20 and fix round 2); verified on device in
 `docs/agent/research/2026-09-28-m8.5-part3-device-verification.md`.
 
+**Every connection state must be identifiable without colour (2026-10-03).**
+Dynamic colour (§14.8) lets the wallpaper choose the colour the connected
+state is drawn in, so colour cannot be what tells the user the tunnel is up.
+Each state has its own label, its own icon and its own blob shape, and
+greyscale must not merge any two states. `blobVisualFor` in `:core:ui` is
+where this lives, and `BlobVisualTest` checks it. Source:
+`docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §3.2–3.3.
+
 ### 5.6 Do not log config contents
 
 Server addresses, UUIDs, REALITY keys, and subscription URLs are secrets.
@@ -1429,6 +1437,25 @@ the from-source libXray build path first.
 
 The practical consequence today: **no proprietary dependencies**, which is why
 §2 specifies ZXing rather than ML Kit.
+
+### 14.8 Dynamic colour — RESOLVED (2026-10-03), reversing the earlier ban
+
+The app uses Material You colour on Android 12+ by default, including for the
+connected state, with a "Dynamic colour" switch in Settings → Appearance and
+the friendly fallback palette below Android 12 or with the switch off.
+
+This reverses a rule that lived in `Theme.kt`: no dynamic colour, so that the
+connected colour could never be reassigned. The owner's intent was Material 3
+Expressive from the start, and the ban came from misreading that intent. The
+guarantee the ban protected now rests on §5.5's "identifiable without colour"
+rule instead.
+
+The Expressive components need material3 `1.5.0-alpha*`, which brings all of
+Compose to alpha. Only `:core:ui` may use the experimental Expressive APIs
+(`checkExpressiveOptIn` fails the build otherwise), so moving to 1.5.0 stable
+later touches one module. Source:
+`docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §1;
+`docs/agent/research/2026-10-03-m3-expressive-availability.md`.
 
 ---
 

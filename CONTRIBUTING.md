@@ -21,6 +21,15 @@ project.
 - Describe the change, its tests, and any dependency or licensing impact in
   the pull request.
 
+## Build requirements
+
+- A **JDK 21** must be discoverable by Gradle.
+  `gradle/gradle-daemon-jvm.properties` requests it (Paparazzi 2.0 needs it),
+  and no toolchain auto-download is configured, so install one yourself.
+  Kotlin still compiles to `jvmTarget` 17.
+- **Android SDK Platform 37.1** must be installed (`compileSdk` is 37.1,
+  required by the Compose 1.13 alpha; `targetSdk` stays 36).
+
 ## License and Store distribution
 
 Subspace is licensed under **AGPL-3.0-or-later**, with the **Stores Exception**
