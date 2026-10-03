@@ -383,9 +383,11 @@ Part 3, Task 20 and fix round 2); verified on device in
 Dynamic colour (§14.8) lets the wallpaper choose the colour the connected
 state is drawn in, so colour cannot be what tells the user the tunnel is up.
 Each state differs from every other in its shape or its centre icon, and
-carries its own label; Open and Idle are deliberately one visual (both
-healthy) and differ only in their detail line. `blobVisualFor` in `:core:ui` is
-where this lives, and `BlobVisualTest` checks it. Source:
+carries its own label. States that share a centre icon never show a common
+shape in either motion mode, Connecting's shape cycle included. Open and Idle
+are deliberately one visual (both healthy) and differ only in their detail
+line. `blobVisualFor` and `displayablePolygons` in `:core:ui` are where this
+lives, and `BlobVisualTest` checks it. Source:
 `docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §3.2–3.3.
 
 ### 5.6 Do not log config contents

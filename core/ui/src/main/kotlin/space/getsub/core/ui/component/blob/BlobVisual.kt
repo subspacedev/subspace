@@ -68,6 +68,41 @@ fun blobVisualFor(state: ConnectionState): BlobVisual =
     }
 
 /**
+ * The MaterialShapes members the blob draws, by name, so the colour-free rule
+ * can be tested without Compose. ConnectBlob maps each to its RoundedPolygon.
+ */
+internal enum class BlobPolygon { Circle, SoftBurst, Cookie6Sided, Cookie9Sided, Pill, Square, Slanted }
+
+/**
+ * The Connecting shape cycle when motion is allowed, starting from where
+ * [BlobShape.Morphing] rests. Neither member is drawn by any other state, so
+ * no frame of the cycle shows a Loader-centred state's shape — Circle is
+ * Disconnecting's, Pill is Reconnecting's (ARCHITECTURE.md §5.5). Cookie6Sided
+ * is round and soft like SoftBurst, so the cycle reads as busy rather than
+ * alarming, and its six lobes keep it apart from Connected's nine-lobed cookie.
+ */
+internal val ConnectingCycle: List<BlobPolygon> = listOf(BlobPolygon.SoftBurst, BlobPolygon.Cookie6Sided)
+
+/** The polygon a shape settles on, in either motion mode. */
+internal fun BlobShape.restingPolygon(): BlobPolygon =
+    when (this) {
+        BlobShape.Circle -> BlobPolygon.Circle
+        BlobShape.Morphing -> BlobPolygon.SoftBurst
+        BlobShape.Cookie9 -> BlobPolygon.Cookie9Sided
+        BlobShape.Pill -> BlobPolygon.Pill
+        BlobShape.Square -> BlobPolygon.Square
+        BlobShape.Slanted -> BlobPolygon.Slanted
+    }
+
+/**
+ * Every polygon a shape can be seen resting on or passing through as a
+ * keyframe while its state holds. Transitions between states are not included:
+ * they morph from one state's polygon to the next and end on the new one.
+ */
+internal fun BlobShape.displayablePolygons(reduced: Boolean): Set<BlobPolygon> =
+    if (this == BlobShape.Morphing && !reduced) ConnectingCycle.toSet() else setOf(restingPolygon())
+
+/**
  * The fill's container colour (M8.6 spec §3.3). [BlobFill.Outline] has none;
  * ConnectBlob strokes it in `outline` instead.
  */

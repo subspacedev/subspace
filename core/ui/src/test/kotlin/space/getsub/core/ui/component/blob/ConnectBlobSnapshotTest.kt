@@ -11,6 +11,7 @@ import space.getsub.core.model.Health
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.failure
 import space.getsub.core.ui.snapshot.snapshotThemes
+import space.getsub.core.ui.snapshot.snapshotWithMotion
 
 /**
  * One golden per M8.6 spec §3.3 row, in every theme. snapshotThemes reduces
@@ -39,6 +40,21 @@ class ConnectBlobSnapshotTest {
 
     @Test
     fun connecting() = blob("connecting", ConnectionState.Connecting(StartupStage.StartingCore))
+
+    /**
+     * Connecting with motion on, first frame: the shape the cycle starts from.
+     * It must be Connecting's own shape (SoftBurst), never Disconnecting's
+     * Circle, which shares the loader centre (ARCHITECTURE.md §5.5).
+     */
+    @Test
+    fun connectingWithMotion() =
+        paparazzi.snapshotWithMotion("blob-connecting") {
+            ConnectBlob(
+                ConnectionState.Connecting(StartupStage.StartingCore),
+                onClick = {},
+                contentDescription = "connecting",
+            )
+        }
 
     @Test
     fun connectedOpen() = blob("connected-open", connected(Health.Open))

@@ -213,35 +213,32 @@ private fun CenterIcon(
     Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(ICON_SIZE))
 }
 
-// The Connecting cycle: Circle -> SoftBurst -> Cookie9Sided -> Circle, one
-// pass per CONNECTING_DRIFT_MILLIS. MaterialShapes caches its polygons, so
-// these are the same instances restingPolygon() returns.
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-private val cycleKeyframes: List<RoundedPolygon> by lazy {
-    listOf(MaterialShapes.Circle, MaterialShapes.SoftBurst, MaterialShapes.Cookie9Sided)
-}
+// The Connecting cycle (ConnectingCycle): SoftBurst -> Cookie6Sided ->
+// SoftBurst, one pass per CONNECTING_DRIFT_MILLIS. MaterialShapes caches its
+// polygons, so these are the same instances restingPolygon() returns.
+private val cycleKeyframes: List<RoundedPolygon> by lazy { ConnectingCycle.map { it.rounded() } }
 private val cycleMorphs: List<Morph> by lazy {
     cycleKeyframes.indices.map { i -> Morph(cycleKeyframes[i], cycleKeyframes[(i + 1) % cycleKeyframes.size]) }
 }
 
-/**
- * The polygon a state settles on. Morphing settles on Circle (where its cycle
- * starts) when motion is allowed, and holds SoftBurst when it is not, so
- * Connecting still has a shape of its own (M8.6 spec §2.6, §3.2).
- */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-private fun restingPolygon(
-    shape: BlobShape,
-    reduced: Boolean,
-): RoundedPolygon =
-    when (shape) {
-        BlobShape.Circle -> MaterialShapes.Circle
-        BlobShape.Morphing -> if (reduced) MaterialShapes.SoftBurst else MaterialShapes.Circle
-        BlobShape.Cookie9 -> MaterialShapes.Cookie9Sided
-        BlobShape.Pill -> MaterialShapes.Pill
-        BlobShape.Square -> MaterialShapes.Square
-        BlobShape.Slanted -> MaterialShapes.Slanted
+private fun BlobPolygon.rounded(): RoundedPolygon =
+    when (this) {
+        BlobPolygon.Circle -> MaterialShapes.Circle
+        BlobPolygon.SoftBurst -> MaterialShapes.SoftBurst
+        BlobPolygon.Cookie6Sided -> MaterialShapes.Cookie6Sided
+        BlobPolygon.Cookie9Sided -> MaterialShapes.Cookie9Sided
+        BlobPolygon.Pill -> MaterialShapes.Pill
+        BlobPolygon.Square -> MaterialShapes.Square
+        BlobPolygon.Slanted -> MaterialShapes.Slanted
     }
+
+/**
+ * The polygon a state settles on. Morphing rests on SoftBurst in both motion
+ * modes, which is also where its cycle starts, so Connecting never shows
+ * Disconnecting's Circle (M8.6 spec §2.6, §3.2; ARCHITECTURE.md §5.5).
+ */
+private fun restingPolygon(shape: BlobShape): RoundedPolygon = shape.restingPolygon().rounded()
 
 /**
  * The blob's outline: either a state-change [Morph] at [progress], or, while
@@ -283,12 +280,12 @@ private fun rememberBlobGeometry(
     shape: BlobShape,
     reduced: Boolean,
 ): BlobGeometry {
-    val geometry = remember { BlobGeometry(restingPolygon(shape, reduced)) }
+    val geometry = remember { BlobGeometry(restingPolygon(shape)) }
     val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     LaunchedEffect(shape, reduced) {
         val start = geometry.settled()
         geometry.cycling = false
-        val end = restingPolygon(shape, reduced)
+        val end = restingPolygon(shape)
         if (start !== end || geometry.target !== end) {
             geometry.morph = Morph(start, end)
             geometry.target = end

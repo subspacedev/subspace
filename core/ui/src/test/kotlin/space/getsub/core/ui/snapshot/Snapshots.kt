@@ -90,3 +90,23 @@ fun Paparazzi.snapshotThemes(
         }
     }
 }
+
+/**
+ * Snapshots [content] once, in the friendly light theme, with motion left on.
+ * Paparazzi captures the first frame, before any animation has advanced, so
+ * this shows the shape a component starts from when motion is allowed, which
+ * [snapshotThemes] cannot (it reduces motion).
+ */
+fun Paparazzi.snapshotWithMotion(
+    name: String,
+    content: @Composable () -> Unit,
+) {
+    val v = variants.first { it.name == "friendly-light" }
+    snapshot(name = "$name-motion-${v.name}") {
+        SubspaceThemeFor(colorScheme = v.scheme, colors = v.colors, reducedMotion = false) {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Box(Modifier.padding(16.dp)) { content() }
+            }
+        }
+    }
+}

@@ -2,6 +2,8 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.ui.component.blob
 
+import io.kotest.assertions.withClue
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeUnique
 import io.kotest.matchers.shouldBe
 import org.junit.Test
@@ -61,5 +63,56 @@ class BlobVisualTest {
         listOf(disconnected, connecting, open, stalled, reconnecting, blocked, disconnecting, failed)
             .map { blobVisualFor(it).let { v -> v.shape to v.center } }
             .shouldBeUnique()
+    }
+
+    private val distinctStates =
+        listOf(disconnected, connecting, open, stalled, reconnecting, blocked, disconnecting, failed)
+
+    /**
+     * ARCHITECTURE.md §5.5 with motion in play: the shape-and-centre check above
+     * compares resting shapes, but Connecting cycles through keyframes when
+     * motion is allowed. In either motion mode, two states with the same centre
+     * icon must never show a common polygon — Connecting's cycle once rested on
+     * and passed through Circle with the loader, which is exactly Disconnecting.
+     */
+    @Test
+    fun statesSharingACentreNeverShowTheSamePolygon() {
+        val pairs =
+            distinctStates.flatMap { a -> distinctStates.filter { it !== a }.map { b -> a to b } }
+                .filter { (a, b) -> blobVisualFor(a).center == blobVisualFor(b).center }
+        listOf(true, false).forEach { reduced ->
+            pairs.forEach { (a, b) ->
+                val common =
+                    blobVisualFor(a).shape.displayablePolygons(reduced) intersect
+                        blobVisualFor(b).shape.displayablePolygons(reduced)
+                withClue("$a vs $b, reduced=$reduced") { common.shouldBeEmpty() }
+            }
+        }
+    }
+
+    /** The Loader-centred trio named in the review, spelled out. */
+    @Test
+    fun loaderStatesHaveDisjointShapes() {
+        val loaderStates = distinctStates.filter { blobVisualFor(it).center == BlobCenter.Loader }
+        loaderStates.size shouldBe 3
+        listOf(true, false).forEach { reduced ->
+            loaderStates
+                .flatMap { blobVisualFor(it).shape.displayablePolygons(reduced) }
+                .shouldBeUnique()
+        }
+    }
+
+    /** The cycle starts where Morphing rests, so starting it is not a jump. */
+    @Test
+    fun connectingCycleStartsFromItsRestingShape() {
+        ConnectingCycle.first() shouldBe BlobShape.Morphing.restingPolygon()
+        BlobShape.Morphing.displayablePolygons(reduced = true) shouldBe setOf(BlobPolygon.SoftBurst)
+    }
+
+    /** No other state rests on a Connecting keyframe, even one with another centre. */
+    @Test
+    fun connectingCycleUsesShapesNoOtherStateRestsOn() {
+        val others = BlobShape.entries.filter { it != BlobShape.Morphing }.map { it.restingPolygon() }
+        (ConnectingCycle.toSet() intersect others.toSet()).shouldBeEmpty()
     }
 }
