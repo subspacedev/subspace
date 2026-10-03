@@ -153,6 +153,38 @@ val moduleBoundaries = tasks.register("checkModuleBoundaries") {
     }
 }
 
+// M8.6 spec §1.2 item 2: the experimental Material 3 Expressive APIs are alpha
+// and change between releases. Confining their opt-in to :core:ui means an
+// alpha bump breaks one module, and moving to 1.5.0 stable later touches one
+// module. Screens use :core:ui's components instead.
+val expressiveOptIn = tasks.register("checkExpressiveOptIn") {
+    group = "verification"
+    description = "Fails if ExperimentalMaterial3ExpressiveApi is used outside :core:ui (M8.6 spec §1.2)."
+
+    val path = project.path
+    val rootDir = project.rootDir
+    val sources = fileTree(project.projectDir) {
+        include("src/**/*.kt")
+    }
+    inputs.files(sources)
+
+    doLast {
+        if (path == ":core:ui") return@doLast
+        val offenders = sources.files
+            .filter { it.readText().contains("ExperimentalMaterial3ExpressiveApi") }
+            .map { it.relativeTo(rootDir).path }
+            .sorted()
+        if (offenders.isNotEmpty()) {
+            error(
+                "ExperimentalMaterial3ExpressiveApi outside :core:ui (M8.6 spec §1.2). " +
+                    "Wrap the API in a :core:ui component instead:\n" +
+                    offenders.joinToString("\n") { "  - $it" },
+            )
+        }
+    }
+}
+
 tasks.matching { it.name == "check" }.configureEach {
     dependsOn(moduleBoundaries)
+    dependsOn(expressiveOptIn)
 }
