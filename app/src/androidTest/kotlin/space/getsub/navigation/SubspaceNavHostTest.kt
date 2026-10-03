@@ -31,7 +31,7 @@ import space.getsub.core.ui.component.FloatingNavBar
 import space.getsub.core.ui.theme.SubspaceTheme
 
 // Backtick names with spaces are avoided here (unlike the task brief's literal
-// text) for the same reason ConnectControlTest.kt gives: minSdk 26 makes D8
+// text) for the same reason GroupCardTest.kt gives: minSdk 26 makes D8
 // emit a DEX version that rejects spaces in synthetic class names, and any
 // lambda passed to a test method inherits that method's JVM name. camelCase
 // throughout, matching every other androidTest in this repo.

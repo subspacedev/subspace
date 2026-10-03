@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /** A tappable status chip, e.g. "Smart route" on Connect (M8.6 spec §4.2, fix A9). */
@@ -25,7 +26,14 @@ fun StatusChip(
 ) {
     AssistChip(
         onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelLarge) },
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         leadingIcon = { Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(18.dp)) },
         modifier = modifier,
     )

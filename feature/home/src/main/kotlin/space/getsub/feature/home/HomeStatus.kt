@@ -52,7 +52,7 @@ internal enum class HomePrimaryAction { Connect, Disconnect, None }
 
 /**
  * The button under the blob (M8.6 Part 2 ruling R1). Connecting and
- * Disconnecting offer nothing, as `ConnectControl` refused those taps before.
+ * Disconnecting offer nothing, as the replaced `ConnectControl` refused those taps.
  * Reconnecting offers Disconnect: M8 spec §7.3, it has no bound.
  */
 internal fun HomeState.primaryAction(): HomePrimaryAction =

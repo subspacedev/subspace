@@ -59,7 +59,7 @@ import space.getsub.core.model.failure
  * runs as a plain JVM unit test (`:feature:home:testDebugUnitTest`), never
  * through D8/dexing, so the DEX 040 synthetic-class-name restriction that
  * forces camelCase in this module's *instrumented* tests
- * ([space.getsub.core.ui.component.ConnectControlTest] et al.) does
+ * ([space.getsub.core.ui.component.GroupCardTest] et al.) does
  * not apply here — this module's own pre-existing JVM tests already used
  * backtick-with-spaces names successfully.
  */

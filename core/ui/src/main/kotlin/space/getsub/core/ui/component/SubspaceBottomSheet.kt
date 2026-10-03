@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the title's padding — tokens/spacing.css
 // values (--space-2, --space-4), already named by the val each initializes.
-// See ConnectControl.kt for the same pattern.
+// See GroupCard.kt for the same pattern.
 @file:Suppress("MagicNumber")
 
 package space.getsub.core.ui.component
@@ -62,7 +62,7 @@ private val SHEET_TITLE_BOTTOM_PADDING = 16.dp
  * @param open whether the sheet is shown. `false` composes nothing — the
  *   sheet (and the [rememberModalBottomSheetState] it would otherwise hold)
  *   does not exist in the composition tree while closed, the same convention
- *   [ConnectControl]'s halo uses for state this design system does not pay
+ *   ConnectBlob's halo uses for state this design system does not pay
  *   composition cost for when it isn't active.
  * @param titleRes the sheet's heading. Marked `Modifier.semantics { heading()
  *   }` so a screen-reader user can navigate directly to it rather than

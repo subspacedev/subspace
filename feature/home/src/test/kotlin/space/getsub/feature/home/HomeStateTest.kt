@@ -76,7 +76,7 @@ class HomeStateTest {
 
     // ── Retry from a failed connection (PR #4 review, P1 finding B) ─────────
     //
-    // ConnectionState.Failed renders as ConnectVisualState.Disconnected and
+    // ConnectionState.Failed renders like Disconnected (a Connect action) and
     // TunnelService.startTunnel explicitly accepts a connect from Failed, but
     // canConnect accepted only literal Disconnected. After any validation or
     // startup failure the control therefore looked retryable and ignored taps
@@ -160,8 +160,8 @@ class HomeStateTest {
     // bound, and with the kill switch on (the default) the user has no connectivity while
     // it does. Excluding it here left the app's one unbounded, connectivity-denying state
     // as the only one with no in-app exit. HomeReconnectingTest covers the other two
-    // refusals this had to be lifted alongside — the visual-state mapping and
-    // ConnectControl's own tap guard — which a JVM test cannot reach.
+    // refusals this had to be lifted alongside — the primary-action mapping and
+    // the blob's enabled state — which a JVM test cannot reach.
 
     @Test
     fun `canDisconnect is true while reconnecting`() {

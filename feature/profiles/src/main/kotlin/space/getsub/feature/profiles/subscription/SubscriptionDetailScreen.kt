@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the paddings/gaps below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's ConnectControl.kt for the same pattern.
+// initializes. See core/ui's GroupCard.kt for the same pattern.
 @file:Suppress(
     "MagicNumber",
     // Stateless Compose helpers keep each detail row focused and directly testable. Splitting

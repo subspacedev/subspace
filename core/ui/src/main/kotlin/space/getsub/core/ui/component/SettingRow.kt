@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the padding/size tokens below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See ConnectControl.kt and GroupCard.kt for the same pattern.
+// initializes. See GroupCard.kt for the same pattern.
 @file:Suppress("MagicNumber")
 
 package space.getsub.core.ui.component

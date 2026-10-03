@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the paddings/gaps below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's ConnectControl.kt for the same pattern.
+// initializes. See core/ui's GroupCard.kt for the same pattern.
 // TooManyFunctions: this file's function count is the width of the form it
 // renders (one small composable per field/section, same reasoning
 // EditorViewModel.kt's own TooManyFunctions suppression gives for its

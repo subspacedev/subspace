@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the empty-state's content padding — a
 // tokens/spacing.css --space-* value, already named by the val it
-// initializes. See core/ui's ConnectControl.kt for the same pattern.
+// initializes. See core/ui's GroupCard.kt for the same pattern.
 @file:Suppress("MagicNumber")
 
 package space.getsub.feature.profiles.list

@@ -30,7 +30,8 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("Reconnecting…", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnecting").assertIsDisplayed()
+        composeRule.onNodeWithText("Connected").assertDoesNotExist()
     }
 
     @Test
@@ -46,19 +47,19 @@ class HomeReconnectingTest {
         // "The core failed to start". That is the text a Reconnecting-rendered-as-Failed
         // regression would actually put on screen, so that is what must be absent.
         composeRule.onNodeWithText("The core failed to start", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Reconnecting…", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnecting").assertIsDisplayed()
     }
 
     /**
      * M8 spec §7.3, and ruling R23. A `Retryable` reason retries for as long as a network
      * exists, so this state has no bound; with the kill switch on (the default) the user has
-     * no connectivity while it retries. Home is therefore the exit, and this asserts the tap
-     * actually reaches [HomeActions.onDisconnect].
+     * no connectivity while it retries. Home is therefore the exit, and this asserts both taps
+     * actually reach [HomeActions.onDisconnect].
      *
-     * Three independent refusals had to be lifted together for this to pass — [HomeState
-     * .canDisconnect] excluded `Reconnecting`, `toVisualState` mapped it to
-     * `ConnectVisualState.Connecting`, and `ConnectControl` refuses every tap in that visual
-     * state — so a regression restoring any one of them fails here.
+     * Several independent refusals had to be lifted together for this to pass — [HomeState
+     * .canDisconnect] excluded `Reconnecting`, and the primary action and the blob's enabled
+     * state each had to offer it — so a regression restoring any one of them fails here. The
+     * exit is a visible Disconnect button and also the blob's click label.
      */
     @Test
     fun reconnectingOffersAWorkingDisconnect() {
@@ -73,13 +74,12 @@ class HomeReconnectingTest {
             }
         }
 
-        // By content description, not by the visible label: ConnectControl reports the
-        // *action* a tap performs, and "Disconnect" being announced at all is half of what
-        // this test is for — a screen-reader user who is told "Reconnecting" has no way to
-        // discover the exit.
-        composeRule.onNodeWithContentDescription("Disconnect").performClick()
-
+        composeRule.onNodeWithText("Disconnect").performClick()
         disconnects shouldBe 1
+
+        // The blob's content description is the state label; its click label is the action.
+        composeRule.onNodeWithContentDescription("Reconnecting").performClick()
+        disconnects shouldBe 2
     }
 
     @Test
@@ -94,7 +94,9 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("traffic is blocked", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Blocked").assertIsDisplayed()
+        // The ARCHITECTURE.md §5.5 banner.
+        composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -109,7 +111,8 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("traffic is not protected", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Traffic is not protected", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertDoesNotExist()
     }
 
     private fun setContent(state: HomeState) {
@@ -129,5 +132,8 @@ class HomeReconnectingTest {
             onNavigateToServers = {},
             onAddServer = {},
             onTestLatency = {},
+            onOpenRouting = {},
+            onOpenPerApp = {},
+            onOpenSessionLog = {},
         )
 }

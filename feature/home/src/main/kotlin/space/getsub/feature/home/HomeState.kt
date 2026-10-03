@@ -89,7 +89,7 @@ internal data class HomeState(
      * True from [ConnectionState.Failed] as well as [ConnectionState.Disconnected]. Both are
      * terminal states with no tunnel up, and a failure is exactly what a user retries.
      * `TunnelService.startTunnel` already accepts a connect from `Failed` and [HomeScreen]
-     * already renders it as `ConnectVisualState.Disconnected`, so accepting only
+     * already offers Connect for it, so accepting only
      * `Disconnected` here left a control that looked retryable and silently ignored taps
      * until some unrelated lifecycle event happened to reset the state (PR #4 review, P1
      * finding B).
@@ -120,7 +120,7 @@ internal data class HomeState(
      * user is looking straight at.
      *
      * Being true here is necessary but not sufficient: [HomeScreen]'s tap handler and
-     * `ConnectControl`'s own guard each independently refused the tap, and all three had to
+     * the blob's own enabled state each independently refused the tap, and all three had to
      * agree before the control actually did anything.
      */
     val canDisconnect: Boolean

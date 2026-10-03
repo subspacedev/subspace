@@ -18,8 +18,8 @@ import org.junit.Test
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.SubspaceTheme
 
-// camelCase throughout — same DEX-040 constraint as ConnectControlTest.kt,
-// SubspaceBottomSheetTest.kt and FloatingNavBarTest.kt. Fix round 1,
+// camelCase throughout — same DEX-040 constraint as SubspaceBottomSheetTest.kt and
+// FloatingNavBarTest.kt. Fix round 1,
 // finding 3: this file existed nowhere before code review — GroupCard's
 // caret, overflow menu and their wiring to GroupCardActions were unverified
 // beyond compiling and passing the JVM ViewModel suite.
@@ -85,7 +85,7 @@ class GroupCardTest {
         }
         // "Expand", not "Collapse": expanded = false above, and GroupCard's
         // toggle description names the action a tap performs next — the
-        // same convention ConnectControl's own contentDescription follows.
+        // same convention ConnectBlob's onClickLabel follows.
         composeRule.onNodeWithContentDescription("Expand Local configs, 3 servers").performClick()
         toggled shouldBe true
     }

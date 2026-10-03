@@ -46,7 +46,7 @@ import space.getsub.core.ui.theme.SubspaceTheme
  *
  * v2 `createComposeRule` and camelCase names throughout — same DEX-040
  * constraint [space.getsub.core.ui.component.GroupCardTest] and
- * [space.getsub.core.ui.component.ConnectControlTest] document; no
+ * [space.getsub.core.ui.component.GroupCardTest] document; no
  * `@Suppress("DEPRECATION")` here or anywhere else in this codebase.
  */
 class AddServerSheetTest {

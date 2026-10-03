@@ -371,6 +371,9 @@ private fun NavGraphBuilder.topLevelDestinations(
             onRequestConsent = onRequestConsent,
             onNavigateToServers = { navController.navigateToTopLevel(SERVERS_VALUE) },
             onAddServer = { navController.navigateToAddFirstServer() },
+            onOpenRouting = { navController.navigate(RoutingList) },
+            onOpenPerApp = { navController.navigate(PerApp) },
+            onOpenSessionLog = { navController.navigate(LogViewer) },
         )
     }
 }

@@ -14,7 +14,7 @@ import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.SubspaceTheme
 
 // camelCase test names: this module's minSdk (26) makes D8 reject spaces in
-// synthetic class names derived from test method names (see ConnectControlTest.kt).
+// synthetic class names derived from test method names (see GroupCardTest.kt).
 class FloatingNavBarTest {
     @get:Rule
     val composeRule = createComposeRule()

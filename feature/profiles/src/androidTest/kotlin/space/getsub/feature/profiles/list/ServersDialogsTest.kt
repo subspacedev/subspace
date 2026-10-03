@@ -11,7 +11,7 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.ui.theme.SubspaceTheme
 
-// camelCase throughout — same DEX-040 constraint core/ui's ConnectControlTest.kt
+// camelCase throughout — same DEX-040 constraint core/ui's GroupCardTest.kt
 // and GroupCardTest.kt document. Fix round 1, finding 3: this is the
 // dialog-confirm/cancel wiring code review flagged as untested — a group's
 // rename and its cascading delete are exactly the two places a wiring bug

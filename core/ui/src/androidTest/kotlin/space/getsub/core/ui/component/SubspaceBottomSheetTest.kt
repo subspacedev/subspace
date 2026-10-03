@@ -17,7 +17,7 @@ import org.junit.Test
 import space.getsub.core.ui.R
 import space.getsub.core.ui.theme.SubspaceTheme
 
-// camelCase throughout — same DEX-040 constraint as ConnectControlTest.kt and
+// camelCase throughout — same DEX-040 constraint as GroupCardTest.kt and
 // FloatingNavBarTest.kt.
 class SubspaceBottomSheetTest {
     @get:Rule
