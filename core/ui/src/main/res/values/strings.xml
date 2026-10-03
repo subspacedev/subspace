@@ -80,4 +80,10 @@
         <item>TB</item>
         <item>PB</item>
     </string-array>
+
+    <!-- OutcomeTag (M8.6 Part 1, Task 7): what happens to an app's traffic. -->
+    <string name="outcome_tunnelled">Tunnelled</string>
+    <string name="outcome_direct">Direct</string>
+    <string name="outcome_proxy">Proxy</string>
+    <string name="outcome_block">Block</string>
 </resources>
