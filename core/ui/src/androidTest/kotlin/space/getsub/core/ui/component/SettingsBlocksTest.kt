@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -58,6 +59,8 @@ class SettingsBlocksTest {
         rule.onNodeWithText("Deny-list").performClick()
         selected shouldBe 2
         rule.onNodeWithText("Deny-list").assertIsSelected()
+        rule.onNodeWithText("Off").assertIsNotSelected()
+        rule.onNodeWithText("Allow-list").assertIsNotSelected()
     }
 
     @Test

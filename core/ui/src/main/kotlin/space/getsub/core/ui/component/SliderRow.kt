@@ -11,6 +11,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -50,7 +51,7 @@ fun SliderRow(
                 range.first.toFloat()..range.last.toFloat(),
             )
         // The caller's value is the source of truth; the state only tracks the drag.
-        state.value = value.toFloat()
+        SideEffect { state.value = value.toFloat() }
         Slider(
             state = state,
             onValueChange = { onValueChange(it.roundToInt().coerceIn(range)) },

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -46,7 +47,11 @@ fun ModeTiles(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ButtonGroup(overflowIndicator = {}, modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    ButtonGroup(
+        overflowIndicator = {},
+        modifier = modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         val scope = this
         options.forEachIndexed { index, option ->
             customItem(
