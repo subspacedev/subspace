@@ -214,16 +214,17 @@ constructor(
         viewModelScope.launch { settingsSource.setPerTagBreakdown(enabled) }
     }
 
+    /** Applied at once: MainActivity reads the same setting through the theme source. */
+    fun onDynamicColorChanged(enabled: Boolean) {
+        viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
+    }
+
     /**
      * A CPU saver, not a survival setting, so it never routes through
      * [maybePromptForBattery]. Traffic numbers go immediately; the session log stops from
      * the next connection (`:bg` decides log capture when a session starts), which the
      * switch's own summary says.
      */
-    fun onDynamicColorChanged(enabled: Boolean) {
-        viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
-    }
-
     fun onLightweightModeChanged(enabled: Boolean) {
         viewModelScope.launch { settingsSource.setLightweightMode(enabled) }
     }
