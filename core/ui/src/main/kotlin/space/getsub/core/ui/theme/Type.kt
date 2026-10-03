@@ -177,6 +177,7 @@ val SubspaceTypography =
     )
 
 /** OpenType feature for tabular (fixed-width) figures (M8.6 spec §2.4). */
+// Suppressed: public interface name TabularFigures (per spec) conflicts with detekt's const-naming rule.
 @Suppress("TopLevelPropertyNaming")
 const val TabularFigures: String = "tnum"
 

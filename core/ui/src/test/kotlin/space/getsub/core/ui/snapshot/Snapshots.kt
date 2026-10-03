@@ -4,11 +4,11 @@
 
 package space.getsub.core.ui.snapshot
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -83,11 +83,9 @@ fun Paparazzi.snapshotThemes(
     variants.forEach { v ->
         snapshot(name = "$name-${v.name}") {
             SubspaceThemeFor(colorScheme = v.scheme, colors = v.colors, reducedMotion = true) {
-                Box(
-                    Modifier
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(16.dp),
-                ) { content() }
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    Box(Modifier.padding(16.dp)) { content() }
+                }
             }
         }
     }
