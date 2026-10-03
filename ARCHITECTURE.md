@@ -382,8 +382,9 @@ Part 3, Task 20 and fix round 2); verified on device in
 **Every connection state must be identifiable without colour (2026-10-03).**
 Dynamic colour (§14.8) lets the wallpaper choose the colour the connected
 state is drawn in, so colour cannot be what tells the user the tunnel is up.
-Each state has its own label, its own icon and its own blob shape, and
-greyscale must not merge any two states. `blobVisualFor` in `:core:ui` is
+Each state differs from every other in its shape or its centre icon, and
+carries its own label; Open and Idle are deliberately one visual (both
+healthy) and differ only in their detail line. `blobVisualFor` in `:core:ui` is
 where this lives, and `BlobVisualTest` checks it. Source:
 `docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §3.2–3.3.
 
