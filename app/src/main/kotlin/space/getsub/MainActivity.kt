@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import space.getsub.core.data.PendingRoutingImport
-import space.getsub.core.data.ThemePreference
 import space.getsub.core.ui.theme.SubspaceTheme
 import space.getsub.navigation.SubspaceNavHost
 import space.getsub.service.TunnelClient
@@ -50,7 +49,7 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var pendingRoutingImport: PendingRoutingImport
 
-    // Flips true once themeSource.theme has emitted for the first time. Read
+    // Flips true once themeSource.appearance has emitted for the first time. Read
     // by the OnPreDrawListener below — this, not the value itself, is what
     // actually holds the first frame back. See onCreate's comment.
     private var themeReady = false
@@ -64,7 +63,7 @@ class MainActivity : ComponentActivity() {
         // ever read it back: SubspaceTheme was called with no darkTheme
         // argument and fell through to isSystemInDarkTheme() regardless of
         // what the user picked. Fixed below via resolveDarkTheme, fed by
-        // themeSource.theme.
+        // themeSource.appearance.
         //
         // That value arrives asynchronously from Room, so there is a real
         // window on every cold start before the stored preference is known.
@@ -74,7 +73,7 @@ class MainActivity : ComponentActivity() {
         // holds the very first frame instead of guessing: the content
         // view's OnPreDrawListener returns false (deferring the draw) until
         // themeReady flips true, which the LaunchedEffect below does,
-        // explicitly, the first time themePreference stops being null. A
+        // explicitly, the first time appearance stops being null. A
         // plain ViewTreeObserver technique — not
         // androidx.core:core-splashscreen (a new dependency this fix does
         // not need) and not runBlocking (banned outside tests by this
@@ -91,15 +90,11 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            // Flow<ThemePreference> is assignable to Flow<ThemePreference?>
-            // by declaration-site variance; this local val gives
-            // collectAsState an explicitly nullable T so `initial = null`
-            // type-checks without widening ThemeSource's own contract.
-            val themeFlow: Flow<ThemePreference?> = themeSource.theme
-            val themePreference by themeFlow.collectAsState(initial = null)
+            val appearanceFlow: Flow<Appearance?> = themeSource.appearance
+            val appearance by appearanceFlow.collectAsState(initial = null)
 
-            LaunchedEffect(themePreference) {
-                if (themePreference != null && !themeReady) {
+            LaunchedEffect(appearance) {
+                if (appearance != null && !themeReady) {
                     themeReady = true
                     // Snapshot-state changes alone do not guarantee another
                     // traversal reaches this specific view once one draw has
@@ -109,7 +104,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            SubspaceTheme(darkTheme = resolveDarkTheme(themePreference, isSystemInDarkTheme())) {
+            SubspaceTheme(darkTheme = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme())) {
                 // The action to run once consent comes back. Held across the
                 // activity-result round trip, which is why it cannot just be a
                 // local in the click handler.

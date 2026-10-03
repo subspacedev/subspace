@@ -421,6 +421,27 @@ class SettingsRepositoryTest {
             repository.lightweightModeNow() shouldBe true
         }
 
+    /** M8.6 spec §6: dynamic colour is on unless the user turns it off. */
+    @Test
+    fun dynamicColorDefaultsToOnAndRoundTrips() =
+        runTest {
+            repository.dynamicColor.first() shouldBe true
+
+            repository.setDynamicColor(false)
+            repository.dynamicColor.first() shouldBe false
+
+            repository.setDynamicColor(true)
+            repository.dynamicColor.first() shouldBe true
+        }
+
+    /** Review Focus 1: an unreadable stored value is the default, never "off". */
+    @Test
+    fun anUnreadableDynamicColorValueReadsAsOn() =
+        runTest {
+            db.settingDao().put(SettingEntity(key = "dynamic_color", value = "maybe"))
+            repository.dynamicColor.first() shouldBe true
+        }
+
     @Test
     fun batteryPromptShownDefaultsToFalse() =
         runTest {
