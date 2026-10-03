@@ -56,4 +56,17 @@ class TrafficSampleParcelTest {
         val sample = TrafficSample(uplinkBytes = 1, downlinkBytes = 2, uplinkPackets = 3, downlinkPackets = 4)
         assertEquals(emptyList<TagTraffic>(), TrafficSampleParcel.from(sample).toSample().perTag)
     }
+
+    @Test
+    fun `carries the throughput history in order`() {
+        val history = List(28) { i -> i * 1_000L + 5_000_000_000L }
+        val sample = TrafficSample(1, 2, 3, 4, throughput = history)
+        assertEquals(history, TrafficSampleParcel.from(sample).toSample().throughput)
+    }
+
+    @Test
+    fun `an absent history round-trips as empty`() {
+        val sample = TrafficSample(1, 2, 3, 4)
+        assertEquals(emptyList<Long>(), TrafficSampleParcel.from(sample).toSample().throughput)
+    }
 }

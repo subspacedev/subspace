@@ -717,6 +717,7 @@ class TunnelService : VpnService() {
             scope = scope,
             read = { Tun2Socks.stats() },
             emit = ::broadcastTrafficSample,
+            clock = SystemClock::elapsedRealtime,
             // M8.5 spec §2: null while the breakdown is off or no port could be
             // allocated (metricsPort itself). ARCHITECTURE.md §5.6 — fetchMetricsPayload/
             // parseMetricsPayload never throw and this reads only the port

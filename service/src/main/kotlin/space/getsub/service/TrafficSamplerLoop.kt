@@ -48,6 +48,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *   `TunnelService`'s own lock**: `RemoteCallbackList.beginBroadcast()` throws
  *   when a broadcast is already in flight, so an unsynchronised per-second push
  *   would race state publication and take the service down.
+ * @param clock milliseconds on a clock that keeps counting while the device sleeps
+ *   (`SystemClock.elapsedRealtime` in production), so throughput buckets advance during Doze
+ *   (M8.6 spec §4.1.1).
  * @param readTags reads the current per-tag breakdown, or null while the
  *   breakdown is off (M8.5 spec §2). Called once per tick, only when [read]
  *   produced a reading — a session with nothing to sample has nothing to
@@ -69,6 +72,7 @@ internal class TrafficSamplerLoop(
     private val scope: CoroutineScope,
     private val read: () -> TunnelCounters?,
     private val emit: (TrafficSample) -> Unit,
+    private val clock: () -> Long,
     private val intervalMillis: Long = DEFAULT_INTERVAL_MILLIS,
     private val readTags: (() -> List<TagTraffic>)? = null,
 ) {
@@ -114,6 +118,11 @@ internal class TrafficSamplerLoop(
         synchronized(lock) {
             if (job?.isActive == true) return
             val sampler = TrafficSampler()
+            // One ring per session, created and dropped with this sampler (M8.6 spec §4.1.1),
+            // so a retained-TUN restart (start() is a no-op then) keeps it, and a new
+            // session starts empty.
+            val history = ThroughputRing()
+            var lastTotal = 0L
             // Seeded from restartSignal's *current* value, not 0: a notifyCountersRestarted()
             // call that landed after the previous session's stop() (or before this one's first
             // tick) must not be replayed onto a brand-new TrafficSampler, whose own first-ever
@@ -144,11 +153,17 @@ internal class TrafficSamplerLoop(
                         if (epochBeforeRead == epochAfterRead) {
                             reading?.let {
                                 val sample = sampler.accept(it, readTags?.invoke() ?: emptyList())
+                                // The sampler's totals only ever rise (its own delta rules), so this
+                                // per-tick difference is never negative and never a wrap artefact.
+                                val total = sample.uplinkBytes + sample.downlinkBytes
+                                val now = clock()
+                                history.record(now, total - lastTotal)
+                                lastTotal = total
                                 // Narrows, does not close, the residual this class's
                                 // KDoc names: a cancellation landing after accept()
                                 // but before this check still slips one stale emit
                                 // through. Deliberately not stronger than that.
-                                if (isActive) emit(sample)
+                                if (isActive) emit(sample.copy(throughput = history.snapshot(now)))
                             }
                         }
                         // epochBeforeRead != epochAfterRead: the restart landed while read() was
