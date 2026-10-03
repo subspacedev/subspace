@@ -134,7 +134,8 @@
 
     <string name="log_viewer_title">Session log</string>
     <string name="log_viewer_empty">Nothing logged yet. Connect, and the session\'s log appears here.</string>
-    <string name="log_viewer_clear">Clear</string>
+    <string name="log_viewer_clear">Delete</string>
+    <string name="log_viewer_jump_latest">Latest</string>
     <string name="log_viewer_share">Share</string>
     <string name="log_viewer_redaction_notice">Server addresses, IDs, keys and subscription links are removed before anything is written to this log.</string>
     <string name="log_viewer_lightweight_notice">Lightweight mode is on: no new log lines are recorded. Turn it off in Settings and reconnect to start recording again.</string>

@@ -22,29 +22,35 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import space.getsub.core.ui.theme.RobotoMonoFontFamily
+import kotlinx.coroutines.launch
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.LocalReducedMotion
+import space.getsub.core.ui.theme.mono
 import space.getsub.feature.settings.R
 
 private val CONTENT_HORIZONTAL_PADDING = 24.dp
@@ -165,21 +171,41 @@ private fun HeaderRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = actions.onBack) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    painter = painterResource(SubspaceIcons.ArrowBack),
                     contentDescription = stringResource(R.string.log_viewer_back),
                 )
             }
-            Text(text = stringResource(R.string.log_viewer_title), style = MaterialTheme.typography.headlineMedium)
+            Text(text = stringResource(R.string.log_viewer_title), style = MaterialTheme.typography.titleLarge)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = actions.onShare) {
-                Icon(imageVector = Icons.Default.Share, contentDescription = stringResource(R.string.log_viewer_share))
+                Icon(
+                    painter = painterResource(SubspaceIcons.Share),
+                    contentDescription = stringResource(R.string.log_viewer_share),
+                )
             }
             IconButton(onClick = actions.onClear) {
-                Icon(imageVector = Icons.Default.Clear, contentDescription = stringResource(R.string.log_viewer_clear))
+                Icon(
+                    painter = painterResource(SubspaceIcons.Delete),
+                    contentDescription = stringResource(R.string.log_viewer_clear),
+                )
             }
         }
     }
+}
+
+/**
+ * Lightweight mode stops log capture from the next connection, so an empty or
+ * frozen log is expected, not a fault. Lines already recorded stay viewable.
+ */
+@Composable
+private fun LightweightNotice(modifier: Modifier = Modifier) {
+    TonalBanner(
+        icon = SubspaceIcons.Eco,
+        text = stringResource(R.string.log_viewer_lightweight_notice),
+        modifier = modifier,
+        tone = BannerTone.Warning,
+    )
 }
 
 /**
@@ -188,27 +214,12 @@ private fun HeaderRow(
  * from [LogViewerState.lines], which arrive already redacted (see
  * [LogViewerState]'s own KDoc).
  */
-/**
- * Lightweight mode stops log capture from the next connection, so an empty or
- * frozen log is expected, not a fault. Lines already recorded stay viewable.
- */
-@Composable
-private fun LightweightNotice(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(R.string.log_viewer_lightweight_notice),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.fillMaxWidth(),
-    )
-}
-
 @Composable
 private fun RedactionNotice(modifier: Modifier = Modifier) {
-    Text(
+    TonalBanner(
+        icon = SubspaceIcons.Shield,
         text = stringResource(R.string.log_viewer_redaction_notice),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
     )
 }
 
@@ -233,7 +244,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 }
 
 /**
- * One [Text] per line, set in [RobotoMonoFontFamily] — `Type.kt`'s
+ * One [Text] per line, set via `.mono()` (Roboto Mono) — `Type.kt`'s
  * convention for every machine-generated string in this design system, and
  * a captured log line is exactly that (see [StatTile][space.getsub.core.ui.component.StatTile]'s
  * own KDoc for the same rule).
@@ -258,15 +269,45 @@ private fun LogLineList(
         }
         previousSize = lines.size
     }
-    LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
-        items(lines) { line ->
-            Text(
-                text = line,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = RobotoMonoFontFamily,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth().padding(vertical = LINE_VERTICAL_PADDING),
-            )
+    val lastVisibleIndex by remember {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+    }
+    val scope = rememberCoroutineScope()
+    val reducedMotion = LocalReducedMotion.current
+    // The button overlays the list in a Box, so showing or hiding it cannot move a line.
+    Box(modifier = modifier.fillMaxWidth()) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            items(lines) { line ->
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.bodySmall.mono(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = LINE_VERTICAL_PADDING),
+                )
+            }
+        }
+        if (showJumpToLatest(lastVisibleIndex, lines.size)) {
+            SmallFloatingActionButton(
+                onClick = {
+                    scope.launch {
+                        if (reducedMotion) {
+                            listState.scrollToItem(lines.lastIndex)
+                        } else {
+                            listState.animateScrollToItem(lines.lastIndex)
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(painter = painterResource(SubspaceIcons.ArrowDownward), contentDescription = null)
+                    Text(stringResource(R.string.log_viewer_jump_latest))
+                }
+            }
         }
     }
 }

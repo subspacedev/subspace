@@ -10,3 +10,9 @@ internal fun shouldFollow(
     lastVisibleIndex: Int,
     previousSize: Int,
 ): Boolean = previousSize == 0 || lastVisibleIndex >= previousSize - 1
+
+/** M8.6 spec §5.4: the "Latest" button, only while the newest line is not visible. */
+internal fun showJumpToLatest(
+    lastVisibleIndex: Int,
+    size: Int,
+): Boolean = size > 0 && lastVisibleIndex < size - 1
