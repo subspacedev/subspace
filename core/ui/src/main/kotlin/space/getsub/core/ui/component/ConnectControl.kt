@@ -38,7 +38,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.R
-import space.getsub.core.ui.theme.LocalSubspaceColors
 
 /** `ConnectControl`'s default diameter, per `ds-update/components/core/ConnectControl.d.ts`. */
 private val CONNECT_CONTROL_DIAMETER = 184.dp
@@ -109,7 +108,6 @@ internal data class ConnectControlColors(val container: Color, val content: Colo
 @Composable
 internal fun ConnectVisualState.colors(): ConnectControlColors {
     val scheme = MaterialTheme.colorScheme
-    val subspaceColors = LocalSubspaceColors.current
     return when (this) {
         // colors.css aliases --color-disconnected to on-surface-variant,
         // which is already a content-shaped role with no obvious container
@@ -134,12 +132,8 @@ internal fun ConnectVisualState.colors(): ConnectControlColors {
         // action they announce and by whether a tap is accepted, not by hue.
         ConnectVisualState.Connecting, ConnectVisualState.Reconnecting ->
             ConnectControlColors(container = scheme.secondary, content = scheme.onSecondary)
-        // connected/onConnected, not connectedContainer/onConnected: Color.kt's
-        // KDoc only verifies contrast for the (connected, onConnected) pair —
-        // connectedContainer has no onConnectedContainer counterpart to pair
-        // it with safely.
         ConnectVisualState.Connected ->
-            ConnectControlColors(container = subspaceColors.connected, content = subspaceColors.onConnected)
+            ConnectControlColors(container = scheme.tertiary, content = scheme.onTertiary)
     }
 }
 
@@ -252,7 +246,7 @@ fun ConnectControl(
  */
 @Composable
 private fun ConnectHalo(modifier: Modifier = Modifier) {
-    val haloColor = LocalSubspaceColors.current.connected
+    val haloColor = MaterialTheme.colorScheme.tertiary
     val transition = rememberInfiniteTransition(label = "connect-halo")
     val alpha by transition.animateFloat(
         initialValue = 0f,

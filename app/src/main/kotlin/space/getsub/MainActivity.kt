@@ -27,6 +27,8 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import space.getsub.core.data.PendingRoutingImport
 import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.core.ui.theme.reducedMotion
+import space.getsub.core.ui.theme.systemAnimatorDurationScale
 import space.getsub.navigation.SubspaceNavHost
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
@@ -104,7 +106,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            SubspaceTheme(darkTheme = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme())) {
+            val reduced =
+                reducedMotion(
+                    lightweight = appearance?.lightweight ?: false,
+                    animatorDurationScale = systemAnimatorDurationScale(this@MainActivity),
+                )
+            SubspaceTheme(
+                darkTheme = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme()),
+                dynamicColor = appearance?.dynamicColor ?: true,
+                reducedMotion = reduced,
+            ) {
                 // The action to run once consent comes back. Held across the
                 // activity-result round trip, which is why it cannot just be a
                 // local in the click handler.

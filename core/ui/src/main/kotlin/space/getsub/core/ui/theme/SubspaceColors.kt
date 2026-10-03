@@ -7,19 +7,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * The semantic colors Material has no role for.
- *
- * [connected] is not decoration. The design system's own note calls its halo
- * "the only glow in the system — reserved exclusively for an established
- * tunnel; never decorative", and ARCHITECTURE.md §5.5 makes connection state the one thing the
- * UI must never misreport. Keeping it out of the Material roles means no
- * component picks it up by accident.
+ * The one colour Material has no role for: the "pop", used for exactly one
+ * standout button per screen (M8.6 spec §2.3). With dynamic colour it is the
+ * scheme's primary; with the friendly fallback it is coral. The connected
+ * colour is no longer here: it is `colorScheme.tertiary`, and connection
+ * state is told apart by label, icon and shape (ARCHITECTURE.md §5.5).
  */
 @Immutable
 data class SubspaceColors(
-    val connected: Color,
-    val connectedContainer: Color,
-    val onConnected: Color,
     val pop: Color,
     val onPop: Color,
 )
