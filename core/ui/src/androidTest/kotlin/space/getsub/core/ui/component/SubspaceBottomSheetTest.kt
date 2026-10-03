@@ -18,7 +18,7 @@ import space.getsub.core.ui.R
 import space.getsub.core.ui.theme.SubspaceTheme
 
 // camelCase throughout — same DEX-040 constraint as ConnectControlTest.kt and
-// FloatingNavigationBarTest.kt.
+// FloatingNavBarTest.kt.
 class SubspaceBottomSheetTest {
     @get:Rule
     val composeRule = createComposeRule()

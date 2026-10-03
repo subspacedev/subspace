@@ -5,21 +5,21 @@ package space.getsub.navigation
 import kotlinx.serialization.Serializable
 
 /**
- * The connect / home screen. Top-level: appears in [space.getsub.core.ui.component.FloatingNavigationBar].
+ * The connect / home screen. Top-level: appears in [space.getsub.core.ui.component.FloatingNavBar].
  */
 @Serializable
 data object Home
 
 /**
  * The server list screen. Top-level: appears in
- * [space.getsub.core.ui.component.FloatingNavigationBar].
+ * [space.getsub.core.ui.component.FloatingNavBar].
  */
 @Serializable
 data object Servers
 
 /**
  * The settings screen. Top-level: appears in
- * [space.getsub.core.ui.component.FloatingNavigationBar].
+ * [space.getsub.core.ui.component.FloatingNavBar].
  */
 @Serializable
 data object Settings

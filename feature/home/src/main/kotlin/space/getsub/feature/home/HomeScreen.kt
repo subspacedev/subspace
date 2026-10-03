@@ -138,7 +138,7 @@ internal fun HomeScreenContent(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
-            // Home scrolls, so it — not FloatingNavigationBar — is
+            // Home scrolls, so it — not FloatingNavBar — is
             // responsible for reserving the space the pill floats over.
             // See FLOATING_NAV_CONTENT_BOTTOM_PADDING's own KDoc.
             .padding(top = 24.dp, bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING),

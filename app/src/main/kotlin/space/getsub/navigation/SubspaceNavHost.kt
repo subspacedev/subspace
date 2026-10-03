@@ -7,10 +7,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,8 +25,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import space.getsub.core.data.PendingRoutingImport
-import space.getsub.core.ui.component.FloatingNavigationBar
-import space.getsub.core.ui.component.NavItem
+import space.getsub.core.ui.component.FloatingNavBar
+import space.getsub.core.ui.component.NavPillItem
+import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.home.HomeScreen
 import space.getsub.feature.profiles.editor.EditorScreen
 import space.getsub.feature.profiles.list.ServersScreen
@@ -51,7 +48,7 @@ private const val SETTINGS_VALUE = "settings"
 /**
  * Wires [Home], [Servers], [Settings], [Editor], [QrScan], [SubscriptionDetail],
  * [RoutingList], [RuleSetEditor], [PerApp] and [LogViewer] into a [NavHost] behind
- * [FloatingNavigationBar].
+ * [FloatingNavBar].
  *
  * [Home], [Servers] and [Settings] are top-level: selecting one navigates
  * with `launchSingleTop` plus `popUpTo(startDestination) { saveState = true }`
@@ -88,7 +85,7 @@ private const val SETTINGS_VALUE = "settings"
  * coverage.
  *
  * Root layout is a plain [Box], not a [androidx.compose.material3.Scaffold].
- * [FloatingNavigationBar] already applies its own `navigationBars`
+ * [FloatingNavBar] already applies its own `navigationBars`
  * [androidx.compose.foundation.layout.WindowInsets] padding internally — a
  * `Scaffold` that also consumes that inset and forwards it as `innerPadding`
  * would apply it a second time and float the pill above its intended
@@ -138,7 +135,7 @@ fun SubspaceNavHost(
         // The activity draws edge to edge, and nothing else pads for the status bar: every
         // screen's header used to start at the top of the display, under it (Servers'
         // "Add server" and the Session log's Back button could not be tapped). Top only;
-        // the bottom inset stays with FloatingNavigationBar, as above.
+        // the bottom inset stays with FloatingNavBar, as above.
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -218,7 +215,7 @@ fun SubspaceNavHost(
         }
 
         if (selected != null) {
-            FloatingNavigationBar(
+            FloatingNavBar(
                 items = topLevelNavItems(),
                 selected = selected,
                 onSelect = { value -> navController.navigateToTopLevel(value) },
@@ -256,19 +253,30 @@ internal fun NavDestination?.selectedTopLevelValue(): String? =
 /**
  * `internal`, not `private`, for the same reason [selectedTopLevelValue] is:
  * [SubspaceNavHostTest] builds a small local graph with real
- * [FloatingNavigationBar] wiring (this list, [navigateToTopLevel] and
+ * [FloatingNavBar] wiring (this list, [navigateToTopLevel] and
  * [selectedTopLevelValue] together) rather than the real, now entirely
  * Hilt-backed, [SubspaceNavHost] — see that file's own KDoc.
  */
-internal fun topLevelNavItems(): List<NavItem> =
+internal fun topLevelNavItems(): List<NavPillItem> =
     listOf(
-        NavItem(value = HOME_VALUE, labelRes = CoreUiR.string.nav_item_connect, icon = Icons.Default.Home),
-        NavItem(
+        NavPillItem(
+            value = HOME_VALUE,
+            labelRes = CoreUiR.string.nav_item_connect,
+            icon = SubspaceIcons.Home,
+            selectedIcon = SubspaceIcons.HomeFilled,
+        ),
+        NavPillItem(
             value = SERVERS_VALUE,
             labelRes = CoreUiR.string.nav_item_servers,
-            icon = Icons.AutoMirrored.Filled.List,
+            icon = SubspaceIcons.Dns,
+            selectedIcon = SubspaceIcons.DnsFilled,
         ),
-        NavItem(value = SETTINGS_VALUE, labelRes = CoreUiR.string.nav_item_settings, icon = Icons.Default.Settings),
+        NavPillItem(
+            value = SETTINGS_VALUE,
+            labelRes = CoreUiR.string.nav_item_settings,
+            icon = SubspaceIcons.Settings,
+            selectedIcon = SubspaceIcons.SettingsFilled,
+        ),
     )
 
 /**

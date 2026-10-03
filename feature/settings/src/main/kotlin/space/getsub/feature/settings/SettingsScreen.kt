@@ -207,7 +207,7 @@ internal fun SettingsScreenContent(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
-            // Settings scrolls, so it — not FloatingNavigationBar — reserves
+            // Settings scrolls, so it — not FloatingNavBar — reserves
             // the space the pill floats over. See
             // FLOATING_NAV_CONTENT_BOTTOM_PADDING's own KDoc.
             .padding(top = 24.dp, bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING),

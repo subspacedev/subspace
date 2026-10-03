@@ -27,7 +27,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.Rule
 import org.junit.Test
-import space.getsub.core.ui.component.FloatingNavigationBar
+import space.getsub.core.ui.component.FloatingNavBar
 import space.getsub.core.ui.theme.SubspaceTheme
 
 // Backtick names with spaces are avoided here (unlike the task brief's literal
@@ -57,14 +57,14 @@ import space.getsub.core.ui.theme.SubspaceTheme
 // functions this file can already reach ([topLevelNavItems],
 // [NavHostController.navigateToTopLevel] and [selectedTopLevelValue] are all
 // `internal`, not `private`, in SubspaceNavHost.kt for exactly this reason)
-// plus the real [FloatingNavigationBar] component.
+// plus the real [FloatingNavBar] component.
 //
 // What this proves: the actual pill-visibility gating
-// (`if (selected != null) FloatingNavigationBar(...)`, reproduced verbatim
+// (`if (selected != null) FloatingNavBar(...)`, reproduced verbatim
 // here), the actual reselect-dedup wiring (`navigateToTopLevel`, called
 // unmodified), and the actual top-level/pushed classification
 // (`selectedTopLevelValue`, called unmodified) all behave correctly when
-// driven through a real NavHost and a real FloatingNavigationBar. What it
+// driven through a real NavHost and a real FloatingNavBar. What it
 // does NOT prove — the coverage genuinely lost here — is that the real
 // SubspaceNavHost composable's own five `composable<...> { ... }` bodies
 // (HomeScreen, ServersScreen, EditorScreen, QrScanRoute, SettingsScreen, all
@@ -77,7 +77,7 @@ import space.getsub.core.ui.theme.SubspaceTheme
 //
 // The "pill is visible" marker below checks "Connect" (Home's nav item), not
 // "Settings": Settings is the selected destination in every test here, and
-// FloatingNavigationBar gives a contentDescription only to UNSELECTED items
+// FloatingNavBar gives a contentDescription only to UNSELECTED items
 // (the selected one is named by its own visible Text instead — see its
 // KDoc). Home stays unselected throughout, so its content description is a
 // stable marker independent of which top-level destination happens to be
@@ -89,7 +89,7 @@ class SubspaceNavHostTest {
     private lateinit var navController: NavHostController
 
     /**
-     * The same [Box] + [NavHost] + [FloatingNavigationBar] shape
+     * The same [Box] + [NavHost] + [FloatingNavBar] shape
      * [SubspaceNavHost] itself uses — including its real
      * `if (selected != null)` gate and its real [topLevelNavItems] /
      * [NavHostController.navigateToTopLevel] — over five route bodies that
@@ -114,7 +114,7 @@ class SubspaceNavHostTest {
             }
 
             if (selected != null) {
-                FloatingNavigationBar(
+                FloatingNavBar(
                     items = topLevelNavItems(),
                     selected = selected,
                     onSelect = { value -> navController.navigateToTopLevel(value) },
