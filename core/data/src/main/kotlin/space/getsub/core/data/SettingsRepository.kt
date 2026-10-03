@@ -445,8 +445,8 @@ internal constructor(
     /**
      * Material You colour from the wallpaper (API 31+). On by default: the owner
      * chose full dynamic colour (M8.6 spec §1.4). Anything but a stored "false"
-     * reads as on, so a malformed row can never switch the brand palette on by
-     * accident.
+     * reads as on, so a malformed row can never switch dynamic colour off (never
+     * forces the brand palette on).
      */
     public val dynamicColor: Flow<Boolean> =
         dao.observe(KEY_DYNAMIC_COLOR).map { stored -> stored?.toBooleanStrictOrNull() ?: true }
