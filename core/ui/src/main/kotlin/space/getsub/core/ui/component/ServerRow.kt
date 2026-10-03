@@ -37,8 +37,12 @@ private const val UNSUPPORTED_ALPHA = 0.6f
 /**
  * One server in a group (M8.6 spec §4.9). The row selects; the latency pill is
  * a separate 32 dp target that re-tests without selecting (fix A7); edit is a
- * 36 dp [IconButton]. A row that cannot connect ([enabled] false) dims to 0.6
- * alpha and shows [note] — the reason — before anything else (fix S2).
+ * 36 dp [IconButton]. A row that cannot connect ([enabled] false) shows [note]
+ * — the reason — before anything else (fix S2) and dims its flag, name, detail
+ * and latency to 0.6 alpha. The note itself is never dimmed: it is the one
+ * thing on the row the user needs to read, in `error`, and 0.6 alpha took it
+ * to 2.83:1. The edit button stays at full strength too, since editing is how
+ * the user fixes the row.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -57,11 +61,12 @@ fun ServerRow(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val dim = Modifier.alpha(if (enabled) 1f else UNSUPPORTED_ALPHA)
     Surface(
         shape = SubspaceShapeTokens.tile,
         color = if (selected) scheme.secondaryContainer else scheme.surfaceContainer,
         contentColor = if (selected) scheme.onSecondaryContainer else scheme.onSurface,
-        modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else UNSUPPORTED_ALPHA),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             Modifier
@@ -71,38 +76,9 @@ fun ServerRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(flag, style = MaterialTheme.typography.titleLarge)
-            Column(Modifier.weight(1f)) {
-                if (note != null) {
-                    Text(note, style = MaterialTheme.typography.labelMedium, color = scheme.error)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (rank != null) {
-                        Text(
-                            "#$rank",
-                            style = MaterialTheme.typography.labelMedium.tabular(),
-                            color = scheme.primary,
-                        )
-                    }
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    detail,
-                    style = MaterialTheme.typography.bodyMedium.mono(),
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            LatencyPill(latencyText, enabled, onTestLatency)
+            Text(flag, style = MaterialTheme.typography.titleLarge, modifier = dim)
+            ServerRowText(note, rank, name, detail, dim, Modifier.weight(1f))
+            LatencyPill(latencyText, enabled, onTestLatency, dim)
             IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                 Icon(
                     painterResource(SubspaceIcons.Edit),
@@ -114,11 +90,58 @@ fun ServerRow(
     }
 }
 
+/** The note (never dimmed), then rank and name, then detail. */
+@Suppress("LongParameterList")
+@Composable
+private fun ServerRowText(
+    note: String?,
+    rank: Int?,
+    name: String,
+    detail: String,
+    dim: Modifier,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(modifier) {
+        if (note != null) {
+            Text(note, style = MaterialTheme.typography.labelMedium, color = scheme.error)
+        }
+        Row(
+            modifier = dim,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (rank != null) {
+                Text(
+                    "#$rank",
+                    style = MaterialTheme.typography.labelMedium.tabular(),
+                    color = scheme.primary,
+                )
+            }
+            Text(
+                name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            detail,
+            style = MaterialTheme.typography.bodyMedium.mono(),
+            color = scheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = dim,
+        )
+    }
+}
+
 @Composable
 private fun LatencyPill(
     text: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
@@ -126,7 +149,7 @@ private fun LatencyPill(
         shape = SubspaceShapeTokens.pill,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.heightIn(min = 32.dp),
+        modifier = modifier.heightIn(min = 32.dp),
     ) {
         Row(
             Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp),

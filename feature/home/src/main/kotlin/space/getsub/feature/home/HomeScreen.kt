@@ -347,8 +347,12 @@ private fun StatTilesRow(
             icon = SubspaceIcons.NetworkPing,
             value = latencyValue,
             label = stringResource(R.string.home_latency_label),
-            modifier = Modifier.weight(1f).semantics { contentDescription = latencyHint },
-            onClick = onTest.takeIf { state.activeProfile != null && !state.isMeasuringLatency },
+            modifier = Modifier.weight(1f),
+            // Disabled, not action-less, while a test runs or no server is
+            // chosen: TalkBack then says the test exists but cannot run now.
+            onClick = onTest,
+            enabled = state.activeProfile != null && !state.isMeasuringLatency,
+            actionDescription = latencyHint,
         )
         if (state.connection is ConnectionState.Connected && !state.trafficHidden) {
             StatTile(

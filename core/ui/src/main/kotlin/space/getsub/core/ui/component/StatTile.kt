@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -29,6 +31,12 @@ import space.getsub.core.ui.theme.tabular
  * a number that looks measured but is invented is the failure ARCHITECTURE.md
  * §10.1 warns about. Passing [onClick] makes the whole tile a button (the
  * latency tile re-tests on tap); null leaves it a plain read-out.
+ *
+ * A tile whose action exists but cannot run right now (a test already in
+ * flight, no server chosen) keeps [onClick] and sets [enabled] false, so
+ * TalkBack announces a disabled button rather than a read-out or a live
+ * action that does nothing. [actionDescription] is what TalkBack reads for a
+ * button tile; it is ignored on a read-out, which has no action to describe.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -39,6 +47,8 @@ fun StatTile(
     modifier: Modifier = Modifier,
     shape: Shape = SubspaceShapeTokens.cardLead,
     onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    actionDescription: String? = null,
 ) {
     val color = MaterialTheme.colorScheme.surfaceContainerHigh
     val body: @Composable () -> Unit = {
@@ -63,7 +73,13 @@ fun StatTile(
         }
     }
     if (onClick != null) {
-        Surface(onClick = onClick, shape = shape, color = color, modifier = modifier.semantics { role = Role.Button }) {
+        val button =
+            modifier.semantics {
+                role = Role.Button
+                if (!enabled) disabled()
+                if (actionDescription != null) contentDescription = actionDescription
+            }
+        Surface(onClick = onClick, enabled = enabled, shape = shape, color = color, modifier = button) {
             body()
         }
     } else {
