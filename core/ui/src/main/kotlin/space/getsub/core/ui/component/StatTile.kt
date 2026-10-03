@@ -69,8 +69,14 @@ fun StatTile(
                 modifier = Modifier.padding(top = 8.dp),
                 // Three tiles share a 360 dp row, leaving ~88 dp: "302.7 KB" wraps at
                 // titleLarge. Shrink to fit on one line instead of splitting a number.
+                // The floor is low enough that the worst case ("1023.9 GB" at 2x font
+                // scale) still fits whole: a value is never clipped or ellipsized, because
+                // "1.2 GB" cut to "1.2" would read as a different number.
                 maxLines = 1,
-                autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = valueStyle.fontSize),
+                // No soft wrap: otherwise "GB" wraps to a hidden second line and autoSize
+                // settles on a size where only the number shows.
+                softWrap = false,
+                autoSize = TextAutoSize.StepBased(minFontSize = 6.sp, maxFontSize = valueStyle.fontSize),
             )
             Text(
                 text = label,

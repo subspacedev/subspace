@@ -26,7 +26,7 @@ class HomeLongTextSnapshotTest {
     fun longText() {
         val state =
             HomeState(
-                connection = failure(FailureReason.CoreStartFailed, "d".repeat(200)),
+                connection = failure(FailureReason.CoreStartFailed, LONG_DETAIL),
                 activeProfile = profile,
                 hasAnyProfile = true,
                 activeRuleSetName = "R".repeat(60),
@@ -38,3 +38,9 @@ class HomeLongTextSnapshotTest {
         }
     }
 }
+
+// ~200 characters of plain prose: the redactor passes words separated by spaces, and
+// replaces base64-, URL-, IP- and uuid-like tokens, which would turn this into a sentinel.
+private const val LONG_DETAIL =
+    "The tunnel core refused to start because the generated settings could not be loaded " +
+        "after several attempts, and nothing was changed on this phone while it tried again just now."

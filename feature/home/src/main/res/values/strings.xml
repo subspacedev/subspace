@@ -70,9 +70,9 @@
     <string name="home_traffic_down">Down</string>
     <string name="home_traffic_up">Up</string>
 
-    <!-- M8.5 spec §2: the opt-in per-tag breakdown, beneath the tiles above. Nothing
+    <!-- M8.5 spec §2: the opt-in per-tag breakdown, beneath the throughput card. Nothing
          under this header renders at all while the developer setting is off — see
-         BreakdownSection's own KDoc for the three states an empty row list can mean. -->
+         ByServerCard's own KDoc for the three states an empty row list can mean. -->
     <string name="home_breakdown_header">By server</string>
     <!-- %1$s and %2$s are already-formatted byte counts (formatByteCount), same as the
          DOWN/UP tiles above — never raw numbers (M8.5 spec §10.1). -->

@@ -45,7 +45,7 @@ import space.getsub.core.ui.theme.tabular
 private const val METRICS_ROW_TAG = "Metrics"
 
 /**
- * The per-outbound-tag rows beneath [StatTilesRow] (M8.5 spec §2), decomposing
+ * The per-outbound-tag rows beneath the throughput card (M8.5 spec §2), decomposing
  * the totals that row already shows. Its own file, not part of `HomeScreen.kt`:
  * that file is already at the `TooManyFunctions` budget, and this section has
  * no other reason to live there.
@@ -58,7 +58,7 @@ private const val METRICS_ROW_TAG = "Metrics"
  * this flag tells "off" apart from the other two — rendering all three the same
  * way would be `ARCHITECTURE.md` §10.1's signature failure.
  *
- * Gated on [ConnectionState.Connected] like [StatTilesRow]'s own DOWN/UP tiles,
+ * Gated on [ConnectionState.Connected] like the DOWN/UP tiles in [StatTilesRow],
  * for the same reason: [HomeState.traffic] is a cache that can outlive an
  * in-session disconnect (see that property's KDoc). [METRICS_ROW_TAG] is
  * filtered out of every row list this function looks at, including for the

@@ -69,4 +69,22 @@ class HomeSnapshotTest {
             "home-blocked",
             HomeState(connection = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, 3, blocked = true)),
         )
+
+    @Test
+    fun lightweightHidesTraffic() =
+        shoot(
+            "home-lightweight",
+            HomeState(
+                connection = ConnectionState.Connected(since, 1080, 0, Health.Open),
+                traffic =
+                TrafficSample(
+                    uplinkBytes = 310_000,
+                    downlinkBytes = 4_200_000,
+                    uplinkPackets = 0,
+                    downlinkPackets = 0,
+                    throughput = List(ThroughputWindow.BUCKET_COUNT) { i -> (i % 7 + 1) * 1_000_000L },
+                ),
+                trafficHidden = true,
+            ),
+        )
 }
