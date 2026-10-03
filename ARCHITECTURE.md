@@ -142,7 +142,7 @@ compile error.
 :core:parser            Subscription and share-link parsing. Pure, heavily tested.
 :core:ui                Design system: theme, tokens, shared Compose components
 :core:xray              Config JSON generation, libXray lifecycle wrapper
-:feature:home           Connect button, active profile, traffic counters
+:feature:home           Connect blob, active profile, traffic counters and throughput history
 :feature:profiles       Profile list, editor, subscription management
 :feature:routing        Rule editor, per-app selection
 :feature:settings       Preferences, geo file updates, logs
@@ -1403,6 +1403,15 @@ traffic samples to the UI and polling the per-tag breakdown, hides Home's traffi
 tiles, and skips log capture for sessions started while it is on. It does **not**
 stop the once-a-second hev counter read: that sample is the health detector's only
 input, so "nothing coming back" (§5.5) keeps working.
+
+**Throughput history (M8.6).** `:bg` keeps a 28-bucket, 60-minute throughput ring
+per session (`ThroughputRing`, owned by `TrafficSamplerLoop`), in memory only and
+reset with the session (M8.6 spec §4.1.1). It is fed from the sampler's own
+deltas, so the counter wrap and restart rules apply once rather than twice. It is
+timed on `SystemClock.elapsedRealtime`, so buckets keep advancing through Doze.
+It rides on every `TrafficSample` as `throughput`, so there is no new AIDL method.
+Home draws it as the throughput card; Home's connect control is `ConnectBlob`
+(`:core:ui`), which replaced `ConnectControl`.
 
 ### 14.5 tun2socks implementation — RESOLVED for now
 
