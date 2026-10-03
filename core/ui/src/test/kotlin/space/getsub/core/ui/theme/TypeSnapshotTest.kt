@@ -30,4 +30,31 @@ class TypeSnapshotTest {
                 Text("12:04:01  ↓ 4.2 MB", style = t.titleLarge.tabular())
             }
         }
+
+    /**
+     * M3 Expressive's emphasized roles, each one weight step above its
+     * baseline. Short labels ("Display L") so all 15 fit one golden unwrapped.
+     */
+    @Test
+    fun emphasizedRoles() =
+        paparazzi.snapshotThemes("type-emphasized") {
+            val t = MaterialTheme.typography
+            Column {
+                Text("Display L", style = t.displayLargeEmphasized)
+                Text("Display M", style = t.displayMediumEmphasized)
+                Text("Display S", style = t.displaySmallEmphasized)
+                Text("Headline L", style = t.headlineLargeEmphasized)
+                Text("Headline M", style = t.headlineMediumEmphasized)
+                Text("Headline S", style = t.headlineSmallEmphasized)
+                Text("Title L", style = t.titleLargeEmphasized)
+                Text("Title M", style = t.titleMediumEmphasized)
+                Text("Title S", style = t.titleSmallEmphasized)
+                Text("Body L", style = t.bodyLargeEmphasized)
+                Text("Body M", style = t.bodyMediumEmphasized)
+                Text("Body S", style = t.bodySmallEmphasized)
+                Text("Label L", style = t.labelLargeEmphasized)
+                Text("Label M", style = t.labelMediumEmphasized)
+                Text("Label S", style = t.labelSmallEmphasized)
+            }
+        }
 }

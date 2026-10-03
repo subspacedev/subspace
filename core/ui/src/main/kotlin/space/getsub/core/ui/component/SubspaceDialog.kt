@@ -41,10 +41,11 @@ fun SubspaceDialog(
     onConfirm: () -> Unit,
     dismissLabel: String,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
     @DrawableRes icon: Int? = null,
     destructive: Boolean = false,
 ) {
-    BasicAlertDialog(onDismissRequest = onDismiss) {
+    BasicAlertDialog(onDismissRequest = onDismiss, modifier = modifier) {
         SubspaceDialogContent(title, body, confirmLabel, onConfirm, dismissLabel, onDismiss, icon, destructive)
     }
 }

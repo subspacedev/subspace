@@ -9,6 +9,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 /**
  * Shows "‹message› · Undo" and reports whether Undo was pressed
@@ -27,8 +28,13 @@ suspend fun SnackbarHostState.showUndo(
 
 /** Hosts [showUndo]'s snackbar on the inverse surface. */
 @Composable
-fun UndoSnackbarHost(state: SnackbarHostState) {
-    SnackbarHost(state) { data -> UndoSnackbar(data.visuals.message, data.visuals.actionLabel, data::performAction) }
+fun UndoSnackbarHost(
+    state: SnackbarHostState,
+    modifier: Modifier = Modifier,
+) {
+    SnackbarHost(state, modifier) { data ->
+        UndoSnackbar(data.visuals.message, data.visuals.actionLabel, data::performAction)
+    }
 }
 
 @Composable

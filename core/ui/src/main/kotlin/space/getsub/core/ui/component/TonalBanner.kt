@@ -35,7 +35,9 @@ fun TonalBanner(
     val (container, content) =
         when (tone) {
             BannerTone.Neutral -> s.surfaceContainerHigh to s.onSurface
-            BannerTone.Warning -> s.tertiaryContainer to s.onTertiaryContainer
+            // Not tertiaryContainer: tertiary is the connected role (M8.6 spec
+            // §2.2), and a warning drawn in it would read as "connected".
+            BannerTone.Warning -> s.secondaryContainer to s.onSecondaryContainer
             BannerTone.Blocked -> s.errorContainer to s.onErrorContainer
         }
     Surface(

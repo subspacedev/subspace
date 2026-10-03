@@ -12,6 +12,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /** The card shape's top corners; a sheet is square at the bottom edge (M8.6 spec §4.2). */
@@ -25,10 +26,12 @@ internal val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 @Composable
 fun SubspaceSheet(
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        modifier = modifier,
         sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden),
         shape = SheetShape,
         dragHandle = { BottomSheetDefaults.DragHandle() },
