@@ -4,11 +4,13 @@ package space.getsub
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.net.VpnService
 import android.os.Bundle
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -111,8 +113,14 @@ class MainActivity : ComponentActivity() {
                     lightweight = appearance?.lightweight ?: false,
                     animatorDurationScale = systemAnimatorDurationScale(this@MainActivity),
                 )
+            val resolvedDark = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme())
+
+            // In-app theme can differ from the system's (M8.6 spec §6), so
+            // re-apply bar icon contrast from the resolved value.
+            LaunchedEffect(resolvedDark) { applySystemBarIcons(resolvedDark) }
+
             SubspaceTheme(
-                darkTheme = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme()),
+                darkTheme = resolvedDark,
                 dynamicColor = appearance?.dynamicColor ?: true,
                 reducedMotion = reduced,
             ) {
@@ -153,6 +161,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Transparent bars, with icon contrast following [dark], not the system mode. */
+    private fun applySystemBarIcons(dark: Boolean) {
+        val style = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 
     /**
