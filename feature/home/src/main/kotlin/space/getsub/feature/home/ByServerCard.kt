@@ -6,19 +6,27 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.TagTraffic
+import space.getsub.core.ui.component.OutcomeTag
 import space.getsub.core.ui.format.formatByteCount
+import space.getsub.core.ui.theme.SubspaceShapeTokens
+import space.getsub.core.ui.theme.mono
+import space.getsub.core.ui.theme.tabular
 
 /**
  * The outbound tag a `metrics` block itself registers
@@ -29,7 +37,7 @@ import space.getsub.core.ui.format.formatByteCount
  * add it) — the same "kept in step by hand" tradeoff §4 already accepts for
  * `StoredProfile.connectable` versus `XrayConfigGenerator`'s own transport set.
  *
- * Filtered out of [BreakdownSection]'s rows below: xray registers this
+ * Filtered out of [ByServerCard]'s rows below: xray registers this
  * outbound whenever the breakdown is on, whether or not the user's config
  * names anything called `Metrics`, so without this filter the section would
  * list app plumbing — `Metrics — 0 B` — as one of the user's own servers.
@@ -97,7 +105,7 @@ private const val METRICS_ROW_TAG = "Metrics"
  * honest reading of a session already known to carry the breakdown.
  */
 @Composable
-internal fun BreakdownSection(
+internal fun ByServerCard(
     state: HomeState,
     modifier: Modifier = Modifier,
 ) {
@@ -108,43 +116,68 @@ internal fun BreakdownSection(
     var everSeenRows by remember(connection.sinceEpochMillis) { mutableStateOf(false) }
     if (rows.isNotEmpty()) everSeenRows = true
 
-    Column(
+    val generated = state.activeProfile?.compatibilityMode == false
+    Surface(
+        shape = SubspaceShapeTokens.card,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = stringResource(R.string.home_breakdown_header),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        when {
-            rows.isNotEmpty() -> rows.forEach { row -> BreakdownRow(row) }
-            everSeenRows -> Unit // known to work; this tick just has nothing.
-            // Reason-free on purpose (R51): runsAsWritten is not "the pure
-            // branch ran" — see the KDoc. The specific reason waits on Part 3's
-            // per-session signal (R43).
-            state.activeProfile?.runsAsWritten == true ->
-                Text(
-                    text = stringResource(R.string.home_breakdown_unavailable_passthrough),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            // else: on, eligible, nothing has moved yet — the header renders
-            // alone, deliberately with neither rows nor an explanation.
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.home_breakdown_header),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            ByServerBody(state, rows, everSeenRows, generated)
         }
+    }
+}
+
+@Composable
+private fun ByServerBody(
+    state: HomeState,
+    rows: List<TagTraffic>,
+    everSeenRows: Boolean,
+    generated: Boolean,
+) {
+    when {
+        rows.isNotEmpty() -> rows.forEach { row -> BreakdownRow(row, generated) }
+        everSeenRows -> Unit // known to work; this tick just has nothing.
+        // Reason-free on purpose (R51): runsAsWritten is not "the pure
+        // branch ran" — see the KDoc. The specific reason waits on Part 3's
+        // per-session signal (R43).
+        state.activeProfile?.runsAsWritten == true ->
+            Text(
+                text = stringResource(R.string.home_breakdown_unavailable_passthrough),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        // else: on, eligible, nothing has moved yet — the header renders
+        // alone, deliberately with neither rows nor an explanation.
     }
 }
 
 @Composable
 private fun BreakdownRow(
     row: TagTraffic,
+    generatedConfig: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(text = row.tag, style = MaterialTheme.typography.bodyMedium)
+        outcomeForTag(row.tag, generatedConfig)?.let { OutcomeTag(it) }
+        Text(
+            text = row.tag,
+            style = MaterialTheme.typography.bodyMedium.mono(),
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Text(
             text =
             stringResource(
@@ -152,7 +185,7 @@ private fun BreakdownRow(
                 formatByteCount(row.downlinkBytes),
                 formatByteCount(row.uplinkBytes),
             ),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.tabular(),
         )
     }
 }

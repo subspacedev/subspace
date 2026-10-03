@@ -76,7 +76,7 @@
     <string name="home_breakdown_header">By server</string>
     <!-- %1$s and %2$s are already-formatted byte counts (formatByteCount), same as the
          DOWN/UP tiles above — never raw numbers (M8.5 spec §10.1). -->
-    <string name="home_breakdown_row_traffic">%1$s down · %2$s up</string>
+    <string name="home_breakdown_row_traffic">%1$s ↓ · %2$s ↑</string>
     <!-- Shown in place of rows when the setting is on, the active server is a
          pasted (RAW_JSON) config, and no rows have arrived this connection.
          Deliberately names NO reason (ruling R51, finding N4): Home cannot see which

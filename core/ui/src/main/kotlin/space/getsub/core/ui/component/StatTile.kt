@@ -6,6 +6,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,6 +21,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.tabular
 
@@ -59,11 +61,16 @@ fun StatTile(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
+            val valueStyle = MaterialTheme.typography.titleLarge.tabular()
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleLarge.tabular(),
+                style = valueStyle,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 8.dp),
+                // Three tiles share a 360 dp row, leaving ~88 dp: "302.7 KB" wraps at
+                // titleLarge. Shrink to fit on one line instead of splitting a number.
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = valueStyle.fontSize),
             )
             Text(
                 text = label,

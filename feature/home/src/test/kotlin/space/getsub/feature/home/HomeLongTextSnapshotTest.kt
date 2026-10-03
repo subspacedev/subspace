@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Additional permission: see Stores Exception in LICENSE.
+package space.getsub.feature.home
+
+import app.cash.paparazzi.DeviceConfig
+import app.cash.paparazzi.Paparazzi
+import com.android.resources.Density
+import org.junit.Rule
+import org.junit.Test
+import space.getsub.core.model.FailureReason
+import space.getsub.core.model.failure
+import space.getsub.core.ui.preview.SubspacePreviewTheme
+import space.getsub.core.ui.preview.ThemeVariant
+
+/** M8.6 spec §7.1, review focus 4: long text at 360 dp. Its own class: Paparazzi allows one rule per class. */
+class HomeLongTextSnapshotTest {
+    @get:Rule
+    val paparazzi =
+        Paparazzi(
+            deviceConfig = DeviceConfig.PIXEL_5.copy(screenWidth = 720, screenHeight = 3200, density = Density.XHIGH),
+        )
+
+    private val profile = snapshotProfile("A".repeat(50))
+
+    @Test
+    fun longText() {
+        val state =
+            HomeState(
+                connection = failure(FailureReason.CoreStartFailed, "d".repeat(200)),
+                activeProfile = profile,
+                hasAnyProfile = true,
+                activeRuleSetName = "R".repeat(60),
+            )
+        paparazzi.snapshot(name = "home-long-text-${ThemeVariant.FriendlyLight.fileSuffix}") {
+            SubspacePreviewTheme(ThemeVariant.FriendlyLight) {
+                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
+            }
+        }
+    }
+}
