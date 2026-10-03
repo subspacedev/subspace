@@ -8,11 +8,14 @@ plugins {
 
 extensions.configure<LibraryExtension> {
     // compileSdk is deliberately ahead of targetSdk (36, set in :app).
-    // androidx.lifecycle 2.11 refuses to be consumed below 37. compileSdk only
+    // androidx.lifecycle 2.11 refuses to be consumed below 37, and Compose
+    // 1.13.0-alpha (the alpha BOM, M8.6 spec §1.1) requires 37.1. compileSdk only
     // governs which APIs are visible at build time and has no runtime effect, so
     // ARCHITECTURE.md §9/ARCHITECTURE.md §14.1's foregroundServiceType analysis — which depends on
     // targetSdk — is unaffected. Do not "align" these two numbers.
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         minSdk = 26

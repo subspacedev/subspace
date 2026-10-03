@@ -13,7 +13,9 @@ plugins {
 android {
     namespace = "space.getsub"
     // See the note in subspace.android.library: compileSdk leads targetSdk on purpose.
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         applicationId = "space.getsub"
