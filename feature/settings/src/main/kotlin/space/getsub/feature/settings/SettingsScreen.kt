@@ -123,6 +123,7 @@ fun SettingsScreen(
             onVpnSettingsOpened = viewModel::onVpnSettingsOpened,
             onPerTagBreakdownChanged = viewModel::onPerTagBreakdownChanged,
             onLightweightModeChanged = viewModel::onLightweightModeChanged,
+            onDynamicColorChanged = viewModel::onDynamicColorChanged,
         ),
         navigation = navigation,
         modifier = modifier,
@@ -185,6 +186,8 @@ internal data class SettingsActions(
     val onPerTagBreakdownChanged: (Boolean) -> Unit = {},
     // Defaulted for the same reason as the fields above.
     val onLightweightModeChanged: (Boolean) -> Unit = {},
+    // Defaulted for the same reason as the fields above.
+    val onDynamicColorChanged: (Boolean) -> Unit = {},
 )
 
 /**
@@ -216,6 +219,7 @@ internal fun SettingsScreenContent(
 
         SectionHeader(stringResource(R.string.settings_section_appearance))
         AppearanceControl(selected = state.theme, onThemeChanged = onThemeChanged)
+        if (state.dynamicColorAvailable) DynamicColorRow(state.dynamicColor, actions.onDynamicColorChanged)
 
         SectionHeader(stringResource(R.string.settings_section_device_id))
         HwidControl(

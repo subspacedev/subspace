@@ -131,6 +131,11 @@ internal interface SettingsSource {
 
     suspend fun setLightweightMode(enabled: Boolean)
 
+    /** Wallpaper-derived colour (Android 12+). See [SettingsRepository.dynamicColor]. */
+    val dynamicColor: Flow<Boolean>
+
+    suspend fun setDynamicColor(enabled: Boolean)
+
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
@@ -222,6 +227,10 @@ constructor(
     override val lightweightMode: Flow<Boolean> = settingsRepository.lightweightMode
 
     override suspend fun setLightweightMode(enabled: Boolean) = settingsRepository.setLightweightMode(enabled)
+
+    override val dynamicColor: Flow<Boolean> = settingsRepository.dynamicColor
+
+    override suspend fun setDynamicColor(enabled: Boolean) = settingsRepository.setDynamicColor(enabled)
 
     override suspend fun isIgnoringBatteryOptimizations(): Boolean =
         withContext(Dispatchers.IO) {

@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -56,7 +57,7 @@ constructor(
     private val geoAssetSource: GeoAssetSource,
     private val tunnelSessionSource: TunnelSessionSource = DisconnectedTunnelSessionSource,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(SettingsState(appVersion = appVersionSource.version))
+    private val _state = MutableStateFlow(initialState(appVersionSource.version))
     val state: StateFlow<SettingsState> = _state.asStateFlow()
     private val dnsWriteRequests = Channel<DnsWriteRequest>(Channel.CONFLATED)
     private var dnsRevision = 0L
@@ -140,6 +141,10 @@ constructor(
             .onEach { enabled -> _state.update { it.copy(lightweightMode = enabled) } }
             .launchIn(viewModelScope)
 
+        settingsSource.dynamicColor
+            .onEach { enabled -> _state.update { it.copy(dynamicColor = enabled) } }
+            .launchIn(viewModelScope)
+
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)
         // purely so SettingsState.perTagBreakdownSessionNoticeVisible has something to derive
         // from — see that property's own KDoc for why this plain mirror, with no latch of what
@@ -215,6 +220,10 @@ constructor(
      * the next connection (`:bg` decides log capture when a session starts), which the
      * switch's own summary says.
      */
+    fun onDynamicColorChanged(enabled: Boolean) {
+        viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
+    }
+
     fun onLightweightModeChanged(enabled: Boolean) {
         viewModelScope.launch { settingsSource.setLightweightMode(enabled) }
     }
@@ -535,3 +544,9 @@ private data class DnsWriteRequest(
 ) {
     override fun toString(): String = "DnsWriteRequest(revision=$revision, resolver=<redacted>)"
 }
+
+private fun initialState(appVersion: String) =
+    SettingsState(
+        appVersion = appVersion,
+        dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+    )

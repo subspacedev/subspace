@@ -92,6 +92,10 @@ internal data class SettingsState(
     val perTagBreakdown: Boolean = false,
     /** No traffic numbers and no session log, for slower phones. See [SettingsSource.lightweightMode]. */
     val lightweightMode: Boolean = false,
+    /** Use wallpaper colours. See [SettingsSource.dynamicColor]. */
+    val dynamicColor: Boolean = true,
+    /** True on Android 12+, where dynamic colour exists; the switch is hidden otherwise. */
+    val dynamicColorAvailable: Boolean = false,
     /**
      * True while a tunnel session is up, mirrored from [TunnelSessionSource] (ARCHITECTURE.md
      * ARCHITECTURE.md §5.5: never inferred locally — the same discipline

@@ -202,6 +202,15 @@ class SettingsViewModelTest {
             _lightweightMode.value = enabled
         }
 
+        private val _dynamicColor = MutableStateFlow(true)
+        override val dynamicColor: Flow<Boolean> = _dynamicColor.asStateFlow()
+        val dynamicColorWrites = mutableListOf<Boolean>()
+
+        override suspend fun setDynamicColor(enabled: Boolean) {
+            dynamicColorWrites += enabled
+            _dynamicColor.value = enabled
+        }
+
         var ignoringBatteryOptimizations: Boolean = false
 
         override suspend fun isIgnoringBatteryOptimizations(): Boolean = ignoringBatteryOptimizations
@@ -886,6 +895,21 @@ class SettingsViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.openVpnSettingsRequested shouldBe false
+        }
+
+    @Test
+    fun dynamicColourReadsThroughAndWritesBack() =
+        runTest {
+            val source = FakeSettingsSource()
+            val viewModel = viewModel(source)
+            advanceUntilIdle()
+            viewModel.state.value.dynamicColor shouldBe true
+            // JVM tests see SDK 0: the switch is hidden below API 31.
+            viewModel.state.value.dynamicColorAvailable shouldBe false
+
+            viewModel.onDynamicColorChanged(false)
+            advanceUntilIdle()
+            source.dynamicColorWrites shouldBe listOf(false)
         }
 
     // ── Lightweight mode (2026-10-03) ────────────────────────────────────────

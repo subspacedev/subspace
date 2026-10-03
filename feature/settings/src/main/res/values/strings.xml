@@ -7,6 +7,8 @@
     <string name="settings_title">Settings</string>
 
     <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_dynamic_color_title">Dynamic colour</string>
+    <string name="settings_dynamic_color_summary">Use colours from your wallpaper</string>
     <string name="settings_section_device_id">Device ID</string>
     <!-- The three choices Appearance's segmented control offers. Each
          doubles as its own accessible label — "System", "Light", "Dark" —
