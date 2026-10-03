@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import space.getsub.core.data.PendingRoutingImport
 import space.getsub.core.ui.theme.SubspaceTheme
 import space.getsub.core.ui.theme.reducedMotion
-import space.getsub.core.ui.theme.systemAnimatorDurationScale
+import space.getsub.core.ui.theme.rememberAnimatorDurationScale
 import space.getsub.navigation.SubspaceNavHost
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
             val reduced =
                 reducedMotion(
                     lightweight = appearance?.lightweight ?: false,
-                    animatorDurationScale = systemAnimatorDurationScale(this@MainActivity),
+                    animatorDurationScale = rememberAnimatorDurationScale(),
                 )
             val resolvedDark = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme())
 
