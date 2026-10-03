@@ -86,4 +86,7 @@
     <string name="outcome_direct">Direct</string>
     <string name="outcome_proxy">Proxy</string>
     <string name="outcome_block">Block</string>
+
+    <!-- SearchField (M8.6 Part 1, Task 8). -->
+    <string name="search_clear">Clear search</string>
 </resources>
