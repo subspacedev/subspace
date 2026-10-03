@@ -34,8 +34,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import space.getsub.core.model.ConnectionState
-import space.getsub.core.model.FailureReason
-import space.getsub.core.model.Health
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.StartupStage
 import space.getsub.core.ui.component.ConnectControl
@@ -230,7 +228,7 @@ private fun ConnectionDetail(connection: ConnectionState) {
         is ConnectionState.Connected -> {
             val elapsed = elapsedSecondsSince(connection.sinceEpochMillis)
             Text(
-                text = stringResource(R.string.home_connected_uptime, DateUtils.formatElapsedTime(elapsed)),
+                text = stringResource(R.string.home_detail_uptime, DateUtils.formatElapsedTime(elapsed)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -468,49 +466,4 @@ private fun ConnectionState.toVisualState(): ConnectVisualState =
         ConnectionState.Disconnecting -> ConnectVisualState.Connecting
         is ConnectionState.Failed -> ConnectVisualState.Disconnected
         is ConnectionState.Reconnecting -> ConnectVisualState.Reconnecting
-    }
-
-internal fun ConnectionState.labelRes(): Int =
-    when (this) {
-        is ConnectionState.Disconnected -> R.string.state_disconnected
-        is ConnectionState.Disconnecting -> R.string.state_disconnecting
-        is ConnectionState.Connected ->
-            if (health == Health.Stalled) R.string.home_state_stalled else R.string.state_connected
-        is ConnectionState.Connecting -> stage.labelRes()
-        is ConnectionState.Failed -> reason.labelRes()
-        // M8.5 spec §4.2 (amended): blocked is published state, read here and by the
-        // notification alike. Still one steady label per value rather than cycling
-        // through each retry's reason.
-        is ConnectionState.Reconnecting ->
-            if (blocked) R.string.home_state_reconnecting_blocked else R.string.home_state_reconnecting_open
-    }
-
-private fun StartupStage.labelRes(): Int =
-    when (this) {
-        StartupStage.AllocatingPort -> R.string.stage_allocating_port
-        StartupStage.GeneratingConfig -> R.string.stage_generating_config
-        StartupStage.ValidatingConfig -> R.string.stage_validating_config
-        StartupStage.StartingCore -> R.string.stage_starting_core
-        StartupStage.EstablishingTun -> R.string.stage_establishing_tun
-        StartupStage.StartingTunnel -> R.string.stage_starting_tunnel
-    }
-
-// One exhaustive enum-to-resource mapping; splitting it would only hide the same branches.
-@Suppress("CyclomaticComplexMethod")
-private fun FailureReason.labelRes(): Int =
-    when (this) {
-        FailureReason.ConfigGenerationFailed -> R.string.failure_config_generation
-        FailureReason.ConfigRejected -> R.string.failure_config_rejected
-        FailureReason.PortAllocationFailed -> R.string.failure_port_allocation
-        FailureReason.CoreStartFailed -> R.string.failure_core_start
-        FailureReason.VpnPermissionMissing -> R.string.failure_vpn_permission
-        FailureReason.TunEstablishFailed -> R.string.failure_tun_establish
-        FailureReason.TunnelStartFailed -> R.string.failure_tunnel_start
-        FailureReason.Revoked -> R.string.failure_revoked
-        FailureReason.ProtocolNotSupported -> R.string.failure_protocol_not_supported
-        FailureReason.ProfileDecodeFailed -> R.string.failure_profile_decode
-        FailureReason.GeoDataMissing -> R.string.failure_geo_data_missing
-        FailureReason.PerAppAllowListEmpty -> R.string.failure_per_app_allow_list_empty
-        FailureReason.PassthroughOverrideUnavailable -> R.string.failure_passthrough_override_unavailable
-        FailureReason.PassthroughRejectedAtConnect -> R.string.failure_passthrough_rejected_at_connect
     }
