@@ -163,8 +163,14 @@ val expressiveOptIn = tasks.register("checkExpressiveOptIn") {
 
     val path = project.path
     val rootDir = project.rootDir
+    // The module's own build scripts too: a compiler flag such as
+    // `freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")`
+    // opts the whole module in without the name appearing in any .kt file.
+    // Only the module directory's top level, so a parent project (":feature")
+    // does not scan its children's scripts on their behalf.
     val sources = fileTree(project.projectDir) {
         include("src/**/*.kt")
+        include("*.gradle.kts")
     }
     inputs.files(sources)
 
@@ -177,7 +183,7 @@ val expressiveOptIn = tasks.register("checkExpressiveOptIn") {
         if (offenders.isNotEmpty()) {
             error(
                 "ExperimentalMaterial3ExpressiveApi outside :core:ui (M8.6 spec §1.2). " +
-                    "Wrap the API in a :core:ui component instead:\n" +
+                    "Wrap the API in a :core:ui component instead (no module-wide -opt-in flag either):\n" +
                     offenders.joinToString("\n") { "  - $it" },
             )
         }
