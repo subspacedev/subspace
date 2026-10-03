@@ -45,6 +45,8 @@ class ColorTest {
         "onSurface/background" to (scheme.onSurface to scheme.background),
         "onSurfaceVariant/surfaceContainerHighest" to (scheme.onSurfaceVariant to scheme.surfaceContainerHighest),
         "onPrimary/primary" to (scheme.onPrimary to scheme.primary),
+        // ConnectControl's Disconnect / Cancel button draws its label with this pair.
+        "onSecondary/secondary" to (scheme.onSecondary to scheme.secondary),
         "onSecondaryContainer/secondaryContainer" to (scheme.onSecondaryContainer to scheme.secondaryContainer),
         "onTertiary/tertiary" to (scheme.onTertiary to scheme.tertiary),
         "onTertiaryContainer/tertiaryContainer" to (scheme.onTertiaryContainer to scheme.tertiaryContainer),

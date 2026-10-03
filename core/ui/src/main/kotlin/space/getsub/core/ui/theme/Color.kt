@@ -81,7 +81,9 @@ val FriendlyLightColorScheme: ColorScheme =
         primaryContainer = Color(0xFFE4DFFF),
         onPrimaryContainer = Color(0xFF1B0F4A),
         inversePrimary = Color(0xFFB7A8FF),
-        secondary = Color(0xFFC4572E),
+        // #C4572E gave white onSecondary only 4.42:1. #C1562E is the nearest darker
+        // step that keeps the hue (16.3° vs 16.4° HSL) and clears 4.5:1 (4.53:1).
+        secondary = Color(0xFFC1562E),
         onSecondary = Color(0xFFFFFFFF),
         secondaryContainer = Color(0xFFEAE2FF),
         onSecondaryContainer = Color(0xFF1B0F4A),
