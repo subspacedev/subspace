@@ -31,7 +31,7 @@ class BlobVisualTest {
     @Test
     fun eachStateMatchesTheSpecTable() {
         blobVisualFor(disconnected) shouldBe
-            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Power, BlobMotion.SlowDrift)
+            BlobVisual(BlobShape.Circle, BlobFill.Outline, BlobCenter.Power, BlobMotion.SlowDrift)
         blobVisualFor(connecting) shouldBe
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift)
         blobVisualFor(open) shouldBe
@@ -39,13 +39,13 @@ class BlobVisualTest {
         blobVisualFor(idle) shouldBe
             BlobVisual(BlobShape.Cookie9, BlobFill.Connected, BlobCenter.Shield, BlobMotion.Breathing)
         blobVisualFor(stalled) shouldBe
-            BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.Still)
+            BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.StillHalo)
         blobVisualFor(reconnecting) shouldBe
             BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
         blobVisualFor(blocked) shouldBe
             BlobVisual(BlobShape.Square, BlobFill.Blocked, BlobCenter.VpnLock, BlobMotion.Still)
         blobVisualFor(disconnecting) shouldBe
-            BlobVisual(BlobShape.Circle, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
+            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still)
         blobVisualFor(failed) shouldBe
             BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still)
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the design's literal values below: the
-// halo's breath alphas (0.08 <-> 0.5, solid 0.35 under reduced motion), the
+// halo's breath alphas (0.08 <-> 0.5, solid 0.35 for Stalled and under reduced motion), the
 // 360-degree turn and its half, and the dp sizes the brief transcribes from
 // the design. Each is used once, at the line that explains it.
 @file:Suppress("MagicNumber")
@@ -44,6 +44,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.DrawStyle
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -66,8 +69,9 @@ import kotlin.math.roundToInt
 private const val FULL_TURN = 360f
 private const val HALO_ALPHA_LOW = 0.08f
 private const val HALO_ALPHA_HIGH = 0.5f
-private const val HALO_ALPHA_REDUCED = 0.35f
+private const val HALO_ALPHA_SOLID = 0.35f
 private val HALO_SPREAD = 16.dp
+private val OUTLINE_WIDTH = 2.dp
 private val ICON_SIZE = 40.dp
 private val BADGE_SIZE = 14.dp
 private val BADGE_BACKING = 18.dp
@@ -78,10 +82,13 @@ private val BADGE_BACKING = 18.dp
  * readable without colour (ARCHITECTURE.md §5.5, M8.6 spec §3.2). Everything
  * it draws comes from [blobVisualFor].
  *
- * The click target is the full [size] square. The breathing halo is drawn
- * [HALO_SPREAD] outside that square, so a caller should leave that much room
- * around it. [contentDescription] is the state's label (Part 2), so TalkBack
- * reads the state rather than the shape.
+ * The click target is the full [size] square. The halo (Connected and
+ * Stalled) is drawn 16 dp outside that square on every side, outside the
+ * layout bounds: a caller must leave 16 dp clear on all four sides (the halo
+ * spans size + 32 dp) and must not clip the blob's parent tighter than that.
+ * Disconnected has no fill, only a 2 dp `outline` stroke. [contentDescription]
+ * is the state's label (Part 2), so TalkBack reads the state rather than the
+ * shape.
  *
  * Decorative motion (drift, the Connecting shape cycle, the halo's breath)
  * stops under [LocalReducedMotion] (M8.6 spec §2.6); the loader keeps
@@ -102,6 +109,10 @@ fun ConnectBlob(
     val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
     val fill by animateColorAsState(visual.fill.container(scheme), if (reduced) snap() else effects, label = "fill")
     val onFill by animateColorAsState(visual.fill.content(scheme), if (reduced) snap() else effects, label = "onFill")
+    // Disconnected is outline only (M8.6 spec §3.3); the stroke fades rather
+    // than pops when another state's fill takes over.
+    val strokeTarget = if (visual.fill == BlobFill.Outline) scheme.outline else scheme.outline.copy(alpha = 0f)
+    val stroke by animateColorAsState(strokeTarget, if (reduced) snap() else effects, label = "stroke")
 
     val geometry = rememberBlobGeometry(visual.shape, reduced)
     val rotation = rememberBlobRotation(visual.motion, reduced)
@@ -132,7 +143,13 @@ fun ConnectBlob(
                     val spread = HALO_SPREAD.toPx()
                     drawUnitPath(path, fill.copy(alpha = alpha), origin = -spread, side = this.size.width + 2 * spread)
                 }
-                drawUnitPath(path, fill, origin = 0f, side = this.size.width)
+                val side = this.size.width
+                drawUnitPath(path, fill, origin = 0f, side = side)
+                if (stroke.alpha > 0f) {
+                    // The path is drawn in unit space, so the stroke width is
+                    // divided by the same scale to land at OUTLINE_WIDTH.
+                    drawUnitPath(path, stroke, origin = 0f, side = side, style = Stroke(OUTLINE_WIDTH.toPx() / side))
+                }
             }
         }
         BlobCenterContent(visual.center, fill = fill, onFill = onFill)
@@ -145,9 +162,10 @@ private fun DrawScope.drawUnitPath(
     color: Color,
     origin: Float,
     side: Float,
+    style: DrawStyle = Fill,
 ) {
     translate(origin, origin) {
-        scale(side, side, pivot = Offset.Zero) { drawPath(path, color) }
+        scale(side, side, pivot = Offset.Zero) { drawPath(path, color, style = style) }
     }
 }
 
@@ -328,9 +346,11 @@ private fun rememberBlobRotation(
 }
 
 /**
- * The halo's alpha, read at draw time: zero unless [BlobMotion.Breathing];
- * breathing 0.08 <-> 0.5 over HALO_BREATH_MILLIS (the design's `breath`
- * keyframes), or a solid ring when motion is reduced.
+ * The halo's alpha, read at draw time. [BlobMotion.Breathing] breathes
+ * 0.08 <-> 0.5 over HALO_BREATH_MILLIS (the design's `breath` keyframes), or
+ * is a solid ring when motion is reduced; [BlobMotion.StillHalo] (Stalled's
+ * "halo still", M8.6 spec §3.3) is always that solid ring; anything else has
+ * no halo.
  */
 @Composable
 private fun haloAlpha(
@@ -338,11 +358,14 @@ private fun haloAlpha(
     reduced: Boolean,
 ): () -> Float =
     when {
+        motion == BlobMotion.StillHalo -> {
+            { HALO_ALPHA_SOLID }
+        }
         motion != BlobMotion.Breathing -> {
             { 0f }
         }
         reduced -> {
-            { HALO_ALPHA_REDUCED }
+            { HALO_ALPHA_SOLID }
         }
         else ->
             rememberInfiniteTransition(label = "halo")

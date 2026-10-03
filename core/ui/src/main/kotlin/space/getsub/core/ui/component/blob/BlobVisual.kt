@@ -11,15 +11,20 @@ import space.getsub.core.ui.theme.BlobTiming
 enum class BlobShape { Circle, Morphing, Cookie9, Pill, Square, Slanted }
 
 /**
- * The fill role, resolved against `MaterialTheme.colorScheme` by ConnectBlob:
- * surfaceContainerHighest, secondaryContainer, tertiary, tertiaryContainer,
- * errorContainer, errorContainer (M8.6 spec §3.3).
+ * The fill role, resolved against `MaterialTheme.colorScheme` by ConnectBlob
+ * (M8.6 spec §3.3): [Outline] is no fill and a 2 dp `outline` stroke; the rest
+ * are surfaceContainerHighest, secondaryContainer, tertiary,
+ * tertiaryContainer, errorContainer, errorContainer.
  */
-enum class BlobFill { Idle, Busy, Connected, Stalled, Blocked, Failed }
+enum class BlobFill { Outline, Idle, Busy, Connected, Stalled, Blocked, Failed }
 
 enum class BlobCenter { Power, Loader, Shield, ShieldWarning, VpnLock, Warning }
 
-enum class BlobMotion { SlowDrift, FastDrift, Breathing, Still }
+/**
+ * [Breathing] drifts with a breathing halo; [StillHalo] holds still with a
+ * solid halo (M8.6 spec §3.3, Stalled's "halo still"); [Still] has no halo.
+ */
+enum class BlobMotion { SlowDrift, FastDrift, Breathing, StillHalo, Still }
 
 /** How the blob draws one connection state (M8.6 spec §3.3). */
 data class BlobVisual(
@@ -40,13 +45,13 @@ data class BlobVisual(
 fun blobVisualFor(state: ConnectionState): BlobVisual =
     when (state) {
         ConnectionState.Disconnected ->
-            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Power, BlobMotion.SlowDrift)
+            BlobVisual(BlobShape.Circle, BlobFill.Outline, BlobCenter.Power, BlobMotion.SlowDrift)
         is ConnectionState.Connecting ->
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift)
         is ConnectionState.Connected ->
             when (state.health) {
                 Health.Stalled ->
-                    BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.Still)
+                    BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.StillHalo)
                 Health.Open, Health.Idle ->
                     BlobVisual(BlobShape.Cookie9, BlobFill.Connected, BlobCenter.Shield, BlobMotion.Breathing)
             }
@@ -57,14 +62,18 @@ fun blobVisualFor(state: ConnectionState): BlobVisual =
                 BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
             }
         ConnectionState.Disconnecting ->
-            BlobVisual(BlobShape.Circle, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
+            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still)
         is ConnectionState.Failed ->
             BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still)
     }
 
-/** The fill's container colour (M8.6 spec §3.3). */
+/**
+ * The fill's container colour (M8.6 spec §3.3). [BlobFill.Outline] has none;
+ * ConnectBlob strokes it in `outline` instead.
+ */
 internal fun BlobFill.container(scheme: ColorScheme): Color =
     when (this) {
+        BlobFill.Outline -> Color.Transparent
         BlobFill.Idle -> scheme.surfaceContainerHighest
         BlobFill.Busy -> scheme.secondaryContainer
         BlobFill.Connected -> scheme.tertiary
@@ -75,6 +84,7 @@ internal fun BlobFill.container(scheme: ColorScheme): Color =
 /** The matching on-colour, for the centre icon and loader. */
 internal fun BlobFill.content(scheme: ColorScheme): Color =
     when (this) {
+        BlobFill.Outline -> scheme.onSurfaceVariant
         BlobFill.Idle -> scheme.onSurface
         BlobFill.Busy -> scheme.onSecondaryContainer
         BlobFill.Connected -> scheme.onTertiary
@@ -88,5 +98,5 @@ internal fun BlobMotion.driftMillis(): Int? =
         BlobMotion.SlowDrift -> BlobTiming.IDLE_DRIFT_MILLIS
         BlobMotion.FastDrift -> BlobTiming.CONNECTING_DRIFT_MILLIS
         BlobMotion.Breathing -> BlobTiming.CONNECTED_DRIFT_MILLIS
-        BlobMotion.Still -> null
+        BlobMotion.StillHalo, BlobMotion.Still -> null
     }
