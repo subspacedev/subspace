@@ -59,8 +59,8 @@ fun peakBytesPerSecond(
     buckets: List<Long>,
     bucketMillis: Long,
 ): Long {
-    val max = buckets.maxOrNull() ?: return 0L
-    return max * MILLIS_PER_SECOND / bucketMillis
+    val max = buckets.maxOrNull()
+    return if (max == null || bucketMillis <= 0L) 0L else max * MILLIS_PER_SECOND / bucketMillis
 }
 
 /**

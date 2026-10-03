@@ -26,4 +26,9 @@ class ThroughputBarsTest {
     fun anEmptyHistoryHasNoPeak() {
         peakBytesPerSecond(emptyList(), bucketMillis = 128_600L) shouldBe 0L
     }
+
+    @Test
+    fun `a zero bucket length gives no peak rather than a crash`() {
+        peakBytesPerSecond(listOf(10L, 20L), bucketMillis = 0L) shouldBe 0L
+    }
 }

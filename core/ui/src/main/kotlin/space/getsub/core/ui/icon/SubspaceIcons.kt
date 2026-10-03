@@ -16,6 +16,7 @@ object SubspaceIcons {
     val AltRoute: Int = R.drawable.sym_alt_route
     val Apps: Int = R.drawable.sym_apps
     val ArrowBack: Int = R.drawable.sym_arrow_back
+    val ArrowDownward: Int = R.drawable.sym_arrow_downward
     val ArrowOutward: Int = R.drawable.sym_arrow_outward
     val BatterySaver: Int = R.drawable.sym_battery_saver
     val Block: Int = R.drawable.sym_block
@@ -64,6 +65,7 @@ object SubspaceIcons {
     val SelectAll: Int = R.drawable.sym_select_all
     val Settings: Int = R.drawable.sym_settings
     val SettingsFilled: Int = R.drawable.sym_settings_filled
+    val Share: Int = R.drawable.sym_share
     val Shield: Int = R.drawable.sym_shield
     val ShieldFilled: Int = R.drawable.sym_shield_filled
     val SouthEast: Int = R.drawable.sym_south_east
@@ -82,6 +84,7 @@ object SubspaceIcons {
             "alt_route" to AltRoute,
             "apps" to Apps,
             "arrow_back" to ArrowBack,
+            "arrow_downward" to ArrowDownward,
             "arrow_outward" to ArrowOutward,
             "battery_saver" to BatterySaver,
             "block" to Block,
@@ -130,6 +133,7 @@ object SubspaceIcons {
             "select_all" to SelectAll,
             "settings" to Settings,
             "settings_filled" to SettingsFilled,
+            "share" to Share,
             "shield" to Shield,
             "shield_filled" to ShieldFilled,
             "south_east" to SouthEast,

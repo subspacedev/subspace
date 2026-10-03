@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -87,14 +88,15 @@ private val BADGE_BACKING = 18.dp
  * layout bounds: a caller must leave 16 dp clear on all four sides (the halo
  * spans size + 32 dp) and must not clip the blob's parent tighter than that.
  * Disconnected has no fill, only a 2 dp `outline` stroke. [contentDescription]
- * is the state's label (Part 2), so TalkBack reads the state rather than the
- * shape.
+ * is the state's label, and [onClickLabel] is the action a tap performs
+ * ('Disconnect'), so TalkBack reads 'Connected, double-tap to Disconnect'.
  *
  * Decorative motion (drift, the Connecting shape cycle, the halo's breath)
  * stops under [LocalReducedMotion] (M8.6 spec §2.6); the loader keeps
  * animating, because it is feedback.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Suppress("LongParameterList") // a stateless leaf control; every parameter is one decision the caller makes
 @Composable
 fun ConnectBlob(
     state: ConnectionState,
@@ -102,6 +104,8 @@ fun ConnectBlob(
     contentDescription: String,
     modifier: Modifier = Modifier,
     size: Dp = 208.dp,
+    onClickLabel: String? = null,
+    enabled: Boolean = true,
 ) {
     val visual = blobVisualFor(state)
     val reduced = LocalReducedMotion.current
@@ -129,6 +133,8 @@ fun ConnectBlob(
             }.clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = false, radius = size / 2),
+                onClickLabel = onClickLabel,
+                enabled = enabled,
                 onClick = onClick,
             )
     Box(
@@ -152,7 +158,8 @@ fun ConnectBlob(
                 }
             }
         }
-        BlobCenterContent(visual.center, fill = fill, onFill = onFill)
+        // The loader's own progress semantics must not merge into the button node.
+        Box(Modifier.clearAndSetSemantics { }) { BlobCenterContent(visual.center, fill = fill, onFill = onFill) }
     }
 }
 
