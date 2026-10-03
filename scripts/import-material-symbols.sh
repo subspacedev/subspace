@@ -25,7 +25,11 @@ FILLED="shield home dns settings check"
 
 fetch() { # name suffix outfile
   local url="${BASE}/$1/materialsymbolsrounded/$1$2_24px.xml"
-  curl -fsSL "$url" | sed 's/ android:tint="[^"]*"//g' > "$3"
+  # perl -0 reads the whole file, so the leading \s+ also eats the newline
+  # and indent before the attribute: upstream puts android:tint on its own
+  # line ending in `>`, and a line-wise sed left a whitespace-only `   >` line
+  # behind. This joins the `>` onto the previous attribute instead.
+  curl -fsSL "$url" | perl -0pe 's/\s+android:tint="[^"]*"//g' > "$3"
 }
 
 for name in $ICONS; do fetch "$name" "" "${OUT}/sym_${name}.xml"; done
