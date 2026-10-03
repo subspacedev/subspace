@@ -100,4 +100,8 @@ internal object HomeModule {
     @Provides
     @Singleton
     fun activeProfileSource(impl: BoundActiveProfileSource): ActiveProfileSource = impl
+
+    @Provides
+    @Singleton
+    fun trafficPolicySource(impl: BoundTrafficPolicySource): TrafficPolicySource = impl
 }

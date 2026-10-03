@@ -20,6 +20,7 @@ import javax.inject.Inject
 internal class HomeViewModel @Inject constructor(
     private val tunnel: TunnelConnection,
     private val profileSource: ActiveProfileSource,
+    private val policySource: TrafficPolicySource,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state.asStateFlow()
@@ -64,6 +65,10 @@ internal class HomeViewModel @Inject constructor(
                     perTagBreakdownEnabled = partial.perTagBreakdownEnabled && !lightweight,
                 )
             }
+            // A ninth: the active routing rule set's name, for the Routing chip.
+            .combine(policySource.activeRuleSetName) { partial, name -> partial.copy(activeRuleSetName = name) }
+            // A tenth: the effective per-app selection, for the Apps chip.
+            .combine(policySource.perApp) { partial, selection -> partial.copy(perApp = selection) }
             .onEach { _state.value = it }
             .launchIn(viewModelScope)
     }
