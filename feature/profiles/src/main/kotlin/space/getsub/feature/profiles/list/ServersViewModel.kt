@@ -62,6 +62,11 @@ constructor(
     /** One-shot: a pick that moved a live session. The screen shows Undo. */
     val switched: Flow<SwitchedEvent> = _switched.receiveAsFlow()
 
+    private val _declined = Channel<SwitchDeclinedEvent>(Channel.BUFFERED)
+
+    /** One-shot: a pick `:bg` will not apply to the live session. The screen says so, no action. */
+    val switchDeclined: Flow<SwitchDeclinedEvent> = _declined.receiveAsFlow()
+
     private val _state = MutableStateFlow(ServersState())
     val state: StateFlow<ServersState> = _state.asStateFlow()
 
@@ -242,11 +247,16 @@ constructor(
             val live = profileSource.tunnelActive.first()
             profileSource.setActiveProfile(id)
             if (!live || previousId == null || previousId == id) return@launch
-            // `:bg` declines to move a live session onto a server this build can't run,
-            // so only a connectable pick is a switch worth offering Undo for.
-            val picked = _state.value.groups.flatMap { it.profiles }.firstOrNull { it.id == id }
-            if (picked != null && picked.connectable) {
-                _switched.send(SwitchedEvent(newName = picked.name, previousId = previousId))
+            // `:bg` declines to move a live session onto a server this build can't run: a
+            // connectable pick is a switch worth offering Undo for, an unconnectable one needs
+            // saying, because the selection moved but the tunnel did not.
+            val rows = _state.value.groups.flatMap { it.profiles }
+            val picked = rows.firstOrNull { it.id == id } ?: return@launch
+            if (picked.connectable) {
+                _switched.send(SwitchedEvent(newName = picked.displayName(), previousId = previousId))
+            } else {
+                val kept = rows.firstOrNull { it.id == previousId } ?: return@launch
+                _declined.send(SwitchDeclinedEvent(keptName = kept.displayName()))
             }
         }
     }

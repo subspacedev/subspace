@@ -489,6 +489,52 @@ class ServersViewModelTest {
             events shouldBe emptyList()
         }
 
+    private fun TestScope.collectDeclined(): List<SwitchDeclinedEvent> {
+        val events = mutableListOf<SwitchDeclinedEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.switchDeclined.collect { events += it }
+        }
+        return events
+    }
+
+    @Test
+    fun `picking a server this build cannot run says the tunnel stays on the old one`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(tokyo.id)
+            advanceUntilIdle()
+
+            declined shouldBe listOf(SwitchDeclinedEvent(keptName = "Frankfurt"))
+        }
+
+    @Test
+    fun `an unrunnable pick with the tunnel down is not a declined switch`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(tokyo.id)
+            advanceUntilIdle()
+
+            declined shouldBe emptyList()
+        }
+
+    @Test
+    fun `a runnable pick is never reported as declined`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(amsterdam.id)
+            advanceUntilIdle()
+
+            declined shouldBe emptyList()
+        }
+
     @Test
     fun `undo sets the previous server back, even after the tunnel went down`() =
         runTest {

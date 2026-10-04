@@ -48,6 +48,7 @@
     <!-- %1$s = the server just picked; the action reverts to the previous one. -->
     <string name="servers_switched">Switched to %1$s</string>
     <string name="servers_switched_undo">Undo</string>
+    <string name="servers_switch_declined">Can\'t connect with this build \u2014 still on %1$s</string>
 
     <!-- One line when a search or protocol filter leaves every group without a row. -->
     <string name="servers_no_match">No servers match</string>

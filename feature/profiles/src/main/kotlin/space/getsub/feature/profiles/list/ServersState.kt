@@ -183,3 +183,10 @@ internal data class ServerRow(
  * which re-picks [previousId] (M8.6 Part 3 D1).
  */
 internal data class SwitchedEvent(val newName: String, val previousId: Long)
+
+/**
+ * One-shot: the pick moved the selection but `:bg` will not move the live session onto it (the
+ * build can't run that server), so the tunnel stays on [keptName]. The screen says so, with no
+ * action (M8.6 Part 3 D1).
+ */
+internal data class SwitchDeclinedEvent(val keptName: String)

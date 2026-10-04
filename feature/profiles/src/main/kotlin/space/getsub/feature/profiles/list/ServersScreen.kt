@@ -42,6 +42,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,6 +131,12 @@ fun ServersScreen(
                     undoLabel = resources.getString(R.string.servers_switched_undo),
                 )
             if (undone) viewModel.onUndoSwitch(event.previousId)
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.switchDeclined.collectLatest { event ->
+            snackbar.showSnackbar(resources.getString(R.string.servers_switch_declined, event.keptName))
         }
     }
 
@@ -451,9 +459,11 @@ private fun DefaultSortRow(
 
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box {
+            val sortDescription = stringResource(R.string.servers_sort_button, stringResource(sort.labelRes()))
             AssistChip(
                 onClick = { menuOpen = true },
-                label = { Text(stringResource(R.string.servers_sort_button, stringResource(sort.labelRes()))) },
+                modifier = Modifier.semantics { contentDescription = sortDescription },
+                label = { Text(sortDescription) },
                 trailingIcon = {
                     Icon(
                         painterResource(SubspaceIcons.ExpandMore),
@@ -490,6 +500,7 @@ internal fun SortMenu(
                 // The blank icon keeps every label on one left edge, as the design's tick column does.
                 icon = if (order == current) SubspaceIcons.Check else R.drawable.ic_menu_blank,
                 label = stringResource(order.labelRes()),
+                selected = order == current,
                 onClick = { onPick(order) },
             )
         },
