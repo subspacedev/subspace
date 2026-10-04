@@ -115,7 +115,7 @@ internal fun AddServerSheet(
     modifier: Modifier = Modifier,
 ) {
     if (!open) return
-    SubspaceSheet(onDismiss = onDismiss, modifier = modifier) {
+    SubspaceSheet(onDismiss = onDismiss, modifier = modifier, skipPartiallyExpanded = true) {
         AddServerSheetBody(onScanQr = onScanQr)
     }
 }
