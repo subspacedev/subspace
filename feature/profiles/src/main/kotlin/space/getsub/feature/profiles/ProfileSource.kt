@@ -17,11 +17,13 @@ import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.sync.SubscriptionSyncer
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.parser.PassthroughRejection
 import space.getsub.service.PassthroughValidator
+import space.getsub.service.TunnelClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -87,6 +89,16 @@ internal interface ProfileSource {
      * need not implement it.
      */
     val routingOverridesPassthrough: Flow<Boolean>
+        get() = flowOf(false)
+
+    /**
+     * Whether a session is up or on its way: true in `Connecting`, `Connected` and
+     * `Reconnecting`. What lets the Servers screen know a pick will move a live
+     * session (M8.6 Part 3 D1). Defaulted to `flowOf(false)` like
+     * [routingOverridesPassthrough]: only [space.getsub.feature.profiles.list.ServersViewModel]
+     * reads it.
+     */
+    val tunnelActive: Flow<Boolean>
         get() = flowOf(false)
 
     /** Sets the active profile, or clears it when [id] is `null`. */
@@ -258,6 +270,7 @@ constructor(
     private val subscriptionRepository: SubscriptionRepository,
     private val subscriptionSyncer: SubscriptionSyncer,
     private val passthroughValidator: PassthroughValidator,
+    private val tunnel: TunnelClient,
 ) : ProfileSource {
     override fun observeGroups(
         query: String,
@@ -274,6 +287,11 @@ constructor(
             settingsRepository.dnsResolver,
             ::routingOverridesPassthroughFor,
         )
+
+    override val tunnelActive: Flow<Boolean> =
+        tunnel.state.map {
+            it is ConnectionState.Connecting || it is ConnectionState.Connected || it is ConnectionState.Reconnecting
+        }
 
     override suspend fun setActiveProfile(id: Long?) = settingsRepository.setActiveProfile(id)
 

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.StoredProfile
@@ -54,6 +56,11 @@ constructor(
      * visible by [ServersGroup.sortFromProvider]).
      */
     private val groupSortOverrides = MutableStateFlow<Map<Long, SortOrder>>(emptyMap())
+
+    private val _switched = Channel<SwitchedEvent>(Channel.BUFFERED)
+
+    /** One-shot: a pick that moved a live session. The screen shows Undo. */
+    val switched: Flow<SwitchedEvent> = _switched.receiveAsFlow()
 
     private val _state = MutableStateFlow(ServersState())
     val state: StateFlow<ServersState> = _state.asStateFlow()
@@ -230,7 +237,23 @@ constructor(
      * only writes the setting; the service decides and performs the switch.
      */
     fun onProfileSelected(id: Long) {
-        viewModelScope.launch { profileSource.setActiveProfile(id) }
+        viewModelScope.launch {
+            val previousId = profileSource.activeProfileId.first()
+            val live = profileSource.tunnelActive.first()
+            profileSource.setActiveProfile(id)
+            if (!live || previousId == null || previousId == id) return@launch
+            // `:bg` declines to move a live session onto a server this build can't run,
+            // so only a connectable pick is a switch worth offering Undo for.
+            val picked = _state.value.groups.flatMap { it.profiles }.firstOrNull { it.id == id }
+            if (picked != null && picked.connectable) {
+                _switched.send(SwitchedEvent(newName = picked.name, previousId = previousId))
+            }
+        }
+    }
+
+    /** Puts [previousId] back as the active server; `:bg` moves the session back the same way. */
+    fun onUndoSwitch(previousId: Long) {
+        viewModelScope.launch { profileSource.setActiveProfile(previousId) }
     }
 
     fun onRenameGroup(

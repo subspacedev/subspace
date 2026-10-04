@@ -177,3 +177,9 @@ internal data class ServerRow(
     /** True while a measurement for this row is in flight. */
     val isTesting: Boolean = false,
 )
+
+/**
+ * One-shot: a pick just moved a live session onto [newName]; the screen offers Undo,
+ * which re-picks [previousId] (M8.6 Part 3 D1).
+ */
+internal data class SwitchedEvent(val newName: String, val previousId: Long)
