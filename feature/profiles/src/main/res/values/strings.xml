@@ -208,7 +208,11 @@
     <string name="editor_vmess_security_label">Encryption</string>
     <string name="editor_method_label">Cipher</string>
     <string name="editor_network_label">Network</string>
-    <string name="editor_security_label">Security</string>
+    <string name="editor_section_server">Server</string>
+    <string name="editor_section_credentials">Credentials</string>
+    <string name="editor_section_transport">Transport</string>
+    <string name="editor_section_security">Security</string>
+    <string name="editor_section_raw_json">Raw JSON</string>
     <string name="editor_security_none">None</string>
     <string name="editor_tls_server_name_label">Server name (SNI)</string>
     <string name="editor_tls_fingerprint_label">Fingerprint</string>

@@ -486,4 +486,48 @@ class EditorScreenTest {
 
         convertCalled shouldBe true
     }
+
+    // Part 3 Task 6: the security kind is three ModeTiles, not a dropdown — each is a radio
+    // button, and tapping one reports its EditorSecurityKind.
+    @Test
+    fun tappingASecurityTileReportsItsKind() {
+        var picked: EditorSecurityKind? = null
+        setContent(
+            state = typedState.copy(securityKind = EditorSecurityKind.None),
+            actions = noOpActions().copy(onSecurityKindChanged = { picked = it }),
+        )
+
+        composeRule.onNodeWithText("Reality").performClick()
+
+        picked shouldBe EditorSecurityKind.Reality
+    }
+
+    @Test
+    fun theAllowInsecureSwitchRowTogglesFromItsLabel() {
+        var checked: Boolean? = null
+        setContent(
+            state = typedState.copy(securityKind = EditorSecurityKind.Tls),
+            actions = noOpActions().copy(onTlsAllowInsecureChanged = { checked = it }),
+        )
+
+        composeRule.onNodeWithText("Allow insecure").performClick()
+
+        checked shouldBe true
+    }
+
+    @Test
+    fun aRejectionAndAnAdvisoryEachRenderTheirOwnBanner() {
+        setContent(
+            state = rawJsonState.copy(
+                runsAsWritten = false,
+                passthroughRejection = PassthroughRejection.NoOutbounds,
+                advisories = listOf(PassthroughAdvisory.DanglingRoutingReference),
+            ),
+        )
+
+        composeRule.onNodeWithText(context.getString(R.string.editor_raw_json_rejected_no_outbounds)).assertExists()
+        composeRule.onNodeWithText(
+            context.getString(R.string.editor_raw_json_advisory_dangling_reference),
+        ).assertExists()
+    }
 }

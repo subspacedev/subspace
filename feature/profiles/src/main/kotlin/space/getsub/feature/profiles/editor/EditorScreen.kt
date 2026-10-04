@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -32,7 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,10 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -58,6 +56,15 @@ import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
 import space.getsub.core.parser.SHADOWSOCKS_METHODS
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.ModeTile
+import space.getsub.core.ui.component.ModeTiles
+import space.getsub.core.ui.component.SectionTitle
+import space.getsub.core.ui.component.SwitchRow
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.SubspaceShapeTokens
+import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.add.labelRes
 
@@ -257,7 +264,7 @@ private fun EditorTopBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                painter = painterResource(SubspaceIcons.ArrowBack),
                 contentDescription = stringResource(R.string.editor_back_description),
             )
         }
@@ -310,42 +317,63 @@ private fun EditorForm(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = CONTENT_PADDING)
             .padding(bottom = CONTENT_PADDING),
-        verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
     ) {
-        EditorField(
-            label = stringResource(R.string.editor_name_label),
-            value = state.name,
-            onValueChange = actions.onNameChanged,
-        )
-
         if (state.fieldsEditable) {
-            TypedFields(state = state, actions = actions)
+            TypedSections(state = state, actions = actions)
         } else {
-            RawJsonFields(state = state, actions = actions)
+            RawJsonSections(state = state, actions = actions)
         }
 
         if (state.duplicateIdentity) {
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
                 text = stringResource(R.string.editor_duplicate_identity),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.testTag(EDITOR_DUPLICATE_IDENTITY_TEST_TAG),
+                tone = BannerTone.Warning,
+                modifier = Modifier.padding(top = FIELD_GAP).testTag(EDITOR_DUPLICATE_IDENTITY_TEST_TAG),
             )
         }
 
-        Button(onClick = actions.onSave, modifier = Modifier.padding(top = FIELD_GAP)) {
+        Button(onClick = actions.onSave, modifier = Modifier.padding(top = CONTENT_PADDING)) {
             Text(stringResource(R.string.editor_save_button))
         }
     }
 }
 
+/** A [SectionTitle] over a `surfaceContainer` card — each group of fields in the form sits on one. */
 @Composable
-private fun TypedFields(
+private fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SectionTitle(title)
+        Surface(
+            shape = SubspaceShapeTokens.card,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(CONTENT_PADDING),
+                verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypedSections(
     state: EditorState,
     actions: EditorActions,
-    modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
+    SectionCard(title = stringResource(R.string.editor_section_server)) {
+        EditorField(
+            label = stringResource(R.string.editor_name_label),
+            value = state.name,
+            onValueChange = actions.onNameChanged,
+        )
         GroupDropdown(
             selectedId = state.groupId,
             options = state.availableGroups,
@@ -355,6 +383,7 @@ private fun TypedFields(
             label = stringResource(R.string.editor_address_label),
             value = state.address,
             onValueChange = actions.onAddressChanged,
+            mono = true,
         )
         EditorField(
             label = stringResource(R.string.editor_port_label),
@@ -363,11 +392,17 @@ private fun TypedFields(
             keyboardType = KeyboardType.Number,
             error = state.errors[EditorFieldKey.Port],
         )
+    }
 
+    SectionCard(title = stringResource(R.string.editor_section_credentials)) {
         CredentialFields(state = state, actions = actions)
+    }
 
-        if (state.protocol in STREAM_PROTOCOLS) {
+    if (state.protocol in STREAM_PROTOCOLS) {
+        SectionCard(title = stringResource(R.string.editor_section_transport)) {
             TransportSection(state = state, actions = actions)
+        }
+        SectionCard(title = stringResource(R.string.editor_section_security)) {
             SecuritySection(state = state, actions = actions)
         }
     }
@@ -391,6 +426,7 @@ private fun CredentialFields(
                     label = stringResource(R.string.editor_uuid_label),
                     value = state.primaryCredential,
                     onValueChange = actions.onPrimaryCredentialChanged,
+                    mono = true,
                     error = state.errors[EditorFieldKey.Credential],
                 )
                 EditorField(
@@ -404,6 +440,7 @@ private fun CredentialFields(
                     label = stringResource(R.string.editor_uuid_label),
                     value = state.primaryCredential,
                     onValueChange = actions.onPrimaryCredentialChanged,
+                    mono = true,
                     error = state.errors[EditorFieldKey.Credential],
                 )
                 EditorField(
@@ -476,12 +513,14 @@ private fun TransportSection(
                     label = stringResource(R.string.editor_ws_path_label),
                     value = state.wsPath,
                     onValueChange = actions.onWsPathChanged,
+                    mono = true,
                 )
             "grpc" ->
                 EditorField(
                     label = stringResource(R.string.editor_grpc_service_name_label),
                     value = state.grpcServiceName,
                     onValueChange = actions.onGrpcServiceNameChanged,
+                    mono = true,
                 )
 
             // Both spellings: a profile imported from a config written against the
@@ -500,11 +539,13 @@ private fun XhttpFields(
         label = stringResource(R.string.editor_xhttp_path_label),
         value = state.xhttpPath,
         onValueChange = actions.onXhttpPathChanged,
+        mono = true,
     )
     EditorField(
         label = stringResource(R.string.editor_xhttp_host_label),
         value = state.xhttpHost,
         onValueChange = actions.onXhttpHostChanged,
+        mono = true,
     )
     EditorDropdownField(
         label = stringResource(R.string.editor_xhttp_mode_label),
@@ -529,13 +570,14 @@ private fun SecuritySection(
     val labelsByKind = EditorSecurityKind.entries.associateWith { it.displayLabel() }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
-        EditorDropdownField(
-            label = stringResource(R.string.editor_security_label),
-            selected = labelsByKind.getValue(state.securityKind),
-            options = labelsByKind.values.toList(),
-            onSelected = { label ->
-                actions.onSecurityKindChanged(labelsByKind.entries.first { it.value == label }.key)
+        val kinds = EditorSecurityKind.entries
+        ModeTiles(
+            options =
+            kinds.map { kind ->
+                ModeTile(icon = kind.icon(), label = labelsByKind.getValue(kind))
             },
+            selected = kinds.indexOf(state.securityKind),
+            onSelect = { index -> actions.onSecurityKindChanged(kinds[index]) },
         )
         when (state.securityKind) {
             EditorSecurityKind.None -> Unit
@@ -544,6 +586,13 @@ private fun SecuritySection(
         }
     }
 }
+
+private fun EditorSecurityKind.icon(): Int =
+    when (this) {
+        EditorSecurityKind.None -> SubspaceIcons.Public
+        EditorSecurityKind.Reality -> SubspaceIcons.Shield
+        EditorSecurityKind.Tls -> SubspaceIcons.Lock
+    }
 
 @Composable
 private fun EditorSecurityKind.displayLabel(): String =
@@ -566,6 +615,7 @@ private fun TlsFields(
             label = stringResource(R.string.editor_tls_server_name_label),
             value = state.tlsServerName,
             onValueChange = actions.onTlsServerNameChanged,
+            mono = true,
         )
         EditorField(
             label = stringResource(R.string.editor_tls_fingerprint_label),
@@ -591,17 +641,20 @@ private fun RealityFields(
             label = stringResource(R.string.editor_reality_server_name_label),
             value = state.realityServerName,
             onValueChange = actions.onRealityServerNameChanged,
+            mono = true,
         )
         EditorField(
             label = stringResource(R.string.editor_reality_public_key_label),
             value = state.realityPublicKey,
             onValueChange = actions.onRealityPublicKeyChanged,
+            mono = true,
             error = state.errors[EditorFieldKey.PublicKey],
         )
         EditorField(
             label = stringResource(R.string.editor_reality_short_id_label),
             value = state.realityShortId,
             onValueChange = actions.onRealityShortIdChanged,
+            mono = true,
         )
         EditorField(
             label = stringResource(R.string.editor_reality_fingerprint_label),
@@ -612,15 +665,33 @@ private fun RealityFields(
             label = stringResource(R.string.editor_reality_spider_x_label),
             value = state.realitySpiderX,
             onValueChange = actions.onRealitySpiderXChanged,
+            mono = true,
         )
     }
 }
 
 /**
- * The RAW_JSON half of [EditorForm] — protocol/address/port as plain (non-editable) text plus
- * the pasted bytes verbatim, never a form. See [EditorState]'s own KDoc for why re-serializing
- * this JSON through a form is exactly what this build must not do.
+ * The RAW_JSON half of [EditorForm] — the name as the one editable field, then the pasted bytes
+ * verbatim, never a form. See [EditorState]'s own KDoc for why re-serializing this JSON through
+ * a form is exactly what this build must not do.
  */
+@Composable
+private fun RawJsonSections(
+    state: EditorState,
+    actions: EditorActions,
+) {
+    SectionCard(title = stringResource(R.string.editor_section_server)) {
+        EditorField(
+            label = stringResource(R.string.editor_name_label),
+            value = state.name,
+            onValueChange = actions.onNameChanged,
+        )
+    }
+    SectionCard(title = stringResource(R.string.editor_section_raw_json)) {
+        RawJsonFields(state = state, actions = actions)
+    }
+}
+
 @Composable
 private fun RawJsonFields(
     state: EditorState,
@@ -637,7 +708,8 @@ private fun RawJsonFields(
         // otherwise this claim ("Subspace runs that file as written") renders right
         // above editor_raw_json_override_warning ("so it does not run as written"),
         // contradicting itself on an eligible row whose routing/DNS is overridden.
-        Text(
+        TonalBanner(
+            icon = SubspaceIcons.Info,
             text =
             stringResource(
                 if (state.runsAsWritten && !state.routingOverridesThisConfig) {
@@ -646,17 +718,15 @@ private fun RawJsonFields(
                     R.string.editor_raw_json_read_only_notice
                 },
             ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         // Shown only when this config runs as written AND the app's own routing
         // would otherwise replace its rules (§9) — never for an ineligible row,
         // which already gets the more specific rejection text below instead.
         if (state.runsAsWritten && state.routingOverridesThisConfig) {
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
                 text = stringResource(R.string.editor_raw_json_override_warning),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                tone = BannerTone.Warning,
             )
         }
         // Task 15: offered whenever this config's own routing survives conversion into an app
@@ -672,37 +742,37 @@ private fun RawJsonFields(
         // "not eligible" line, and never anything derived from the config's
         // own text (ARCHITECTURE.md §5.6).
         state.passthroughRejection?.let { rejection ->
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Block,
                 text = stringResource(rejection.messageRes()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
+                tone = BannerTone.Blocked,
             )
         }
         // Advisories are the config's own inconsistencies, not ours: shown on
         // an eligible row too, because such a config runs and may still carry
-        // nothing (device record F9). Distinct colour from the rejection above —
-        // this is a warning about a file that runs, not a refusal.
+        // nothing (device record F9). A warning about a file that runs, not a
+        // refusal — hence the Warning tone against the rejection's Blocked one.
         state.advisories.forEach { advisory ->
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
                 text = stringResource(advisory.messageRes()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                tone = BannerTone.Warning,
             )
         }
         // No gate needed: EditorViewModel only computes overrideBlocker for a row that
         // runs as written, because on any other row the message would be false twice
         // over — see EditorState.overrideBlocker's KDoc.
         state.overrideBlocker?.let { blocker ->
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
                 text = stringResource(blocker.messageRes()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                tone = BannerTone.Warning,
             )
         }
         Text(text = stringResource(R.string.editor_raw_json_label), style = MaterialTheme.typography.labelLarge)
         Text(
             text = state.rawJson.orEmpty(),
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.bodySmall.mono(),
             modifier =
             Modifier
                 .fillMaxWidth()
@@ -770,6 +840,8 @@ private fun EditorField(
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
     error: FailureDetail? = null,
+    // Machine strings (address, UUID, SNI, paths, keys) read as config values, not prose.
+    mono: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -779,6 +851,8 @@ private fun EditorField(
         isError = error != null,
         supportingText = error?.let { { Text(editorErrorText(label, it)) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        textStyle = MaterialTheme.typography.bodyLarge.let { if (mono) it.mono() else it },
+        shape = MaterialTheme.shapes.large,
         modifier = modifier.fillMaxWidth(),
     )
 }
@@ -790,18 +864,14 @@ private fun EditorSwitchField(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    SwitchRow(
+        icon = null,
+        label = label,
+        supporting = null,
+        checked = checked,
+        onCheckedChange = onCheckedChange,
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text = label, style = MaterialTheme.typography.bodyLarge)
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.semantics { contentDescription = label },
-        )
-    }
+    )
 }
 
 // Same reasoning as EditorField's own suppression just above.
