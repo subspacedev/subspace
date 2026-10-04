@@ -117,7 +117,7 @@ internal fun HomeHero(
             textAlign = TextAlign.Center,
         )
 
-        HomeDetailLine(state.connection.detail(), nowMillis)
+        HomeDetailLine(state.detail(), nowMillis)
 
         if (state.activeProfileUnsupported) {
             Text(
@@ -162,9 +162,10 @@ private fun HomeActionButton(
 
 @Composable
 private fun HomeDetailLine(
-    detail: HomeDetail,
+    detail: HomeDetail?,
     nowMillis: () -> Long,
 ) {
+    if (detail == null) return
     val failed = detail is HomeDetail.FailureText
     Text(
         text = detailText(detail, nowMillis),
@@ -220,6 +221,7 @@ private fun detailText(
 ): String =
     when (detail) {
         HomeDetail.TapToConnect -> stringResource(R.string.home_detail_disconnected)
+        HomeDetail.ChooseServer -> stringResource(R.string.home_detail_choose_server)
         is HomeDetail.Step -> stringResource(R.string.home_detail_step, detail.number, detail.of)
         is HomeDetail.Uptime ->
             stringResource(

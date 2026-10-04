@@ -67,8 +67,8 @@ private val LOADING_TOP_PADDING = 48.dp
  * reader who scrolled up to read older lines is not pulled back down.
  *
  * Reached from Settings' new "Diagnostics" section
- * ([SettingsDiagnosticsSection][space.getsub.feature.settings.SettingsDiagnosticsSection]),
- * a pushed destination like
+ * ([SettingsDiagnosticsSection][space.getsub.feature.settings.SettingsDiagnosticsSection])
+ * and from Home's history icon (M8.6 spec §4.1, fix S3), a pushed destination like
  * [PerAppScreen][space.getsub.feature.routing.PerAppScreen] and
  * [RoutingListScreen][space.getsub.feature.routing.RoutingListScreen] — the
  * floating nav pill hides while this is on screen, so it carries its own

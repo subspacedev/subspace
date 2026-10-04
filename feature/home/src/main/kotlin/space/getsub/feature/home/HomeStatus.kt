@@ -13,6 +13,9 @@ import space.getsub.core.model.StartupStage
 internal sealed interface HomeDetail {
     data object TapToConnect : HomeDetail
 
+    /** Disconnected with nothing connectable selected; a tap could not connect (M8.6 spec §3.3). */
+    data object ChooseServer : HomeDetail
+
     data class Step(val number: Int, val of: Int) : HomeDetail
 
     data class Uptime(val sinceEpochMillis: Long, val idle: Boolean) : HomeDetail
@@ -29,6 +32,21 @@ internal sealed interface HomeDetail {
     data class FailureText(val text: String) : HomeDetail
 }
 
+/**
+ * The line under the label, or `null` for none. Disconnected depends on what a tap
+ * can do: hint at it only when it can connect, ask for a server when none is chosen,
+ * and say nothing for an unsupported one, as [HomeState.activeProfileUnsupported]'s
+ * note already explains. Every other state reads from [ConnectionState.detail].
+ */
+internal fun HomeState.detail(): HomeDetail? =
+    when {
+        connection != ConnectionState.Disconnected -> connection.detail()
+        canConnect -> HomeDetail.TapToConnect
+        activeProfileUnsupported -> null
+        else -> HomeDetail.ChooseServer
+    }
+
+/** Every state except Disconnected, whose line depends on [HomeState]; see [HomeState.detail]. */
 internal fun ConnectionState.detail(): HomeDetail =
     when (this) {
         ConnectionState.Disconnected -> HomeDetail.TapToConnect
@@ -52,7 +70,7 @@ internal enum class HomePrimaryAction { Connect, Disconnect, None }
 
 /**
  * The button under the blob (M8.6 Part 2 ruling R1). Connecting and
- * Disconnecting offer nothing, as the replaced `ConnectControl` refused those taps.
+ * Disconnecting offer nothing, as the old connect control refused those taps.
  * Reconnecting offers Disconnect: M8 spec §7.3, it has no bound.
  */
 internal fun HomeState.primaryAction(): HomePrimaryAction =

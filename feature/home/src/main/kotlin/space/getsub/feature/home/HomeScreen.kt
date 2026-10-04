@@ -47,12 +47,12 @@ import space.getsub.core.ui.icon.SubspaceIcons
  *   user picks which one is active.
  * @param onAddServer invoked when the active-server tile is tapped and no
  *   profile exists yet (nothing to pick from), and by the standalone "Add
- *   server" chip in every state.
+ *   server" button in every state.
  * @param onOpenRouting opens the routing rule-set list (the Routing chip).
  * @param onOpenPerApp opens per-app selection (the Apps chip).
  * @param onOpenSessionLog opens the session log (the history icon).
  */
-// The three navigation callbacks are the screen's whole outward surface; HomeActions
+// The six navigation callbacks are the screen's whole outward surface; HomeActions
 // carries them past this point (see its KDoc).
 @Suppress("LongParameterList")
 @Composable
@@ -95,7 +95,7 @@ fun HomeScreen(
  * A real detekt `LongParameterList` signal, not a suppression candidate —
  * same call [ClashYaml][space.getsub.core.parser]'s `ClashCommon`
  * makes for the same rule: a carrier keeps the callbacks named at every call
- * site while a parameter list six deep would not.
+ * site while a parameter list eight deep would not.
  */
 internal data class HomeActions(
     val onConnect: () -> Unit,

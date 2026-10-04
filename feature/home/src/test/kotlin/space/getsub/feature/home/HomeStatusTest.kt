@@ -4,15 +4,43 @@ package space.getsub.feature.home
 
 import io.kotest.matchers.shouldBe
 import org.junit.Test
+import space.getsub.core.data.ProfileKind
+import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PerAppSelection
+import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
+import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.failure
 
 class HomeStatusTest {
+    private fun profile(network: String) =
+        StoredProfile(
+            id = 1,
+            groupId = 1,
+            kind = ProfileKind.TYPED,
+            name = "Test",
+            protocol = "vless",
+            address = "198.51.100.1",
+            port = 443,
+            transport = network,
+            outbound =
+            VlessOutbound(
+                address = "198.51.100.1",
+                port = 443,
+                uuid = "1e0f2a2e-6b2b-4b9a-9a3b-000000000000",
+                flow = null,
+                stream = StreamSettings(network = network, security = Security.None),
+            ),
+            rawJson = null,
+            lastConnectedAt = null,
+            lastError = null,
+        )
+
     private fun connected(health: Health) = ConnectionState.Connected(1_000L, 1080, 0, health)
 
     @Test
@@ -55,9 +83,37 @@ class HomeStatusTest {
     }
 
     @Test
-    fun `disconnected and disconnecting`() {
-        ConnectionState.Disconnected.detail() shouldBe HomeDetail.TapToConnect
+    fun `disconnecting says it is tearing down`() {
         ConnectionState.Disconnecting.detail() shouldBe HomeDetail.TearingDown
+    }
+
+    @Test
+    fun `startup stages keep their order at the ends`() {
+        ConnectionState.Connecting(StartupStage.AllocatingPort).detail() shouldBe HomeDetail.Step(1, 6)
+        ConnectionState.Connecting(StartupStage.StartingTunnel).detail() shouldBe HomeDetail.Step(6, 6)
+    }
+
+    @Test
+    fun `disconnected with a connectable server hints at tapping the blob`() {
+        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("tcp")).detail() shouldBe
+            HomeDetail.TapToConnect
+    }
+
+    @Test
+    fun `disconnected with nothing selected asks for a server`() {
+        HomeState(connection = ConnectionState.Disconnected, activeProfile = null).detail() shouldBe
+            HomeDetail.ChooseServer
+    }
+
+    @Test
+    fun `disconnected with an unsupported server shows no line, the note explains`() {
+        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("kcp")).detail() shouldBe null
+    }
+
+    @Test
+    fun `failed keeps its failure text whatever is selected`() {
+        HomeState(connection = failure(FailureReason.CoreStartFailed, "boom"), activeProfile = null).detail() shouldBe
+            HomeDetail.FailureText("boom")
     }
 
     @Test

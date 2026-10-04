@@ -93,6 +93,7 @@
 
     <!-- M8.6 spec §3.3 detail lines. Sentence case (fix A3). -->
     <string name="home_detail_disconnected">Tap the blob to go dark</string>
+    <string name="home_detail_choose_server">Choose a server first</string>
     <!-- %1$d is the stage's position, %2$d the number of stages. -->
     <string name="home_detail_step">Step %1$d of %2$d</string>
     <!-- %1$s is DateUtils.formatElapsedTime output, device-clock derived. -->

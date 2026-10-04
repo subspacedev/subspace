@@ -17,7 +17,7 @@ import space.getsub.core.model.StartupStage
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 
-/** M8.6 spec §4.2: the top half of Home. */
+/** M8.6 spec §4.1: the top half of Home. */
 class HomeHeroTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -26,6 +26,8 @@ class HomeHeroTest {
     fun connectIsDisabledWithNothingToConnectTo() {
         setContent(HomeState(connection = ConnectionState.Disconnected, activeProfile = null))
         composeRule.onNodeWithText("Connect").assertIsNotEnabled()
+        composeRule.onNodeWithText("Choose a server first").assertIsDisplayed()
+        composeRule.onNodeWithText("Tap the blob", substring = true).assertDoesNotExist()
     }
 
     @Test
