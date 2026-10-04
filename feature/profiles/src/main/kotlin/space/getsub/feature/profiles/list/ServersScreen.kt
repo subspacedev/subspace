@@ -15,41 +15,56 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.collectLatest
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
+import space.getsub.core.ui.component.MenuItem
+import space.getsub.core.ui.component.SearchField
+import space.getsub.core.ui.component.SubspaceMenu
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.component.UndoSnackbarHost
+import space.getsub.core.ui.component.showUndo
+import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.add.AddServerSheet
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.userMessageText
 
-private val CONTENT_HORIZONTAL_PADDING = 16.dp
+private val CONTENT_HORIZONTAL_PADDING = 20.dp
+private val SECTION_GAP = 14.dp
 private val FILTER_CHIP_GAP = 8.dp
+private val BUTTON_ICON_SIZE = 18.dp
+private val HEADER_TOP_PADDING = 16.dp
+private val SNACKBAR_HORIZONTAL_PADDING = 16.dp
 
 /** Identifies the group-card update result banner to instrumented tests. */
 internal const val SERVERS_UPDATE_RESULT_TEST_TAG = "servers-update-result"
@@ -100,30 +115,55 @@ fun ServersScreen(
     val viewModel: ServersViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val resources = LocalResources.current
 
-    ServersScreenContent(
-        state = state,
-        actions =
-        ServersActions(
-            onQueryChanged = viewModel::onQueryChanged,
-            onProtocolFilterChanged = viewModel::onProtocolFilterChanged,
-            onSortChanged = viewModel::onSortChanged,
-            onProfileSelected = viewModel::onProfileSelected,
-            onRenameGroup = viewModel::onRenameGroup,
-            onDeleteGroup = viewModel::onDeleteGroup,
-            onAddProfile = { showAddSheet = true },
-            onProfileEdit = onEditProfile,
-            onUpdateSubscription = viewModel::onUpdateSubscription,
-            onDismissUpdateResult = viewModel::onDismissUpdateResult,
-            onOpenSubscriptionDetail = onOpenSubscriptionDetail,
-            onTestProfile = viewModel::onTestProfile,
-            onTestGroup = viewModel::onTestGroup,
-            onCancelTests = viewModel::onCancelTests,
-            onGroupSortChanged = viewModel::onGroupSortChanged,
-            onServersShown = viewModel::onServersShown,
-        ),
-        modifier = modifier,
-    )
+    // A pick that moved a live session offers Undo (M8.6 Part 3 D1). collectLatest, so a second
+    // pick replaces the first's snackbar instead of queueing behind it.
+    LaunchedEffect(viewModel) {
+        viewModel.switched.collectLatest { event ->
+            val undone =
+                snackbar.showUndo(
+                    message = resources.getString(R.string.servers_switched, event.newName),
+                    undoLabel = resources.getString(R.string.servers_switched_undo),
+                )
+            if (undone) viewModel.onUndoSwitch(event.previousId)
+        }
+    }
+
+    Box(modifier = modifier) {
+        ServersScreenContent(
+            state = state,
+            actions =
+            ServersActions(
+                onQueryChanged = viewModel::onQueryChanged,
+                onProtocolFilterChanged = viewModel::onProtocolFilterChanged,
+                onSortChanged = viewModel::onSortChanged,
+                onProfileSelected = viewModel::onProfileSelected,
+                onRenameGroup = viewModel::onRenameGroup,
+                onDeleteGroup = viewModel::onDeleteGroup,
+                onAddProfile = { showAddSheet = true },
+                onProfileEdit = onEditProfile,
+                onUpdateSubscription = viewModel::onUpdateSubscription,
+                onDismissUpdateResult = viewModel::onDismissUpdateResult,
+                onOpenSubscriptionDetail = onOpenSubscriptionDetail,
+                onTestProfile = viewModel::onTestProfile,
+                onTestGroup = viewModel::onTestGroup,
+                onCancelTests = viewModel::onCancelTests,
+                onGroupSortChanged = viewModel::onGroupSortChanged,
+                onServersShown = viewModel::onServersShown,
+            ),
+        )
+        // Above the floating nav pill, which the group list's own bottom padding also clears.
+        UndoSnackbarHost(
+            state = snackbar,
+            modifier =
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = SNACKBAR_HORIZONTAL_PADDING)
+                .padding(bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING),
+        )
+    }
 
     AddServerSheet(open = showAddSheet, onDismiss = { showAddSheet = false }, onScanQr = onScanQr)
 }
@@ -168,14 +208,18 @@ internal data class ServersActions(
 /**
  * The stateless half — see [space.getsub.feature.home.HomeScreenContent]'s
  * KDoc for why this split exists.
+ *
+ * @param initiallyExpanded the groups that start open; only snapshot tests and
+ *   instrumented tests set it, since a real session starts every group collapsed.
  */
 @Composable
 internal fun ServersScreenContent(
     state: ServersState,
     actions: ServersActions,
     modifier: Modifier = Modifier,
+    initiallyExpanded: Set<Long> = emptySet(),
 ) {
-    var expandedGroups by rememberSaveable { mutableStateOf<Set<Long>>(emptySet()) }
+    var expandedGroups by rememberSaveable { mutableStateOf(initiallyExpanded) }
     var renameTarget by remember { mutableStateOf<ServersGroup?>(null) }
     var deleteTarget by remember { mutableStateOf<ServersGroup?>(null) }
 
@@ -188,7 +232,7 @@ internal fun ServersScreenContent(
         if (state.groups.isNotEmpty()) actions.onServersShown()
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
         ServersHeader(onAddProfile = actions.onAddProfile, showAddAction = state.groups.isNotEmpty())
 
         ServersFilters(state = state, actions = actions)
@@ -241,45 +285,51 @@ internal fun ServersScreenContent(
 }
 
 /**
- * The outcome of the most recent `GroupCard` update press. Tapping it dismisses it; there is no
- * auto-dismiss timer, for the reason the subscription detail screen's own banner gives — a
- * failure reason the user did not get to read defeats the point of showing it.
+ * The outcome of the most recent `GroupCard` update press. Tapping or swiping it away dismisses
+ * it; there is no auto-dismiss timer, for the reason the subscription detail screen's own banner
+ * gives — a failure reason the user did not get to read defeats the point of showing it.
  *
- * A `quantity` of `null` marks the failure messages, which is what the error colour keys off.
+ * A `quantity` of `null` marks the failure messages, which is what the blocked tone keys off.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UpdateResultBanner(
     message: UserMessage,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Text(
-        text = userMessageText(message),
-        color = if (message.quantity == null) MaterialTheme.colorScheme.error else Color.Unspecified,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier =
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = CONTENT_HORIZONTAL_PADDING)
-            .clickable(onClick = onDismiss)
-            .testTag(SERVERS_UPDATE_RESULT_TEST_TAG),
-    )
+    val failed = message.quantity == null
+    // A new message must not inherit the last one's swiped-away position.
+    key(message) {
+        SwipeToDismissBox(
+            state = rememberSwipeToDismissBoxState(),
+            backgroundContent = {},
+            modifier = modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING),
+            onDismiss = { onDismiss() },
+        ) {
+            TonalBanner(
+                icon = if (failed) SubspaceIcons.Warning else SubspaceIcons.Info,
+                text = userMessageText(message),
+                tone = if (failed) BannerTone.Blocked else BannerTone.Neutral,
+                modifier = Modifier.clickable(onClick = onDismiss).testTag(SERVERS_UPDATE_RESULT_TEST_TAG),
+            )
+        }
+    }
 }
 
 /**
- * The screen title plus the header's own "Add server" action — split out of
+ * The screen title plus the header's own "Add" action — split out of
  * [ServersScreenContent] to keep it short.
  *
  * The empty state (`EmptyServersState`, private to `ServersGroupList.kt`) has
- * its own add button (`servers_empty_action`), reachable only when
- * [ServersState.groups] is empty — and it renders the same literal text as
- * `servers_add_action`.
+ * its own add button (`servers_empty_action`, "Add server"), reachable only when
+ * [ServersState.groups] is empty.
  * Task 2 (M7 device fixes): Home's "Add server" chip navigates here
  * regardless of whether a group already exists, so this screen needs *some*
- * add affordance in every state — but exactly one, never two identical
- * buttons at once. [showAddAction] is therefore the negation of the empty
- * state's own visibility condition: this button shows only when there is a
- * group list for the empty state to *not* be showing over.
+ * add affordance in every state — but exactly one, never two at once.
+ * [showAddAction] is therefore the negation of the empty state's own
+ * visibility condition: this button shows only when there is a group list for
+ * the empty state to *not* be showing over.
  */
 @Composable
 private fun ServersHeader(
@@ -288,24 +338,36 @@ private fun ServersHeader(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = CONTENT_HORIZONTAL_PADDING),
+        modifier =
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = CONTENT_HORIZONTAL_PADDING)
+            .padding(top = HEADER_TOP_PADDING),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = stringResource(R.string.servers_title),
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.weight(1f).padding(vertical = CONTENT_HORIZONTAL_PADDING),
+            modifier = Modifier.weight(1f),
         )
         if (showAddAction) {
-            TextButton(onClick = onAddProfile) {
-                Text(stringResource(R.string.servers_add_action))
+            FilledTonalButton(onClick = onAddProfile) {
+                Icon(
+                    painterResource(SubspaceIcons.Add),
+                    contentDescription = null,
+                    modifier = Modifier.size(BUTTON_ICON_SIZE),
+                )
+                Text(
+                    stringResource(R.string.servers_add_action),
+                    modifier = Modifier.padding(start = FILTER_CHIP_GAP / 2),
+                )
             }
         }
     }
 }
 
 /**
- * The search field, protocol chips and sort control, stacked — split out of
+ * The search field, protocol chips and default-sort control, stacked — split out of
  * [ServersScreenContent] to keep it short.
  */
 @Composable
@@ -314,10 +376,11 @@ private fun ServersFilters(
     actions: ServersActions,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
         SearchField(
             query = state.query,
-            onQueryChanged = actions.onQueryChanged,
+            onQueryChange = actions.onQueryChanged,
+            placeholder = stringResource(R.string.servers_search_placeholder),
             modifier = Modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING),
         )
 
@@ -325,10 +388,10 @@ private fun ServersFilters(
             available = state.availableProtocols,
             selected = state.protocolFilter,
             onSelected = actions.onProtocolFilterChanged,
-            modifier = Modifier.padding(top = FILTER_CHIP_GAP, start = CONTENT_HORIZONTAL_PADDING),
+            modifier = Modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING),
         )
 
-        SortControl(
+        DefaultSortRow(
             // The screen-level default. A group whose provider set
             // `subscriptions-sort-type`, or whose order the user overrode, uses
             // its own — see ServersGroup.sort.
@@ -337,32 +400,6 @@ private fun ServersFilters(
             modifier = Modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING),
         )
     }
-}
-
-@Composable
-private fun SearchField(
-    query: String,
-    onQueryChanged: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChanged,
-        modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(stringResource(R.string.servers_search_placeholder)) },
-        leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChanged("") }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.servers_search_clear_description),
-                    )
-                }
-            }
-        },
-        singleLine = true,
-    )
 }
 
 @Composable
@@ -400,33 +437,63 @@ private fun ProtocolFilterRow(
 private fun String.protocolFilterChipLabel(): String =
     if (this == ALL_PROTOCOLS_SENTINEL) stringResource(R.string.servers_protocol_filter_all) else this
 
+/** "Sort: ‹label›" with the line saying it is only the default; the menu is [SortMenu]. */
 @Composable
-internal fun SortControl(
+private fun DefaultSortRow(
     sort: SortOrder,
     onSortChanged: (SortOrder) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier) {
-        TextButton(onClick = { menuOpen = true }) {
-            Text(stringResource(R.string.servers_sort_button, stringResource(sort.labelRes())))
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            AssistChip(
+                onClick = { menuOpen = true },
+                label = { Text(stringResource(R.string.servers_sort_button, stringResource(sort.labelRes()))) },
+                trailingIcon = {
+                    Icon(
+                        painterResource(SubspaceIcons.ExpandMore),
+                        contentDescription = null,
+                        modifier = Modifier.size(BUTTON_ICON_SIZE),
+                    )
+                },
+            )
+            SortMenu(expanded = menuOpen, current = sort, onDismiss = { menuOpen = false }, onPick = onSortChanged)
         }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            SortOrder.entries.forEach { order ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(order.labelRes())) },
-                    onClick = {
-                        menuOpen = false
-                        onSortChanged(order)
-                    },
-                )
-            }
-        }
+        Text(
+            text = stringResource(R.string.servers_sort_default_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(start = FILTER_CHIP_GAP),
+        )
     }
 }
 
-private fun SortOrder.labelRes(): Int =
+/** The four orders as a [SubspaceMenu], [current] checked. Shared by the default and per-group controls. */
+@Composable
+internal fun SortMenu(
+    expanded: Boolean,
+    current: SortOrder,
+    onDismiss: () -> Unit,
+    onPick: (SortOrder) -> Unit,
+) {
+    SubspaceMenu(
+        expanded = expanded,
+        onDismiss = onDismiss,
+        items =
+        SortOrder.entries.map { order ->
+            MenuItem(
+                // The blank icon keeps every label on one left edge, as the design's tick column does.
+                icon = if (order == current) SubspaceIcons.Check else R.drawable.ic_menu_blank,
+                label = stringResource(order.labelRes()),
+                onClick = { onPick(order) },
+            )
+        },
+    )
+}
+
+internal fun SortOrder.labelRes(): Int =
     when (this) {
         SortOrder.Alphabetical -> R.string.servers_sort_alphabetical
         SortOrder.AsListed -> R.string.servers_sort_as_listed

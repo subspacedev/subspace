@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
@@ -95,6 +97,20 @@ class ServersUpdateResultTest {
         )
 
         composeRule.onNodeWithTag(SERVERS_UPDATE_RESULT_TEST_TAG).performClick()
+
+        dismissed shouldBe true
+    }
+
+    @Test
+    fun swipingTheBannerAwayDismissesIt() {
+        var dismissed = false
+        setContent(
+            state = ServersState(updateResult = UserMessage(R.string.subscription_error_hwid_required)),
+            onDismissUpdateResult = { dismissed = true },
+        )
+
+        composeRule.onNodeWithTag(SERVERS_UPDATE_RESULT_TEST_TAG).performTouchInput { swipeRight() }
+        composeRule.waitForIdle()
 
         dismissed shouldBe true
     }

@@ -7,12 +7,12 @@
 
     <!-- The header action that opens AddServerSheet. Distinct from
          servers_empty_action, which is the empty state's own button: this one
-         is present whenever the screen is, so a user with existing groups is
-         not left hunting through a group's overflow menu. -->
-    <string name="servers_add_action">Add server</string>
+         is present whenever there are groups, so a user with existing groups is
+         not left hunting through a group's overflow menu. Short ("Add") per the
+         M8.6 design; the empty state keeps the longer "Add server". -->
+    <string name="servers_add_action">Add</string>
 
-    <string name="servers_search_placeholder">Search servers</string>
-    <string name="servers_search_clear_description">Clear search</string>
+    <string name="servers_search_placeholder">Search name or transport</string>
 
     <!-- The "no protocol filter" chip. ServersState.ALL_PROTOCOLS_SENTINEL is
          a domain sentinel compared in Kotlin, never rendered directly — this
@@ -36,11 +36,18 @@
          number obtainable in that state times that app's local endpoint, not the
          server — a device run produced 1 ms for Singapore. -->
     <string name="servers_latency_foreign_vpn">Another VPN</string>
-    <string name="servers_latency_description">%1$s latency</string>
-    <string name="servers_test_one">Test %1$s</string>
     <string name="servers_test_group">Test all</string>
     <string name="servers_test_cancel">Stop testing</string>
-    <string name="servers_sort_from_provider">Order set by provider</string>
+    <!-- Beside the screen-level sort chip (M8.6 design). -->
+    <string name="servers_sort_default_hint">Default for every group</string>
+    <!-- The group measure bar's marker, then the explanation (M8.6 Part 3 R5): the
+         user's per-group sort overrides the provider's order; only the default is ignored. -->
+    <string name="servers_sort_provider_marker">Provider\'s order</string>
+    <string name="servers_sort_provider_note">The default sort doesn\'t apply here; pick a sort to override</string>
+
+    <!-- %1$s = the server just picked; the action reverts to the previous one. -->
+    <string name="servers_switched">Switched to %1$s</string>
+    <string name="servers_switched_undo">Undo</string>
 
     <string name="servers_empty_title">No servers yet</string>
     <string name="servers_empty_body">Import a subscription or paste a config to add your first server.</string>
@@ -58,16 +65,8 @@
          and any other transport (kcp, httpupgrade, hysteria), is unconnectable in
          this build. Deliberately doesn't say "protocol" — it must stay honest for
          both reasons a row can land here. -->
-    <string name="servers_not_connectable">Not supported by this build yet</string>
-    <string name="servers_no_longer_offered">No longer offered by this provider</string>
-
-    <!-- %1$s = server name, %2$s = protocol (e.g. "VLESS"), %3$s = transport
-         summary (e.g. "ws · tls · 443") — never an address, uuid, or key. -->
-    <string name="servers_row_description_select">Select %1$s as active server, %2$s, %3$s</string>
-    <string name="servers_row_description_active">%1$s, %2$s, %3$s, currently active</string>
-    <!-- Task 21: the row's edit button, separate from the row tap itself
-         (which sets the profile active) — opens the profile editor. -->
-    <string name="servers_row_edit_description">Edit %1$s</string>
+    <string name="servers_not_connectable">Can\'t connect with this build</string>
+    <string name="servers_no_longer_offered">No longer offered by the provider</string>
 
     <string name="servers_rename_group_title">Rename group</string>
     <string name="servers_rename_group_confirm">Rename</string>

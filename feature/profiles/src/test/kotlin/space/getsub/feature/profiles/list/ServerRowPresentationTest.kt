@@ -9,7 +9,7 @@ import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 
 /**
- * Defect 1 (device-fixes finding): the code tile in [ServerRowItem] took two
+ * Defect 1 (device-fixes finding): the code tile in the Servers row took two
  * `Char`s off [ServerRow.name] for its label. A `String` is UTF-16, so an
  * emoji like the rocket in the real fixture names below is a surrogate
  * pair — one `Char` alone from it is an unpaired surrogate, which renders as

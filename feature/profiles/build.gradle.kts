@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.compose")
     id("subspace.android.hilt")
+    // M8.6 spec §7.1: screenshot tests for the Servers screen in all four themes.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -65,4 +67,10 @@ dependencies {
     // Same espresso-core pin core/ui/build.gradle.kts explains in full —
     // 3.5.0's reflective InputManager lookup is gone on API 37.
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`, so an alpha BOM bump
+// cannot silently restyle a component.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }

@@ -39,16 +39,26 @@ class ServerRowTest {
     /** Fix S2: the reason comes first on an unsupported server. */
     @Test
     fun anUnsupportedRowShowsItsReason() {
+        var selected = 0
+        var tested = 0
+        var edited = 0
         rule.setContent {
             SubspaceTheme(dynamicColor = false) {
                 ServerRow(
                     flag = "🇫🇮", name = "Helsinki Edge", detail = "TROJAN · WS · TLS", latencyText = "—",
                     selected = false, enabled = false, rank = null, note = "can't connect with this build",
-                    onSelect = {}, onTestLatency = {}, onEdit = {},
+                    onSelect = { selected++ }, onTestLatency = { tested++ }, onEdit = { edited++ },
                 )
             }
         }
         rule.onNodeWithText("can't connect with this build").assertExists()
         rule.onNodeWithContentDescription("Edit Helsinki Edge").assertExists()
+        // enabled = false disables the latency pill only; selecting and editing still work.
+        rule.onNodeWithText("—").performClick()
+        tested shouldBe 0
+        rule.onNodeWithText("Helsinki Edge").performClick()
+        selected shouldBe 1
+        rule.onNodeWithContentDescription("Edit Helsinki Edge").performClick()
+        edited shouldBe 1
     }
 }

@@ -43,6 +43,12 @@ private const val UNSUPPORTED_ALPHA = 0.6f
  * thing on the row the user needs to read, in `error`, and 0.6 alpha took it
  * to 2.83:1. The edit button stays at full strength too, since editing is how
  * the user fixes the row.
+ *
+ * [enabled] false disables only the latency pill: there is nothing to re-test
+ * on a server this build cannot run. The row itself stays selectable, because
+ * picking a server is a settings write and the service refuses an unrunnable
+ * one on its own (M8.6 Part 3 review focus 4); a dead row that ignores taps
+ * would hide that decision from the user.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -70,7 +76,7 @@ fun ServerRow(
     ) {
         Row(
             Modifier
-                .clickable(enabled = enabled, role = Role.Button, onClick = onSelect)
+                .clickable(role = Role.Button, onClick = onSelect)
                 .heightIn(min = 64.dp)
                 .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
