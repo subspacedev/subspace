@@ -10,17 +10,22 @@
 
 package space.getsub.feature.profiles.list
 
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import space.getsub.core.ui.component.SubspaceDialog
+import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.profiles.R
 
 /**
@@ -70,17 +75,24 @@ private fun RenameGroupDialog(
     onDismiss: () -> Unit,
 ) {
     var text by remember(group.id) { mutableStateOf(group.name) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.servers_rename_group_title)) },
-        text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) {
-                Text(stringResource(R.string.servers_rename_group_confirm))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.servers_dialog_cancel)) } },
-    )
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(group.id) { focus.requestFocus() }
+    SubspaceDialog(
+        title = stringResource(R.string.servers_rename_group_title),
+        confirmLabel = stringResource(R.string.servers_rename_group_confirm),
+        onConfirm = { onConfirm(text) },
+        dismissLabel = stringResource(R.string.servers_dialog_cancel),
+        onDismiss = onDismiss,
+        confirmEnabled = text.isNotBlank(),
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            singleLine = true,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        )
+    }
 }
 
 /**
@@ -94,23 +106,19 @@ private fun DeleteGroupDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.servers_delete_group_title, group.name)) },
-        text = {
-            Text(
-                pluralStringResource(
-                    R.plurals.servers_delete_group_message,
-                    group.totalProfileCount,
-                    group.totalProfileCount,
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.servers_delete_group_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.servers_dialog_cancel)) }
-        },
+    SubspaceDialog(
+        title = stringResource(R.string.servers_delete_group_title, group.name),
+        body =
+        pluralStringResource(
+            R.plurals.servers_delete_group_message,
+            group.totalProfileCount,
+            group.totalProfileCount,
+        ),
+        confirmLabel = stringResource(R.string.servers_delete_group_confirm),
+        onConfirm = onConfirm,
+        dismissLabel = stringResource(R.string.servers_dialog_cancel),
+        onDismiss = onDismiss,
+        icon = SubspaceIcons.Delete,
+        destructive = true,
     )
 }

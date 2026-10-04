@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -54,6 +55,23 @@ class OverlaysSnapshotTest {
                 icon = SubspaceIcons.BatterySaver,
                 destructive = false,
             )
+        }
+
+    @Test
+    fun inputDialog() =
+        paparazzi.snapshotThemes("dialog-input") {
+            SubspaceDialogSurface(
+                title = "Rename group",
+                confirmLabel = "Rename",
+                onConfirm = {},
+                dismissLabel = "Cancel",
+                onDismiss = {},
+                icon = null,
+                destructive = false,
+                confirmEnabled = true,
+            ) {
+                OutlinedTextField(value = "Local configs", onValueChange = {}, singleLine = true)
+            }
         }
 
     @Test

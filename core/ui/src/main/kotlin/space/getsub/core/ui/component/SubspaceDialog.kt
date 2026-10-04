@@ -7,6 +7,7 @@ package space.getsub.core.ui.component
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -45,8 +46,43 @@ fun SubspaceDialog(
     @DrawableRes icon: Int? = null,
     destructive: Boolean = false,
 ) {
+    SubspaceDialog(
+        title = title,
+        confirmLabel = confirmLabel,
+        onConfirm = onConfirm,
+        dismissLabel = dismissLabel,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        icon = icon,
+        destructive = destructive,
+    ) {
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * The same dialog with a content slot in place of the body text, for a dialog that asks for
+ * something (the Servers rename field). [confirmEnabled] gates the confirm button only; the
+ * dismiss action is always live.
+ */
+@Suppress("LongParameterList")
+@Composable
+fun SubspaceDialog(
+    title: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    dismissLabel: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    @DrawableRes icon: Int? = null,
+    destructive: Boolean = false,
+    confirmEnabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     BasicAlertDialog(onDismissRequest = onDismiss, modifier = modifier) {
-        SubspaceDialogContent(title, body, confirmLabel, onConfirm, dismissLabel, onDismiss, icon, destructive)
+        SubspaceDialogSurface(
+            title, confirmLabel, onConfirm, dismissLabel, onDismiss, icon, destructive, confirmEnabled, content,
+        )
     }
 }
 
@@ -63,6 +99,25 @@ internal fun SubspaceDialogContent(
     @DrawableRes icon: Int?,
     destructive: Boolean,
 ) {
+    SubspaceDialogSurface(title, confirmLabel, onConfirm, dismissLabel, onDismiss, icon, destructive, true) {
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The slot version of [SubspaceDialogContent]; both overloads of [SubspaceDialog] end up here. */
+@Suppress("LongParameterList")
+@Composable
+internal fun SubspaceDialogSurface(
+    title: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    dismissLabel: String,
+    onDismiss: () -> Unit,
+    @DrawableRes icon: Int?,
+    destructive: Boolean,
+    confirmEnabled: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(
         shape = SubspaceShapeTokens.dialog,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -72,14 +127,14 @@ internal fun SubspaceDialogContent(
                 Icon(
                     painterResource(icon),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.secondary,
+                    tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.height(16.dp))
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(16.dp))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
             Spacer(Modifier.height(24.dp))
             Row(
                 Modifier.align(Alignment.End),
@@ -90,6 +145,7 @@ internal fun SubspaceDialogContent(
                 if (destructive) {
                     Button(
                         onClick = onConfirm,
+                        enabled = confirmEnabled,
                         colors =
                         ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
@@ -97,7 +153,7 @@ internal fun SubspaceDialogContent(
                         ),
                     ) { Text(confirmLabel) }
                 } else {
-                    TextButton(onClick = onConfirm) { Text(confirmLabel) }
+                    TextButton(onClick = onConfirm, enabled = confirmEnabled) { Text(confirmLabel) }
                 }
             }
         }

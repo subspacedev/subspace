@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.profiles.list
 
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -147,5 +148,14 @@ class ServersDialogsTest {
 
         dismissed shouldBe true
         confirmed shouldBe false
+    }
+
+    @Test
+    fun renameIsDisabledWhenTheNameIsBlank() {
+        composeRule.setContent {
+            SubspaceTheme { ServersDialogs(renameTarget = group, deleteTarget = null, actions = noopActions()) }
+        }
+        composeRule.onNodeWithText("Local configs").performTextReplacement("   ")
+        composeRule.onNodeWithText("Rename").assertIsNotEnabled()
     }
 }

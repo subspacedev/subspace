@@ -53,12 +53,14 @@ class AddServerSheetTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @Suppress("LongParameterList")
     private fun setContent(
         state: ImportState = ImportState(),
         onInputChanged: (String) -> Unit = {},
         onImportClick: () -> Unit = {},
         onImportFromFileClick: () -> Unit = {},
         onScanClick: () -> Unit = {},
+        onImportClipboardClick: () -> Unit = {},
     ) {
         composeRule.setContent {
             SubspaceTheme {
@@ -73,6 +75,7 @@ class AddServerSheetTest {
                         // Not this file's concern — AddServerSheetSubscriptionTest
                         // (Task 13) owns the "From subscription URL" route.
                         onAddSubscription = {},
+                        onImportClipboardClick = onImportClipboardClick,
                     ),
                 )
             }
@@ -230,5 +233,21 @@ class AddServerSheetTest {
         composeRule.onNodeWithText("Hide failures").performClick()
 
         composeRule.onNodeWithText("Entry 1 could not be read").assertDoesNotExist()
+    }
+
+    @Test
+    fun tappingImportFromClipboardInvokesItsCallback() {
+        var clicked = false
+        setContent(onImportClipboardClick = { clicked = true })
+
+        composeRule.onNodeWithText("Import from clipboard").performClick()
+
+        clicked shouldBe true
+    }
+
+    @Test
+    fun importFromClipboardIsDisabledWhileBusy() {
+        setContent(state = ImportState(busy = true))
+        composeRule.onNodeWithText("Import from clipboard").assertIsNotEnabled()
     }
 }

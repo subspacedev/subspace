@@ -94,6 +94,11 @@
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
          same import(raw) path this whole sheet already uses. -->
     <string name="import_scan_qr_button">Scan QR code</string>
+    <string name="import_from_clipboard_button">Import from clipboard</string>
+    <string name="import_from_clipboard_supporting">Share links, a subscription, or a config you copied</string>
+    <string name="import_from_file_supporting">Pick a text, YAML, or JSON file</string>
+    <string name="import_scan_qr_supporting">Read a server QR code with the camera</string>
+    <string name="import_working">Working…</string>
     <!-- Fix round 1, finding 2: shown when the picked file could not be read
          at all (a stale/revoked URI, or an I/O error mid-read) — never the
          underlying exception's own message, which can carry a path or
@@ -148,6 +153,7 @@
          only the closed FetchFailure/SyncResult vocabulary UserMessage
          carries (see SyncResult.toUserMessage() in ImportViewModel.kt). -->
     <string name="add_subscription_title">From subscription URL</string>
+    <string name="add_subscription_supporting">Add a provider\'s URL and keep it updated</string>
     <string name="add_subscription_hint">https://…</string>
     <string name="add_subscription_action">Add subscription</string>
     <!-- %1$d = ProfileRepository-equivalent rows actually written by the
