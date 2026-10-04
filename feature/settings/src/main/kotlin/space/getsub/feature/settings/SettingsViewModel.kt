@@ -141,6 +141,14 @@ constructor(
             .onEach { enabled -> _state.update { it.copy(lightweightMode = enabled) } }
             .launchIn(viewModelScope)
 
+        settingsSource.activeRuleSetName
+            .onEach { name -> _state.update { it.copy(activeRuleSetName = name) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.perApp
+            .onEach { selection -> _state.update { it.copy(perApp = selection) } }
+            .launchIn(viewModelScope)
+
         settingsSource.dynamicColor
             .onEach { enabled -> _state.update { it.copy(dynamicColor = enabled) } }
             .launchIn(viewModelScope)

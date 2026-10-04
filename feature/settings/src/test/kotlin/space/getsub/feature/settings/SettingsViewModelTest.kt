@@ -30,6 +30,7 @@ import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 
 /**
@@ -201,6 +202,11 @@ class SettingsViewModelTest {
         override suspend fun setLightweightMode(enabled: Boolean) {
             _lightweightMode.value = enabled
         }
+
+        val activeRuleSet = MutableStateFlow<String?>(null)
+        override val activeRuleSetName: Flow<String?> = activeRuleSet.asStateFlow()
+        val perAppSelection = MutableStateFlow(PerAppSelection.OFF)
+        override val perApp: Flow<PerAppSelection> = perAppSelection.asStateFlow()
 
         private val _dynamicColor = MutableStateFlow(true)
         override val dynamicColor: Flow<Boolean> = _dynamicColor.asStateFlow()
@@ -910,6 +916,24 @@ class SettingsViewModelTest {
             viewModel.onDynamicColorChanged(false)
             advanceUntilIdle()
             source.dynamicColorWrites shouldBe listOf(false)
+        }
+
+    @Test
+    fun `the hub's routing and per-app inputs reach state`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+            advanceUntilIdle()
+            vm.state.value.activeRuleSetName shouldBe null
+            vm.state.value.perApp shouldBe PerAppSelection.OFF
+
+            val selection = PerAppSelection(space.getsub.core.model.PerAppMode.AllowList, setOf("a"))
+            source.activeRuleSet.value = "Work"
+            source.perAppSelection.value = selection
+            advanceUntilIdle()
+
+            vm.state.value.activeRuleSetName shouldBe "Work"
+            vm.state.value.perApp shouldBe selection
         }
 
     // ── Lightweight mode (2026-10-03) ────────────────────────────────────────

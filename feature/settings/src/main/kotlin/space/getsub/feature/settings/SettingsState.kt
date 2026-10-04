@@ -9,6 +9,7 @@ import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.GeoSource
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 
 /**
@@ -107,6 +108,10 @@ internal data class SettingsState(
      * connect, and is deliberately not restarted just to apply a diagnostic.
      */
     val sessionConnected: Boolean = false,
+    /** The active routing rule set's name, for the hub row. Displayed, never logged. Null when none. */
+    val activeRuleSetName: String? = null,
+    /** The **effective** per-app selection (the one `:service` applies), for the hub row. */
+    val perApp: PerAppSelection = PerAppSelection.OFF,
 ) {
     /** One row per install filename. See [geoRowsFor]'s KDoc for exactly how ground truth is chosen. */
     val geoRows: List<GeoRow>
