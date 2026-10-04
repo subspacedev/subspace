@@ -148,14 +148,14 @@ internal fun HomeScreenContent(
 
         HomeChips(state, actions)
 
-        StatTilesRow(state = state, onTest = actions.onTestLatency)
-
-        // The active server sits right under the tiles that measure it (owner, 2026-10-04).
+        // The active server comes first after the hero (owner, 2026-10-04).
         ActiveServerCard(
             state = state,
             onNavigateToServers = actions.onNavigateToServers,
             onAddServer = actions.onAddServer,
         )
+
+        StatTilesRow(state = state, onTest = actions.onTestLatency)
 
         HomeThroughputCard(state = state)
 

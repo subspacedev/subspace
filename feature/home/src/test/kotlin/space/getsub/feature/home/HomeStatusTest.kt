@@ -65,7 +65,7 @@ class HomeStatusTest {
     @Test
     fun `open reconnecting still discloses that traffic is unprotected`() {
         ConnectionState.Reconnecting(FailureReason.CoreStartFailed, 1, blocked = false).detail() shouldBe
-            HomeDetail.NotProtectedTapToStop
+            HomeDetail.NotProtected
     }
 
     @Test
@@ -94,9 +94,8 @@ class HomeStatusTest {
     }
 
     @Test
-    fun `disconnected with a connectable server hints at tapping the blob`() {
-        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("tcp")).detail() shouldBe
-            HomeDetail.TapToConnect
+    fun `disconnected with a connectable server needs no detail, the blob says Connect`() {
+        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("tcp")).detail() shouldBe null
     }
 
     @Test
@@ -134,5 +133,32 @@ class HomeStatusTest {
         PerAppSelection(PerAppMode.AllowList, setOf("a", "b", "c")).toAppsChip() shouldBe AppsChip.AllowList(3)
         PerAppSelection(PerAppMode.AllowList, emptySet()).toAppsChip() shouldBe AppsChip.AllowList(0)
         PerAppSelection(PerAppMode.DenyList, setOf("a")).toAppsChip() shouldBe AppsChip.DenyList(1)
+    }
+
+    /** The one status line, label then detail, for every state Home draws (M8.6 spec §3.3, amended 2026-10-04). */
+    @Test
+    fun `status line for every state`() {
+        fun line(connection: ConnectionState, server: StoredProfile? = profile("tcp")) =
+            HomeState(connection = connection, activeProfile = server).statusLine()
+
+        line(ConnectionState.Disconnected) shouldBe StatusLine(R.string.state_disconnected, null)
+        line(ConnectionState.Disconnected, server = null) shouldBe
+            StatusLine(R.string.state_disconnected, HomeDetail.ChooseServer)
+        line(ConnectionState.Disconnected, server = profile("kcp")) shouldBe
+            StatusLine(R.string.state_disconnected, null)
+        line(ConnectionState.Connecting(StartupStage.StartingCore)) shouldBe
+            StatusLine(R.string.stage_starting_core, HomeDetail.Step(4, 6))
+        line(connected(Health.Open)) shouldBe
+            StatusLine(R.string.state_connected, HomeDetail.Uptime(1_000L, idle = false))
+        line(connected(Health.Idle)) shouldBe
+            StatusLine(R.string.state_connected, HomeDetail.Uptime(1_000L, idle = true))
+        line(connected(Health.Stalled)) shouldBe StatusLine(R.string.home_state_stalled, HomeDetail.NothingComingBack)
+        line(ConnectionState.Reconnecting(FailureReason.CoreStartFailed, 1, blocked = false)) shouldBe
+            StatusLine(R.string.home_state_reconnecting_open, HomeDetail.NotProtected)
+        line(ConnectionState.Reconnecting(FailureReason.CoreStartFailed, 1, blocked = true)) shouldBe
+            StatusLine(R.string.home_state_reconnecting_blocked, HomeDetail.KillSwitchHolding)
+        line(ConnectionState.Disconnecting) shouldBe StatusLine(R.string.state_disconnecting, HomeDetail.TearingDown)
+        line(failure(FailureReason.CoreStartFailed, "boom")) shouldBe
+            StatusLine(R.string.failure_core_start, HomeDetail.FailureText("boom"))
     }
 }

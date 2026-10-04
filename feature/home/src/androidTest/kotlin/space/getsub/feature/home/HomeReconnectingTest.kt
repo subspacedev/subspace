@@ -36,8 +36,8 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("Reconnecting").assertIsDisplayed()
-        composeRule.onNodeWithText("Connected").assertDoesNotExist()
+        composeRule.onNodeWithText("Reconnecting · Traffic is not protected").assertIsDisplayed()
+        composeRule.onNodeWithText("Connected", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -53,7 +53,7 @@ class HomeReconnectingTest {
         // "The core failed to start". That is the text a Reconnecting-rendered-as-Failed
         // regression would actually put on screen, so that is what must be absent.
         composeRule.onNodeWithText("The core failed to start", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Reconnecting").assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnecting", substring = true).assertIsDisplayed()
     }
 
     /**
@@ -115,7 +115,7 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("Blocked").assertIsDisplayed()
+        composeRule.onNodeWithText("Blocked · Kill switch holding traffic").assertIsDisplayed()
         // The ARCHITECTURE.md §5.5 banner.
         composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertIsDisplayed()
     }

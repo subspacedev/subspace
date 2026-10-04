@@ -7,7 +7,9 @@ import app.cash.paparazzi.Paparazzi
 import com.android.resources.Density
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
+import space.getsub.core.model.StartupStage
 import space.getsub.core.model.failure
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
@@ -32,6 +34,25 @@ class HomeLongTextSnapshotTest {
                 activeRuleSetName = "R".repeat(60),
             )
         paparazzi.snapshot(name = "home-long-text-${ThemeVariant.FriendlyLight.fileSuffix}") {
+            SubspacePreviewTheme(ThemeVariant.FriendlyLight) {
+                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
+            }
+        }
+    }
+
+    /**
+     * The longest one-line status at 360 dp: "Establishing tunnel interface… ·
+     * Step 5 of 6". Only a failure's detail may wrap.
+     */
+    @Test
+    fun longestStatusLine() {
+        val state =
+            HomeState(
+                connection = ConnectionState.Connecting(StartupStage.EstablishingTun),
+                activeProfile = profile,
+                hasAnyProfile = true,
+            )
+        paparazzi.snapshot(name = "home-longest-status-${ThemeVariant.FriendlyLight.fileSuffix}") {
             SubspacePreviewTheme(ThemeVariant.FriendlyLight) {
                 HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
             }

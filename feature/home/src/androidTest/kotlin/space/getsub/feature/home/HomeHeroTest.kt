@@ -42,7 +42,7 @@ class HomeHeroTest {
     fun connectIsDisabledWithNothingToConnectTo() {
         setContent(HomeState(connection = ConnectionState.Disconnected, activeProfile = null))
         composeRule.onNodeWithContentDescription("Disconnected").assertIsNotEnabled().assert(clickLabel(null))
-        composeRule.onNodeWithText("Choose a server first").assertIsDisplayed()
+        composeRule.onNodeWithText("Disconnected · Choose a server first").assertIsDisplayed()
         composeRule.onNodeWithText("Tap the blob", substring = true).assertDoesNotExist()
     }
 
@@ -84,7 +84,7 @@ class HomeHeroTest {
         composeRule.onNodeWithContentDescription("Starting core", substring = true)
             .assertIsNotEnabled()
             .assert(clickLabel(null))
-        composeRule.onNodeWithText("Step 4 of 6").assertIsDisplayed()
+        composeRule.onNodeWithText("Step 4 of 6", substring = true).assertIsDisplayed()
     }
 
     @Test

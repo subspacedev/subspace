@@ -23,7 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import space.getsub.core.ui.component.BannerTone
@@ -71,7 +74,7 @@ internal fun HomeTopBar(
 }
 
 /**
- * The blob (with the action word inside it), label, detail and the
+ * The blob (with the action word inside it), the one status line and the
  * unsupported note. There is no separate Connect / Disconnect button: the
  * blob is the control (M8.6 spec §4.1, amended 2026-10-04 at the owner's
  * request).
@@ -83,7 +86,8 @@ internal fun HomeHero(
     nowMillis: () -> Long,
     modifier: Modifier = Modifier,
 ) {
-    val label = stringResource(state.connection.labelRes())
+    val status = state.statusLine()
+    val label = stringResource(status.labelRes)
     val action = state.primaryAction()
     // canConnect gates the tap rather than the blob (which has no notion of
     // "nothing to connect to"); see HomeState.canConnect's KDoc. Reconnecting's
@@ -97,7 +101,7 @@ internal fun HomeHero(
     val tappable =
         action == HomePrimaryAction.Disconnect || (action == HomePrimaryAction.Connect && state.canConnect)
     // The word is offered only when a tap will do it: with nothing chosen,
-    // "Choose a server first" (the detail line) explains instead, and
+    // "Choose a server first" (the status line) explains instead, and
     // Connecting / Disconnecting show only the loader.
     val actionText =
         if (!tappable) {
@@ -127,13 +131,7 @@ internal fun HomeHero(
             Modifier.padding(horizontal = ConnectBlobDefaults.GlowClearance, vertical = BLOB_VERTICAL_SPACE),
         )
 
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-        )
-
-        HomeDetailLine(state.detail(), nowMillis)
+        HomeStatusLine(label, status.detail, nowMillis)
 
         if (state.activeProfileUnsupported) {
             Text(
@@ -153,22 +151,37 @@ internal fun HomeHero(
     }
 }
 
+/**
+ * The state on one line, as one text node: the label in titleMedium, then
+ * " · " and the detail in the detail colour ("Connected · Up 12:04"). Only a
+ * failure's redacted detail is long enough to wrap.
+ */
 @Composable
-private fun HomeDetailLine(
+private fun HomeStatusLine(
+    label: String,
     detail: HomeDetail?,
     nowMillis: () -> Long,
 ) {
-    if (detail == null) return
-    val failed = detail is HomeDetail.FailureText
+    val typography = MaterialTheme.typography
+    val labelStyle = typography.titleMedium
+    val scheme = MaterialTheme.colorScheme
+    val detailColor = if (detail is HomeDetail.FailureText) scheme.error else scheme.onSurfaceVariant
+    val separator = stringResource(R.string.home_status_separator)
+    val detailString = detail?.let { detailText(it, nowMillis) }
+    val text =
+        buildAnnotatedString {
+            withStyle(labelStyle.toSpanStyle().copy(color = scheme.onSurface)) { append(label) }
+            if (detailString != null) {
+                withStyle(SpanStyle(color = detailColor)) {
+                    append(separator)
+                    append(detailString)
+                }
+            }
+        }
     Text(
-        text = detailText(detail, nowMillis),
-        style =
-        if (failed) {
-            MaterialTheme.typography.bodySmall
-        } else {
-            MaterialTheme.typography.bodyMedium.tabular()
-        },
-        color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        text = text,
+        // The detail's own size; the line height fits the label's larger type.
+        style = typography.bodyMedium.tabular().copy(lineHeight = labelStyle.lineHeight),
         textAlign = TextAlign.Center,
     )
 }
@@ -213,7 +226,6 @@ private fun detailText(
     nowMillis: () -> Long,
 ): String =
     when (detail) {
-        HomeDetail.TapToConnect -> stringResource(R.string.home_detail_disconnected)
         HomeDetail.ChooseServer -> stringResource(R.string.home_detail_choose_server)
         is HomeDetail.Step -> stringResource(R.string.home_detail_step, detail.number, detail.of)
         is HomeDetail.Uptime ->
@@ -222,7 +234,7 @@ private fun detailText(
                 DateUtils.formatElapsedTime(elapsedSecondsSince(detail.sinceEpochMillis, nowMillis)),
             )
         HomeDetail.NothingComingBack -> stringResource(R.string.home_detail_stalled)
-        HomeDetail.NotProtectedTapToStop -> stringResource(R.string.home_detail_reconnecting_open)
+        HomeDetail.NotProtected -> stringResource(R.string.home_detail_reconnecting_open)
         HomeDetail.KillSwitchHolding -> stringResource(R.string.home_detail_blocked)
         HomeDetail.TearingDown -> stringResource(R.string.home_detail_disconnecting)
         // Redacted at construction (ARCHITECTURE.md §5.6), so safe to show; the only

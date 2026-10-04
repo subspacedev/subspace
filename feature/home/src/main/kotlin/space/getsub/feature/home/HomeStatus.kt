@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.home
 
+import androidx.annotation.StringRes
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
@@ -9,10 +10,12 @@ import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.StartupStage
 
-/** The line under Home's label (M8.6 spec §3.3). Resolved to text by the screen. */
+/**
+ * The detail after Home's state label on its one status line (M8.6 spec §3.3,
+ * amended 2026-10-04). Resolved to text by the screen. Nothing repeats what
+ * the blob's own word already offers.
+ */
 internal sealed interface HomeDetail {
-    data object TapToConnect : HomeDetail
-
     /** Disconnected with nothing connectable selected; a tap could not connect (M8.6 spec §3.3). */
     data object ChooseServer : HomeDetail
 
@@ -22,7 +25,8 @@ internal sealed interface HomeDetail {
 
     data object NothingComingBack : HomeDetail
 
-    data object NotProtectedTapToStop : HomeDetail
+    /** The M8.5 spec §4.2 disclosure; the exit is the blob's Disconnect. */
+    data object NotProtected : HomeDetail
 
     data object KillSwitchHolding : HomeDetail
 
@@ -38,18 +42,35 @@ internal sealed interface HomeDetail {
  * and say nothing for an unsupported one, as [HomeState.activeProfileUnsupported]'s
  * note already explains. Every other state reads from [ConnectionState.detail].
  */
+/**
+ * Home's one status line: the state label, then its detail if it has one
+ * ("Connected · Up 12:04"). The blob's content description is the label
+ * alone.
+ */
+internal data class StatusLine(
+    @StringRes val labelRes: Int,
+    val detail: HomeDetail?,
+)
+
+internal fun HomeState.statusLine(): StatusLine = StatusLine(connection.labelRes(), detail())
+
+/**
+ * Disconnected has a detail only when a tap could not connect: with a
+ * connectable server the blob's "Connect" says it all, and an unsupported
+ * server has its own note.
+ */
 internal fun HomeState.detail(): HomeDetail? =
     when {
         connection != ConnectionState.Disconnected -> connection.detail()
-        canConnect -> HomeDetail.TapToConnect
+        canConnect -> null
         activeProfileUnsupported -> null
         else -> HomeDetail.ChooseServer
     }
 
 /** Every state except Disconnected, whose line depends on [HomeState]; see [HomeState.detail]. */
-internal fun ConnectionState.detail(): HomeDetail =
+internal fun ConnectionState.detail(): HomeDetail? =
     when (this) {
-        ConnectionState.Disconnected -> HomeDetail.TapToConnect
+        ConnectionState.Disconnected -> null
         is ConnectionState.Connecting -> HomeDetail.Step(stage.ordinal + 1, StartupStage.entries.size)
         is ConnectionState.Connected ->
             when (health) {
@@ -58,7 +79,7 @@ internal fun ConnectionState.detail(): HomeDetail =
                 Health.Open -> HomeDetail.Uptime(sinceEpochMillis, idle = false)
             }
         is ConnectionState.Reconnecting ->
-            if (blocked) HomeDetail.KillSwitchHolding else HomeDetail.NotProtectedTapToStop
+            if (blocked) HomeDetail.KillSwitchHolding else HomeDetail.NotProtected
         ConnectionState.Disconnecting -> HomeDetail.TearingDown
         is ConnectionState.Failed -> HomeDetail.FailureText(detail)
     }

@@ -91,8 +91,9 @@
          reflects when it is shown, not what it claims. -->
     <string name="home_breakdown_unavailable_passthrough">Per-server traffic isn\'t available for this connection right now</string>
 
-    <!-- M8.6 spec §3.3 detail lines. Sentence case (fix A3). -->
-    <string name="home_detail_disconnected">Tap the blob to go dark</string>
+    <!-- M8.6 spec §3.3 detail lines, shown after the state label on one line. Sentence case (fix A3). -->
+    <!-- Between the state label and its detail: "Connected · Up 12:04". -->
+    <string name="home_status_separator" translatable="false">" · "</string>
     <string name="home_detail_choose_server">Choose a server first</string>
     <!-- %1$d is the stage's position, %2$d the number of stages. -->
     <string name="home_detail_step">Step %1$d of %2$d</string>
@@ -101,7 +102,7 @@
     <string name="home_detail_uptime_idle">Up %1$s · no recent traffic</string>
     <string name="home_detail_stalled">Nothing coming back</string>
     <!-- M8.6 Part 2 ruling R2: the M8.5 spec §4.2 disclosure stays. -->
-    <string name="home_detail_reconnecting_open">Traffic is not protected · tap to stop</string>
+    <string name="home_detail_reconnecting_open">Traffic is not protected</string>
     <string name="home_detail_blocked">Kill switch holding traffic</string>
     <string name="home_detail_disconnecting">Tearing down tun</string>
     <!-- M8.6 spec §5.5 -->
