@@ -40,8 +40,6 @@ import androidx.compose.ui.unit.dp
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.ui.theme.RobotoMonoFontFamily
 import space.getsub.feature.profiles.R
-import java.text.BreakIterator
-import java.util.Locale
 
 private val CODE_TILE_SIZE = 40.dp
 private val NOTICE_ICON_SIZE = 14.dp
@@ -275,48 +273,4 @@ private fun ServerRow.contentDescription(): String {
             if (droppedFromSubscriptionAt != null) add(stringResource(R.string.servers_no_longer_offered))
         }
     return if (notices.isEmpty()) base else "$base, ${notices.joinToString(", ")}"
-}
-
-/**
- * The code tile's label: the first grapheme cluster of up to two words in
- * [this] that actually start with a letter or digit — e.g. "Frankfurt" ->
- * "F", "US East" -> "UE".
- *
- * Device-fixes finding: real profile names lead with an emoji (`"🚀 Авто |
- * Лучший сервер 🇪🇺"`) or carry a flag mid-string (`"Хельсинки 🇫🇮 XHTTP"`).
- * A `String` is UTF-16, so the rocket is a surrogate pair and each half of a
- * flag is a regional-indicator code point that is *itself* a surrogate pair
- * — taking `Char`s (the previous `take(1)`/`take(2)`) or even whole code
- * points off the front could still land mid-pair or mid-flag, producing an
- * unpaired surrogate that renders as `<27>`.
- *
- * The fix is two-layered:
- *  - Skip whole words that carry no letter/digit at all (an emoji, a flag,
- *    a bare `|` separator) rather than truncating into them. A letter is
- *    what makes a tile useful for scanning a list; an emoji is not, and a
- *    name starting with one should not make its tile any less legible than
- *    a name that doesn't.
- *  - Read a qualifying word's *first grapheme cluster* via [BreakIterator],
- *    not its first `Char` or even its first code point, since a combining
- *    mark can still trail a single-code-point base letter.
- *
- * A name with no letter/digit anywhere — blank, or entirely emoji/symbols —
- * falls back to `"?"`, the same sentinel the empty-name case already used.
- * Pure function of [this]: the same name always produces the same tile.
- */
-internal fun String.codeTileInitials(): String {
-    val letteredWords =
-        trim()
-            .split(Regex("\\s+"))
-            .filter { it.isNotEmpty() && Character.isLetterOrDigit(it.codePointAt(0)) }
-    if (letteredWords.isEmpty()) return "?"
-    return letteredWords.take(2).joinToString("") { it.firstGraphemeCluster().uppercase(Locale.ROOT) }
-}
-
-/** The substring up to [this]'s first grapheme-cluster boundary, per [BreakIterator]. */
-private fun String.firstGraphemeCluster(): String {
-    val boundary = BreakIterator.getCharacterInstance(Locale.ROOT)
-    boundary.setText(this)
-    val end = boundary.next()
-    return if (end == BreakIterator.DONE) this else substring(0, end)
 }
