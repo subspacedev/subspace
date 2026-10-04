@@ -69,7 +69,8 @@ internal fun ConnectionState.isBlocked(): Boolean = this is ConnectionState.Reco
 internal enum class HomePrimaryAction { Connect, Disconnect, None }
 
 /**
- * The button under the blob (M8.6 Part 2 ruling R1). Connecting and
+ * The action the blob offers: the word drawn inside it and its click label
+ * (M8.6 spec §4.1, amended 2026-10-04; Part 2 ruling R1 is reversed). Connecting and
  * Disconnecting offer nothing, as the old connect control refused those taps.
  * Reconnecting offers Disconnect: M8 spec §7.3, it has no bound.
  */

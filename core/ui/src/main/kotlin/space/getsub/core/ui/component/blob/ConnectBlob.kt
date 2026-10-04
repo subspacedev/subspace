@@ -75,8 +75,9 @@ private val BADGE_BACKING = 18.dp
 /** Values a caller of [ConnectBlob] needs. */
 object ConnectBlobDefaults {
     /**
-     * How far the glow reaches beyond the blob on every side. A caller must
-     * leave this much clear around the blob and must not clip it tighter.
+     * How far the glow is visible beyond the blob on every side (28 dp); a
+     * faint tail is drawn on to 40 dp. A caller must leave this much clear
+     * around the blob and must not clip the blob's parent at all.
      */
     val GlowClearance: Dp = GLOW_SPREAD
 }
@@ -89,9 +90,10 @@ object ConnectBlobDefaults {
  *
  * The click target is the full [size] square. The glow (Disconnected, Connected
  * and Stalled) is a blurred copy of the blob's own outline drawn behind it,
- * reaching [ConnectBlobDefaults.GlowClearance] (28 dp) beyond that square on
- * every side, outside the layout bounds: a caller must leave that much clear
- * on all four sides and must not clip the blob's parent tighter than that.
+ * outside the layout bounds: visible to [ConnectBlobDefaults.GlowClearance]
+ * (28 dp) beyond that square on every side, with a faint tail to 40 dp. A
+ * caller must leave the 28 dp clear on all four sides and must not clip the
+ * blob's parent.
  *
  * [contentDescription] is the state's label. [actionLabel] is the action a
  * tap performs ('Connect', 'Disconnect'): it is drawn inside the blob under

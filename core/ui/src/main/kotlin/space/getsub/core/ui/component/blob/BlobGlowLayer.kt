@@ -3,6 +3,7 @@
 package space.getsub.core.ui.component.blob
 
 import android.os.Build
+import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.theme.BlobTiming
@@ -44,7 +46,8 @@ private const val GLOW_LEVEL_HIGH = 0.5f
 
 /**
  * How far the visible glow reaches beyond the blob on every side: the
- * clearance ConnectBlob's KDoc asks a caller to leave.
+ * clearance ConnectBlob's KDoc asks a caller to leave. A faint tail (under
+ * 1 %) is drawn on out to [GLOW_CANVAS_MARGIN].
  */
 internal val GLOW_SPREAD: Dp = 28.dp
 
@@ -89,6 +92,7 @@ internal fun glowTechnique(sdkInt: Int): GlowTechnique =
  * API level, so without this the API 26-30 fallback would have no golden.
  * Null (the default) chooses by [glowTechnique].
  */
+@VisibleForTesting
 internal val LocalGlowTechniqueOverride: ProvidableCompositionLocal<GlowTechnique?> =
     staticCompositionLocalOf { null }
 
@@ -177,19 +181,29 @@ internal fun BlobGlowLayer(
 ) {
     val technique = LocalGlowTechniqueOverride.current ?: glowTechnique(Build.VERSION.SDK_INT)
     val path = remember { Path() }
+    // Built once per density, not in the layer block: that block re-runs on
+    // every breath frame, because it reads alpha.
+    val density = LocalDensity.current
+    val blur =
+        remember(density, technique) {
+            if (technique == GlowTechnique.Blur) {
+                val r = with(density) { GLOW_BLUR_RADIUS.toPx() }
+                BlurEffect(r, r, TileMode.Decal)
+            } else {
+                null
+            }
+        }
     Canvas(
         Modifier
             .requiredSize(blobSize + GLOW_CANVAS_MARGIN * 2)
             .graphicsLayer {
                 this.alpha = alpha().coerceIn(0f, 1f)
-                if (technique == GlowTechnique.Blur) {
-                    val r = GLOW_BLUR_RADIUS.toPx()
-                    renderEffect = BlurEffect(r, r, TileMode.Decal)
-                }
+                renderEffect = blur
             },
     ) {
-        // alpha is applied by the layer alone, so a breath frame re-composites
-        // the layer without re-recording this drawing.
+        // Alpha lives on the layer, but this drawing is still re-recorded
+        // every frame while the blob drifts or morphs, since it reads the
+        // rotation and the path; a still glow (Stalled) records it once.
         fillPath(path)
         val blob = blobSize.toPx()
         val margin = GLOW_CANVAS_MARGIN.toPx()
