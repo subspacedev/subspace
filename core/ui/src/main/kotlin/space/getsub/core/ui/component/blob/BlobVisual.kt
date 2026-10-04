@@ -4,7 +4,7 @@ package space.getsub.core.ui.component.blob
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.Health
 import space.getsub.core.ui.theme.BlobTiming
@@ -13,7 +13,8 @@ enum class BlobShape { Sunny, Circle, Morphing, Cookie9, Pill, Square, Slanted }
 
 /**
  * The fill role, resolved against `MaterialTheme.colorScheme` by ConnectBlob
- * (M8.6 spec §3.3, amended 2026-10-04): primaryContainer,
+ * (M8.6 spec §3.3, amended 2026-10-04): a softened primaryContainer
+ * ([softPrimaryContainer]),
  * surfaceContainerHighest, secondaryContainer, tertiary, tertiaryContainer,
  * errorContainer, errorContainer.
  */
@@ -26,10 +27,10 @@ enum class BlobMotion { SlowDrift, MediumDrift, FastDrift, Still }
 
 /**
  * The colour role a glow is drawn in, resolved against `MaterialTheme.colorScheme`.
- * [LightPrimary] is whichever of primary and primaryContainer is lighter, so
- * the off-state tint only ever lightens, in either theme.
+ * [DisconnectedFill] is the off-state's own softened fill, so its tint and the
+ * blob match.
  */
-enum class GlowRole { LightPrimary, Tertiary, TertiaryContainer }
+enum class GlowRole { DisconnectedFill, Tertiary, TertiaryContainer }
 
 /**
  * The blurred, shape-following light behind the blob (M8.6 spec §3.3, amended
@@ -73,7 +74,7 @@ fun blobVisualFor(state: ConnectionState): BlobVisual =
                 BlobFill.Disconnected,
                 BlobCenter.Power,
                 BlobMotion.SlowDrift,
-                BlobGlow.Tint(GlowRole.LightPrimary),
+                BlobGlow.Tint(GlowRole.DisconnectedFill),
             )
         is ConnectionState.Connecting ->
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
@@ -147,7 +148,7 @@ internal fun BlobShape.displayablePolygons(reduced: Boolean): Set<BlobPolygon> =
 /** The fill's container colour (M8.6 spec §3.3). */
 internal fun BlobFill.container(scheme: ColorScheme): Color =
     when (this) {
-        BlobFill.Disconnected -> scheme.primaryContainer
+        BlobFill.Disconnected -> scheme.softPrimaryContainer()
         BlobFill.Idle -> scheme.surfaceContainerHighest
         BlobFill.Busy -> scheme.secondaryContainer
         BlobFill.Connected -> scheme.tertiary
@@ -187,12 +188,22 @@ internal val BlobGlow.role: GlowRole?
 
 internal fun GlowRole.color(scheme: ColorScheme): Color =
     when (this) {
-        GlowRole.LightPrimary ->
-            if (scheme.primary.luminance() >= scheme.primaryContainer.luminance()) {
-                scheme.primary
-            } else {
-                scheme.primaryContainer
-            }
+        GlowRole.DisconnectedFill -> scheme.softPrimaryContainer()
         GlowRole.Tertiary -> scheme.tertiary
         GlowRole.TertiaryContainer -> scheme.tertiaryContainer
     }
+
+/**
+ * How far the off-state fill sits from surfaceContainerHigh towards
+ * primaryContainer. Full primaryContainer read too vivid against the page,
+ * as if already active (owner, 2026-10-04).
+ */
+internal const val DISCONNECTED_FILL_FRACTION = 0.5f
+
+/**
+ * The off-state fill: primaryContainer softened towards surfaceContainerHigh.
+ * Both are scheme roles, so it still follows the wallpaper; BlobVisualTest
+ * holds onPrimaryContainer to 4.5:1 against it in every theme variant.
+ */
+internal fun ColorScheme.softPrimaryContainer(): Color =
+    lerp(surfaceContainerHigh, primaryContainer, DISCONNECTED_FILL_FRACTION)

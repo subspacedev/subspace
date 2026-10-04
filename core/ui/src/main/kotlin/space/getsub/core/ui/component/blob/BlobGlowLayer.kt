@@ -52,13 +52,13 @@ private const val GLOW_LEVEL_HIGH = 0.5f
  * ConnectBlob's KDoc asks a caller to leave. BlobVisualTest holds every
  * [GlowStyle] to it.
  */
-internal val GLOW_CLEARANCE: Dp = 40.dp
+internal val GLOW_CLEARANCE: Dp = 56.dp
 
 /**
  * The glow's canvas reaches this far past the blob, beyond [GLOW_CLEARANCE],
  * so no style's faint tail is cut by the canvas edge.
  */
-internal val GLOW_CANVAS_MARGIN: Dp = 64.dp
+internal val GLOW_CANVAS_MARGIN: Dp = 84.dp
 
 /** RenderEffect turns a blur radius r into a Gaussian sigma of about 0.58 r (+ 0.5 px). */
 private const val RADIUS_TO_SIGMA = 0.57735f
@@ -89,8 +89,13 @@ internal data class GlowStyle(
 /** Stalled's dim glow: visible to about 27 dp. */
 private val StandardGlow = GlowStyle(growth = 10.dp, blurRadius = 20.dp, copyAlpha = 0.09f)
 
-/** Connected's breathing glow: visible to about 40 dp. */
-private val WideGlow = GlowStyle(growth = 12.dp, blurRadius = 32.dp, copyAlpha = 0.09f)
+/**
+ * Connected's breathing glow: visible to about 56 dp. Growth and sigma keep
+ * the ratio (about 0.65) of the earlier 40 dp glow, so the blurred coverage
+ * at the blob's edge, and with it the glow's apparent strength, is unchanged;
+ * only the falloff is longer.
+ */
+private val WideGlow = GlowStyle(growth = 17.dp, blurRadius = 45.dp, copyAlpha = 0.09f)
 
 /**
  * The off-state tint: barely grown, so there is no rim that reads as an

@@ -2,8 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.ui.component.blob
 
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeUnique
@@ -16,6 +15,9 @@ import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.failure
+import space.getsub.core.ui.preview.ThemeVariant
+import space.getsub.core.ui.preview.colorScheme
+import kotlin.math.pow
 
 class BlobVisualTest {
     private val disconnected = ConnectionState.Disconnected
@@ -42,7 +44,7 @@ class BlobVisualTest {
                 BlobFill.Disconnected,
                 BlobCenter.Power,
                 BlobMotion.SlowDrift,
-                BlobGlow.Tint(GlowRole.LightPrimary),
+                BlobGlow.Tint(GlowRole.DisconnectedFill),
             )
         blobVisualFor(connecting) shouldBe
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
@@ -102,25 +104,36 @@ class BlobVisualTest {
         BlobGlow.None.stillLevel(reduced = false) shouldBe 0f
         BlobGlow.DimStill(GlowRole.TertiaryContainer).stillLevel(reduced = false) shouldBe GLOW_LEVEL_DIM
         BlobGlow.DimStill(GlowRole.TertiaryContainer).stillLevel(reduced = true) shouldBe GLOW_LEVEL_DIM
-        BlobGlow.Tint(GlowRole.LightPrimary).stillLevel(reduced = false) shouldBe GLOW_LEVEL_TINT
-        BlobGlow.Tint(GlowRole.LightPrimary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_TINT
+        BlobGlow.Tint(GlowRole.DisconnectedFill).stillLevel(reduced = false) shouldBe GLOW_LEVEL_TINT
+        BlobGlow.Tint(GlowRole.DisconnectedFill).stillLevel(reduced = true) shouldBe GLOW_LEVEL_TINT
         BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_STEADY
         // Animated, so there is no single still level.
         BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = false) shouldBe null
     }
 
+    /** The off-state tint is the off-state fill, so blob and glow match in every theme. */
+    @Test
+    fun disconnectedTintFollowsTheFill() {
+        ThemeVariant.entries.forEach { v ->
+            val scheme = v.colorScheme()
+            withClue(v) {
+                GlowRole.DisconnectedFill.color(scheme) shouldBe BlobFill.Disconnected.container(scheme)
+            }
+        }
+    }
+
     /**
-     * The off-state tint only ever lightens: it resolves to whichever of
-     * primary and primaryContainer is lighter (tone 90 in a light scheme,
-     * tone 80 in a dark one), never the dark light-theme primary that read
-     * as a brown drop-shadow on the owner's device.
+     * The softened off-state fill keeps the icon and the "Connect" word
+     * readable: WCAG AA 4.5:1 for its on-colour, in the friendly palettes and
+     * the dynamic stand-ins.
      */
     @Test
-    fun lightPrimaryIsTheLighterPrimaryRole() {
-        val light = lightColorScheme()
-        val dark = darkColorScheme()
-        GlowRole.LightPrimary.color(light) shouldBe light.primaryContainer
-        GlowRole.LightPrimary.color(dark) shouldBe dark.primary
+    fun disconnectedContentIsReadableOnTheSoftFill() {
+        ThemeVariant.entries.forEach { v ->
+            val scheme = v.colorScheme()
+            val ratio = contrastRatio(BlobFill.Disconnected.content(scheme), BlobFill.Disconnected.container(scheme))
+            withClue("$v: $ratio") { ratio shouldBeGreaterThanOrEqualTo 4.5 }
+        }
     }
 
     /** Every glow stays within the clearance callers leave, and the canvas holds its faint tail. */
@@ -132,7 +145,7 @@ class BlobVisualTest {
                 GLOW_CANVAS_MARGIN.value shouldBeGreaterThanOrEqualTo style.tail().value
             }
         }
-        blobVisualFor(open).glow.style().visibleSpread().value shouldBeGreaterThanOrEqualTo 38f
+        blobVisualFor(open).glow.style().visibleSpread().value shouldBeGreaterThanOrEqualTo 54f
     }
 
     /** A real blur from Android 12 (RenderEffect); the layered fallback below it. */
@@ -207,4 +220,21 @@ class BlobVisualTest {
         val others = BlobShape.entries.filter { it != BlobShape.Morphing }.map { it.restingPolygon() }
         (ConnectingCycle.toSet() intersect others.toSet()).shouldBeEmpty()
     }
+}
+
+/** WCAG 2 contrast ratio between two opaque sRGB colours, as ColorTest computes it. */
+private fun contrastRatio(
+    a: Color,
+    b: Color,
+): Double {
+    fun channel(c: Float): Double {
+        val v = c.toDouble()
+        return if (v <= 0.03928) v / 12.92 else ((v + 0.055) / 1.055).pow(2.4)
+    }
+
+    fun luminance(color: Color): Double =
+        0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+
+    val (la, lb) = luminance(a) to luminance(b)
+    return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
 }

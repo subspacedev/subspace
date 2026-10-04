@@ -62,6 +62,15 @@ enum class ThemeVariant(val fileSuffix: String) {
     DynamicLight("dynamic-light"),
 }
 
+/** The colour scheme a [ThemeVariant] renders in; unit tests check colour pairs against all four. */
+internal fun ThemeVariant.colorScheme(): ColorScheme =
+    when (this) {
+        ThemeVariant.FriendlyDark -> FriendlyDarkColorScheme
+        ThemeVariant.FriendlyLight -> FriendlyLightColorScheme
+        ThemeVariant.DynamicDark -> dynamicStandInDark
+        ThemeVariant.DynamicLight -> dynamicStandInLight
+    }
+
 /**
  * [content] in one [ThemeVariant], on that theme's background. For screenshot
  * tests in any module and for `@Preview`; production code uses `SubspaceTheme`.
@@ -73,12 +82,12 @@ fun SubspacePreviewTheme(
     reducedMotion: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val (scheme, colors) =
+    val scheme = variant.colorScheme()
+    val colors =
         when (variant) {
-            ThemeVariant.FriendlyDark -> FriendlyDarkColorScheme to friendlyDarkPop
-            ThemeVariant.FriendlyLight -> FriendlyLightColorScheme to friendlyLightPop
-            ThemeVariant.DynamicDark -> dynamicStandInDark to dynamicStandInDark.popFromPrimary()
-            ThemeVariant.DynamicLight -> dynamicStandInLight to dynamicStandInLight.popFromPrimary()
+            ThemeVariant.FriendlyDark -> friendlyDarkPop
+            ThemeVariant.FriendlyLight -> friendlyLightPop
+            ThemeVariant.DynamicDark, ThemeVariant.DynamicLight -> scheme.popFromPrimary()
         }
     SubspaceThemeFor(colorScheme = scheme, colors = colors, reducedMotion = reducedMotion) {
         Surface(color = MaterialTheme.colorScheme.background, content = content)
