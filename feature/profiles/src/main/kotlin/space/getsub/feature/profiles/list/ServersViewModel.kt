@@ -223,12 +223,11 @@ constructor(
     /**
      * Picks [id] as the active profile — what Home connects to next.
      *
-     * Since M8 it can also move a session that is already running, but not at
-     * once: the tunnel keeps running the server it was on until the service
-     * next reconnects on its own — after a network change, or on a retry after
-     * a failure — and then it comes back up on [id]. The service follows the
-     * active profile by design; selecting a server while connected is not
-     * ignored, only deferred.
+     * While a session is live this also moves it, at once (M8.6 Part 3 D1):
+     * `:bg` observes the write and restarts the core onto [id], keeping the
+     * TUN. Picking the server already connected restarts nothing. A pick made
+     * while the tunnel is still connecting is applied once it connects. This
+     * only writes the setting; the service decides and performs the switch.
      */
     fun onProfileSelected(id: Long) {
         viewModelScope.launch { profileSource.setActiveProfile(id) }

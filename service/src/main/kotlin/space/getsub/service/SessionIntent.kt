@@ -26,6 +26,12 @@ internal enum class ReconcileTrigger {
     NetworkChanged,
     NetworkLost,
     BackoffElapsed,
+
+    /**
+     * The active profile changed under a live session (M8.6 Part 3 D1). Not
+     * autonomous: raised by `:bg` observing `active_profile_id`.
+     */
+    ProfileSwitched,
 }
 
 /** What [reconcile] decided. Effects belong to `TunnelService`; this type does not perform them. */
@@ -66,6 +72,12 @@ internal sealed interface ReconcileAction {
  * persisted session intent, which the next reconcile then reads; they do not
  * call this function.
  *
+ * [ReconcileTrigger.ProfileSwitched] is the one trigger raised for a user's
+ * choice made outside the service (M8.6 Part 3 D1): picking another server in
+ * `:main` only writes `active_profile_id`, and `:bg` observes that write and
+ * asks here, so a live session is restarted onto the new row at once rather
+ * than at its next autonomous restart.
+ *
  * Pure so it can be tested at all: ARCHITECTURE.md §11 says the tunnel is verified manually on a
  * device every time, which makes every decision embedded in `TunnelService`
  * effectively untested. This is the decision; the service is the effects.
@@ -94,7 +106,11 @@ internal fun reconcile(
         ConnectionState.Disconnected -> ReconcileAction.Start(rowId)
 
         is ConnectionState.Connected ->
-            if (trigger == ReconcileTrigger.NetworkChanged) ReconcileAction.Restart(rowId) else ReconcileAction.Nothing
+            if (trigger == ReconcileTrigger.NetworkChanged || trigger == ReconcileTrigger.ProfileSwitched) {
+                ReconcileAction.Restart(rowId)
+            } else {
+                ReconcileAction.Nothing
+            }
 
         // [mayAttemptAgain] is always true for a `Reconnecting` this app
         // published — see there. The `Nothing` this can yield is a guard, not a

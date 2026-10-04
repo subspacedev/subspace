@@ -1096,6 +1096,18 @@ This is the least portable, most version-dependent part of the codebase.
   `TunnelService.restartCoreRetainingTun`) — a single point a device run can
   flip to the soft alternative if it turns out to suffice. Test this by
   physically toggling Wi-Fi, repeatedly, not by unit test.
+- **Switching server while connected (2026-10-04, M8.6 Part 3 D1)** — a server
+  picked while a session is live is now restarted onto at once. `:main` still
+  only writes `active_profile_id`; `:bg` observes it and enqueues a
+  `ProfileSwitched` reconcile, which `reconcile()` answers with the same
+  `ReconcileAction.Restart` as a network change, so the core restarts onto the
+  new row with the TUN retained (`restartCoreRetainingTun`). Re-picking the
+  live server restarts nothing, a switch made while `Connecting` is applied
+  once the session settles `Connected`, and the command is re-checked when the
+  coordinator dequeues it. This reverses the M8 deferral, where a server picked
+  while connected only took effect at the next autonomous restart (M8 ruling
+  R37's "where the next reconcile restart goes"). Source:
+  `docs/agent/plans/2026-10-04-m8.6-m3e-redesign-part3.md`, D1 and R1.
 
 ---
 

@@ -615,6 +615,16 @@ class TunnelService : VpnService() {
     private var networkMonitorJob: Job? = null
 
     /**
+     * The collector launched in [onCreate] that raises
+     * [ReconcileTrigger.ProfileSwitched] when the user picks another server
+     * under a live session (M8.6 Part 3 D1) — see
+     * [collectActiveProfileForSwitch]. Same lifetime as [networkMonitorJob],
+     * and cancelled next to it in [onDestroy] so no emission can enqueue into a
+     * coordinator that teardown is about to close.
+     */
+    private var profileSwitchJob: Job? = null
+
+    /**
      * [SettingsRepository.lightweightMode], followed live so [broadcastTrafficSample]
      * stops sending samples to the UI as soon as the user turns it on. Written only
      * by [collectLightweightMode]; `@Volatile` because the sampler reads it from
@@ -1018,6 +1028,11 @@ class TunnelService : VpnService() {
         // `networkMonitor.stop()` and that final cancel from calling `start()`
         // again and re-registering a callback nothing is left to unregister.
         networkMonitorJob = scope.launch { collectSessionIntentForMonitor() }
+        // M8.6 Part 3 D1: a server picked in `:main` while a session is live moves
+        // the session at once. On [scope] for the same reason the collector above
+        // is — it dies with this instance — and captured for the same early
+        // cancel in onDestroy.
+        profileSwitchJob = scope.launch { collectActiveProfileForSwitch() }
         // Task 20 (ARCHITECTURE.md §11 row 7, part 2): the process-death half of the seed above.
         // See [seedPersistedFailure]'s own KDoc for what this reads and why it is safe to run
         // on this instance's own `scope` rather than [terminalState]'s process-lifetime one.
@@ -1181,6 +1196,89 @@ class TunnelService : VpnService() {
             .collect { wanted ->
                 if (wanted) networkMonitor.start() else networkMonitor.stop()
             }
+    }
+
+    /**
+     * M8.6 Part 3 D1: raises [ReconcileTrigger.ProfileSwitched] when
+     * `active_profile_id` moves away from the row the live session runs.
+     *
+     * Only enqueues. Every decision and every effect stays on the command
+     * coordinator: [reconcileNow] re-checks [switchRequested] when the command
+     * is dequeued, and [reconcile] then answers from the state at that moment —
+     * `Restart` (TUN retained, through [restartCoreRetainingTun]) from
+     * `Connected`, `Nothing` from a start or teardown in flight. A switch made
+     * while `Connecting` is picked up again by [requestSwitchIfActiveMovedOn]
+     * once the session settles (M8.6 Part 3 R1).
+     *
+     * Room re-emits in `:bg` for a write made in `:main` because `DataModule`
+     * enables multi-instance invalidation (`MultiProcessInvalidationTest`).
+     * `distinctUntilChanged` drops the re-emissions an unrelated `settings`
+     * write produces, and a re-pick of the row already live never enqueues
+     * (review focus 1).
+     *
+     * Failure handling mirrors [collectSessionIntentForMonitor] for the same
+     * reason: a Room error escaping to [errorHandler] would publish
+     * `Failed(CoreStartFailed)` over a live session. A failed read ends this
+     * collector; switching then falls back to the M8 behaviour (the next
+     * autonomous restart follows the active row) for the rest of this
+     * instance. ARCHITECTURE.md §5.6: class name only, and no row ids, matching
+     * this file's log discipline.
+     */
+    private suspend fun collectActiveProfileForSwitch() {
+        settingsRepository.activeProfileId
+            .distinctUntilChanged()
+            .catch { e ->
+                if (e is CancellationException) throw e
+                Log.e(TAG, "active-profile collector failed: ${e.javaClass.simpleName}")
+            }
+            .collect { active -> enqueueSwitchIfRequested(active) }
+    }
+
+    /**
+     * Enqueues [ReconcileTrigger.ProfileSwitched] when [activeRowId] is not
+     * what the live session runs. [liveSession] is read under [lock]; the
+     * enqueue is a non-suspending `trySend`, which quietly fails once
+     * [onDestroy] has closed the coordinator.
+     */
+    private fun enqueueSwitchIfRequested(activeRowId: Long?) {
+        val liveRowId = synchronized(lock) { liveSession?.rowId }
+        if (switchRequested(liveRowId, activeRowId)) {
+            commandCoordinator.enqueue(TunnelCommand.Reconcile(ReconcileTrigger.ProfileSwitched))
+        }
+    }
+
+    /**
+     * M8.6 Part 3 R1, the settle re-check (review focus 2). Called once a
+     * session has committed `Connected`, from both [attachTun] and
+     * [attachRetainedTun].
+     *
+     * A switch made while `Connecting` is answered `Nothing` — a start in
+     * flight is never stacked — and the collector will not fire again for a
+     * value that has not changed. Without this, the tunnel would settle on the
+     * old server and stay there. This reads the active row once and enqueues
+     * the same trigger the collector would have.
+     *
+     * Only enqueues, so it adds no lifecycle effect after the settlement: what
+     * actually happens is decided on the coordinator against the state when the
+     * command is dequeued. A Room failure is logged (class name only,
+     * ARCHITECTURE.md §5.6) and swallowed: this runs on the start coroutine or
+     * on the coordinator itself, and an escape would either publish
+     * `Failed(CoreStartFailed)` over the session that just connected or end the
+     * coordinator's consumer loop.
+     */
+    private suspend fun requestSwitchIfActiveMovedOn() {
+        val active =
+            try {
+                settingsRepository.activeProfileIdNow()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
+                Log.e(TAG, "active-profile re-check failed: ${e.javaClass.simpleName}")
+                return
+            }
+        enqueueSwitchIfRequested(active)
     }
 
     /**
@@ -2316,37 +2414,42 @@ class TunnelService : VpnService() {
         // ConnectionRecorder) happens strictly after. Previously this published, suspended in
         // the write, and called goForeground() on the way out — so a teardown during the
         // write left this coroutine to restore the connected notification over a tunnel that
-        // was already down (ARCHITECTURE.md §5.5). Nothing may be added after the `persist` lambda.
-        terminalOutcome.settleHandlingLifecycleRejection(
-            gen = gen,
-            state = connected,
-            lifecycle = { goForeground(R.string.notification_state_connected) },
-            persist = { connectionRecorder.record(rowId, connected) },
-            onLifecycleRejected = { handleForegroundLifecycleRejection(gen, rowId) },
-            // M8 spec §2.4 / M8.5 spec §6 #9: retiring the pending retry belongs to the
-            // generation-checked transition. TerminalOutcomeTest pins that onCommitted runs
-            // under the lock and before persist, and never for a superseded or rejected
-            // generation, which is what retireRetryIfEstablished used to promise by
-            // placement alone.
-            onCommitted = {
-                // `Locked`, not the `synchronized` wrapper: [lock] is already held by
-                // [TerminalOutcome.settleComputed].
-                cancelBackoffRetryLocked()
-                reconnectAttempts.reset()
-                trafficLoop.start()
-                // M8.5 spec §4.3: a fresh window for this generation's core.
-                healthDetector = HealthDetector()
-                healthGeneration = gen
-            },
-        )
-        // The settlement's own outcome needs no branch here: all three leave this
-        // attempt with nothing further owed. `Committed` published `Connected`;
-        // `Superseded` means a newer generation owns the tunnel and this one must
-        // not touch it; `LifecycleRejected` has already been settled by
+        // was already down (ARCHITECTURE.md §5.5). Nothing may be added after the `persist` lambda
+        // that acts on the tunnel; the M8.6 Part 3 R1 re-check below only enqueues a re-decision.
+        val settlement =
+            terminalOutcome.settleHandlingLifecycleRejection(
+                gen = gen,
+                state = connected,
+                lifecycle = { goForeground(R.string.notification_state_connected) },
+                persist = { connectionRecorder.record(rowId, connected) },
+                onLifecycleRejected = { handleForegroundLifecycleRejection(gen, rowId) },
+                // M8 spec §2.4 / M8.5 spec §6 #9: retiring the pending retry belongs to the
+                // generation-checked transition. TerminalOutcomeTest pins that onCommitted runs
+                // under the lock and before persist, and never for a superseded or rejected
+                // generation, which is what retireRetryIfEstablished used to promise by
+                // placement alone.
+                onCommitted = {
+                    // `Locked`, not the `synchronized` wrapper: [lock] is already held by
+                    // [TerminalOutcome.settleComputed].
+                    cancelBackoffRetryLocked()
+                    reconnectAttempts.reset()
+                    trafficLoop.start()
+                    // M8.5 spec §4.3: a fresh window for this generation's core.
+                    healthDetector = HealthDetector()
+                    healthGeneration = gen
+                },
+            )
+        // The settlement's outcome changes nothing this attempt owes: all three leave it
+        // with nothing further to do. `Committed` published `Connected`; `Superseded`
+        // means a newer generation owns the tunnel and this one must not touch it;
+        // `LifecycleRejected` has already been settled by
         // [handleForegroundLifecycleRejection]. That is exactly what
-        // [TunAttachOutcome.Settled] says — and the `if` that stood here returned
-        // it from both branches, reading as though the call site could tell the
-        // committed case from the other two.
+        // [TunAttachOutcome.Settled] says, from every branch.
+        //
+        // The one branch is M8.6 Part 3 R1's settle re-check, and only for `Committed`:
+        // a server picked while this session was `Connecting` is applied now. It only
+        // enqueues; see [requestSwitchIfActiveMovedOn].
+        if (settlement == TerminalSettlement.Committed) requestSwitchIfActiveMovedOn()
         return TunAttachOutcome.Settled
     }
 
@@ -3204,6 +3307,8 @@ class TunnelService : VpnService() {
         // ordering this replaces, which left it open until scope.cancel() at the
         // very end of this function.
         networkMonitorJob?.cancel()
+        // M8.6 Part 3 D1: likewise, so no emission enqueues a switch past this point.
+        profileSwitchJob?.cancel()
         networkMonitor.stop()
         stopTunnel(finalState)
         commandCoordinator.close()
@@ -3424,6 +3529,20 @@ class TunnelService : VpnService() {
                 wanted = settingsRepository.tunnelSessionWantedNow(),
                 profileRowId = settingsRepository.activeProfileIdNow(),
             )
+        // M8.6 Part 3 D1: re-checked at dequeue, not trusted from enqueue. Rapid
+        // picks (A → B → A), or the collector and the settle re-check both
+        // raising one switch, can leave a command whose switch has already
+        // happened or been undone; `reconcile` alone would answer `Restart` from
+        // `Connected` regardless and restart onto the row already live (review
+        // focus 1). Read here, on the coordinator, where the only restart that
+        // moves [liveSession]'s row also runs. No live session means nothing to
+        // move: a `Reconnecting` session's next attempt reads the active row
+        // anyway, and after a revoke or stop this must not reach `Release`.
+        if (trigger == ReconcileTrigger.ProfileSwitched &&
+            !switchRequested(synchronized(lock) { liveSession?.rowId }, intent.profileRowId)
+        ) {
+            return
+        }
         when (val action = reconcile(intent, currentConnectionState(), trigger)) {
             is ReconcileAction.Start -> startFromRow(action.profileRowId, intentToken)
             is ReconcileAction.Restart -> restartCoreRetainingTun(action.profileRowId, intentToken)
@@ -3592,9 +3711,11 @@ class TunnelService : VpnService() {
      * read), not necessarily the one the session started on. M8 spec §1.1 defines
      * session intent as `(activeProfileId, wanted)`, so a server picked while
      * connected is where the next reconcile restart goes — by design (ruling
-     * R37), and not to be pinned to the live session's profile. [liveSession]
-     * is moved onto it in the handoff below, so the service keeps one answer to
-     * "what is connected".
+     * R37), and not to be pinned to the live session's profile. Since M8.6 Part 3
+     * D1 that restart is no longer left to the next autonomous one: a pick raises
+     * [ReconcileTrigger.ProfileSwitched], which restarts here at once.
+     * [liveSession] is moved onto it in the handoff below, so the service keeps
+     * one answer to "what is connected".
      *
      * The TUN fd genuinely survives this: it is captured from [tunInterface]
      * before anything else runs, and neither this function nor
@@ -3822,39 +3943,46 @@ class TunnelService : VpnService() {
         trafficLoop.notifyCountersRestarted()
 
         val connected = ConnectionState.Connected(System.currentTimeMillis(), ports.socksPort, ports.httpPort)
-        terminalOutcome.settleHandlingLifecycleRejection(
-            gen = gen,
-            state = connected,
-            lifecycle = { goForeground(R.string.notification_state_connected) },
-            persist = { connectionRecorder.record(rowId, connected) },
-            onLifecycleRejected = { handleForegroundLifecycleRejection(gen, rowId) },
-            // See [attachTun]'s matching site: the cancel and the attempt counter reset
-            // belong to the generation-checked transition, not to `persist` — a superseded
-            // generation must not be able to reach either after `persist` suspends in
-            // `record()`.
-            onCommitted = {
-                cancelBackoffRetryLocked()
-                reconnectAttempts.reset()
-                // M8.5 spec §1.5: [start] is idempotent — a no-op while its job is
-                // still active — so this retained-TUN restart does not rebuild
-                // [trafficLoop]'s [TrafficSampler]. That is what survives the
-                // restart, not tun2socks: `Tun2Socks.stop()` is called earlier
-                // in this same restart (see above), and its counters *do* reset
-                // along with everything else tun2socks owns. What this no-op
-                // preserves is the accumulator — the same [TrafficSampler]
-                // instance goes on polling the freshly reset counters, now told
-                // about the reset explicitly by [trafficLoop]'s
-                // `notifyCountersRestarted()` call above rather than left to infer
-                // it from a falling reading (ruling R38), so the session total
-                // keeps climbing instead of restarting from zero **or** silently
-                // undercounting when the new epoch outruns the old one before the
-                // next poll.
-                trafficLoop.start()
-                // M8.5 spec §4.3: a fresh window for this generation's core.
-                healthDetector = HealthDetector()
-                healthGeneration = gen
-            },
-        )
+        val settlement =
+            terminalOutcome.settleHandlingLifecycleRejection(
+                gen = gen,
+                state = connected,
+                lifecycle = { goForeground(R.string.notification_state_connected) },
+                persist = { connectionRecorder.record(rowId, connected) },
+                onLifecycleRejected = { handleForegroundLifecycleRejection(gen, rowId) },
+                // See [attachTun]'s matching site: the cancel and the attempt counter reset
+                // belong to the generation-checked transition, not to `persist` — a superseded
+                // generation must not be able to reach either after `persist` suspends in
+                // `record()`.
+                onCommitted = {
+                    cancelBackoffRetryLocked()
+                    reconnectAttempts.reset()
+                    // M8.5 spec §1.5: [start] is idempotent — a no-op while its job is
+                    // still active — so this retained-TUN restart does not rebuild
+                    // [trafficLoop]'s [TrafficSampler]. That is what survives the
+                    // restart, not tun2socks: `Tun2Socks.stop()` is called earlier
+                    // in this same restart (see above), and its counters *do* reset
+                    // along with everything else tun2socks owns. What this no-op
+                    // preserves is the accumulator — the same [TrafficSampler]
+                    // instance goes on polling the freshly reset counters, now told
+                    // about the reset explicitly by [trafficLoop]'s
+                    // `notifyCountersRestarted()` call above rather than left to infer
+                    // it from a falling reading (ruling R38), so the session total
+                    // keeps climbing instead of restarting from zero **or** silently
+                    // undercounting when the new epoch outruns the old one before the
+                    // next poll.
+                    trafficLoop.start()
+                    // M8.5 spec §4.3: a fresh window for this generation's core.
+                    healthDetector = HealthDetector()
+                    healthGeneration = gen
+                },
+            )
+        // M8.6 Part 3 R1: the settle re-check, as at [attachTun]'s matching site. Here it is
+        // a backstop rather than the only route: this restart runs on the coordinator, so a
+        // switch the collector raised during it is dequeued after this settles, and
+        // [reconcileNow]'s dequeue-time check drops whichever of the two arrives second.
+        // Only enqueues.
+        if (settlement == TerminalSettlement.Committed) requestSwitchIfActiveMovedOn()
     }
 
     /**
