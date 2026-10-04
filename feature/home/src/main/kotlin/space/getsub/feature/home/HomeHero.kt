@@ -38,6 +38,14 @@ private const val UPTIME_TICK_MILLIS = 1_000L
 private const val MILLIS_PER_SECOND = 1_000L
 private val BLOB_SIZE = 190.dp
 
+/**
+ * Layout space above and below the blob, deliberately less than the glow's
+ * reach (ConnectBlobDefaults.GlowClearance, 56 dp): the faint outer glow may
+ * pass under the title row and the state label, which draw over it. Nothing
+ * here clips it, and Home's column clips only at the scroll viewport.
+ */
+private val BLOB_VERTICAL_SPACE = 28.dp
+
 /** Title row: "Subspace" and the history icon (M8.6 spec fix S3). */
 @Composable
 internal fun HomeTopBar(
@@ -114,8 +122,9 @@ internal fun HomeHero(
             actionLabel = actionText,
             enabled = tappable,
             size = BLOB_SIZE,
-            // The glow's clearance (ConnectBlob's KDoc).
-            modifier = Modifier.padding(ConnectBlobDefaults.GlowClearance),
+            // The glow's full reach sideways; less above and below (BLOB_VERTICAL_SPACE).
+            modifier =
+            Modifier.padding(horizontal = ConnectBlobDefaults.GlowClearance, vertical = BLOB_VERTICAL_SPACE),
         )
 
         Text(

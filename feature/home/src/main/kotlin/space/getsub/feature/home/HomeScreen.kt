@@ -150,15 +150,16 @@ internal fun HomeScreenContent(
 
         StatTilesRow(state = state, onTest = actions.onTestLatency)
 
-        HomeThroughputCard(state = state)
-
-        ByServerCard(state = state)
-
+        // The active server sits right under the tiles that measure it (owner, 2026-10-04).
         ActiveServerCard(
             state = state,
             onNavigateToServers = actions.onNavigateToServers,
             onAddServer = actions.onAddServer,
         )
+
+        HomeThroughputCard(state = state)
+
+        ByServerCard(state = state)
 
         OutlinedButton(onClick = actions.onAddServer) {
             Icon(painterResource(SubspaceIcons.Add), contentDescription = null)
