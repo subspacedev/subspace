@@ -82,7 +82,7 @@ class AddServerSheetSubscriptionTest {
         setContent()
 
         composeRule.onNodeWithTag(IMPORT_PASTE_FIELD_TEST_TAG).assertExists()
-        composeRule.onNodeWithText("Paste a link, subscription URL or Xray JSON").assertExists()
+        composeRule.onNodeWithText("Link, subscription URL or Xray JSON").assertExists()
         composeRule.onNodeWithText("Add").assertExists()
         composeRule.onNodeWithText("From subscription URL").assertDoesNotExist()
         composeRule.onNodeWithText("Add subscription").assertDoesNotExist()

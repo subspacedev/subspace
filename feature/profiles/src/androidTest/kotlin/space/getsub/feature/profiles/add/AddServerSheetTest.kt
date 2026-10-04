@@ -96,27 +96,27 @@ class AddServerSheetTest {
     }
 
     @Test
-    fun importButtonIsDisabledWhenInputIsBlank() {
+    fun addButtonIsDisabledWhenInputIsBlank() {
         setContent(state = ImportState(input = ""))
         composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
-    fun importButtonIsEnabledWithNonBlankInputWhileNotBusy() {
+    fun addButtonIsEnabledWithNonBlankInputWhileNotBusy() {
         setContent(state = ImportState(input = "vless://x", busy = false))
         composeRule.onNodeWithText("Add").assertIsEnabled()
     }
 
     @Test
-    fun importButtonIsDisabledWhileBusyEvenWithInput() {
-        // AddServerSheet.kt:122's gate is `!state.busy && state.input.isNotBlank()`
+    fun addButtonIsDisabledWhileBusyEvenWithInput() {
+        // The Add button's gate is `!state.busy && state.input.isNotBlank()`
         // — both halves matter independently; this pins the busy half.
         setContent(state = ImportState(input = "vless://x", busy = true))
         composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
-    fun tappingImportInvokesOnImportClick() {
+    fun tappingAddInvokesOnImportClick() {
         var clicked = false
         setContent(state = ImportState(input = "vless://x"), onImportClick = { clicked = true })
 

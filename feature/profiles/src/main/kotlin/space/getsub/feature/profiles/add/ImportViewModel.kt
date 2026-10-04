@@ -390,7 +390,15 @@ constructor(
                 profileSource.deleteSubscription(added.id)
             }
 
-            _state.update { it.copy(busy = false, subscriptionResult = result.toUserMessage()) }
+            // Mirrors the parse leg: clear the box once the subscription has landed (a URL can carry
+            // a token, and a second tap would silently re-sync); keep it on any failure.
+            _state.update {
+                it.copy(
+                    input = if (result is SyncResult.Synced) "" else it.input,
+                    busy = false,
+                    subscriptionResult = result.toUserMessage(),
+                )
+            }
         }
     }
 }

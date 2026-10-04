@@ -734,4 +734,32 @@ class ImportViewModelTest {
             viewModel.cancelFileRead(owner)
             viewModel.state.value.busy shouldBe false
         }
+
+    @Test
+    fun `a synced subscription clears the input box`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("https://example.com/sub?token=abc")
+
+            viewModel.submit("https://example.com/sub?token=abc")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe ""
+        }
+
+    @Test
+    fun `a failed subscription keeps the input box unchanged`() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+            viewModel.onInputChanged("https://example.com/sub")
+
+            viewModel.submit("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe "https://example.com/sub"
+        }
 }

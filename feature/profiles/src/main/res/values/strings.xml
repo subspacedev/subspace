@@ -88,7 +88,7 @@
          interpolate the pasted text or file content itself, only bounded
          counts and field names. -->
     <string name="import_sheet_title">Add server</string>
-    <string name="import_paste_placeholder">Paste a link, subscription URL or Xray JSON</string>
+    <string name="import_paste_placeholder">Link, subscription URL or Xray JSON</string>
     <string name="import_button">Add</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
