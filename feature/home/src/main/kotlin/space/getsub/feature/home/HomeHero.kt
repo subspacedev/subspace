@@ -102,7 +102,7 @@ internal fun HomeHero(
             state = state.connection,
             onClick = onTap,
             contentDescription = label,
-            onClickLabel = actionText,
+            actionLabel = actionText,
             enabled = tappable,
             size = BLOB_SIZE,
             // The halo's clearance (ConnectBlob's KDoc).

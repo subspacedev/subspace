@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the design's literal values below: the
-// halo's breath alphas (0.08 <-> 0.5, solid 0.35 for Stalled and under reduced motion), the
-// 360-degree turn and its half, and the dp sizes the brief transcribes from
-// the design. Each is used once, at the line that explains it.
+// 360-degree turn and its half, the word's share of the blob's width, and the
+// dp sizes transcribed from the design. Each is used once, at the line that
+// explains it.
 @file:Suppress("MagicNumber")
 
 package space.getsub.core.ui.component.blob
@@ -11,25 +11,25 @@ package space.getsub.core.ui.component.blob
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.material3.toPath
 import androidx.compose.runtime.Composable
@@ -44,9 +44,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.DrawStyle
-import androidx.compose.ui.graphics.drawscope.Fill
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -56,6 +53,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
@@ -68,14 +67,19 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private const val FULL_TURN = 360f
-private const val HALO_ALPHA_LOW = 0.08f
-private const val HALO_ALPHA_HIGH = 0.5f
-private const val HALO_ALPHA_SOLID = 0.35f
-private val HALO_SPREAD = 16.dp
-private val OUTLINE_WIDTH = 2.dp
 private val ICON_SIZE = 40.dp
+private val WORD_GAP = 2.dp
 private val BADGE_SIZE = 14.dp
 private val BADGE_BACKING = 18.dp
+
+/** Values a caller of [ConnectBlob] needs. */
+object ConnectBlobDefaults {
+    /**
+     * How far the glow reaches beyond the blob on every side. A caller must
+     * leave this much clear around the blob and must not clip it tighter.
+     */
+    val GlowClearance: Dp = GLOW_SPREAD
+}
 
 /**
  * Home's main control (M8.6 spec §3.1, §3.3): a MaterialShapes shape whose
@@ -83,15 +87,18 @@ private val BADGE_BACKING = 18.dp
  * readable without colour (ARCHITECTURE.md §5.5, M8.6 spec §3.2). Everything
  * it draws comes from [blobVisualFor].
  *
- * The click target is the full [size] square. The halo (Connected and
- * Stalled) is drawn 16 dp outside that square on every side, outside the
- * layout bounds: a caller must leave 16 dp clear on all four sides (the halo
- * spans size + 32 dp) and must not clip the blob's parent tighter than that.
- * Disconnected has no fill, only a 2 dp `outline` stroke. [contentDescription]
- * is the state's label, and [onClickLabel] is the action a tap performs
- * ('Disconnect'), so TalkBack reads 'Connected, double-tap to Disconnect'.
+ * The click target is the full [size] square. The glow (Disconnected, Connected
+ * and Stalled) is a blurred copy of the blob's own outline drawn behind it,
+ * reaching [ConnectBlobDefaults.GlowClearance] (28 dp) beyond that square on
+ * every side, outside the layout bounds: a caller must leave that much clear
+ * on all four sides and must not clip the blob's parent tighter than that.
  *
- * Decorative motion (drift, the Connecting shape cycle, the halo's breath)
+ * [contentDescription] is the state's label. [actionLabel] is the action a
+ * tap performs ('Connect', 'Disconnect'): it is drawn inside the blob under
+ * the centre icon when non-null, and is the click's semantics label, so
+ * TalkBack reads 'Connected, double-tap to Disconnect'.
+ *
+ * Decorative motion (drift, the Connecting shape cycle, the glow's breath)
  * stops under [LocalReducedMotion] (M8.6 spec §2.6); the loader keeps
  * animating, because it is feedback.
  */
@@ -104,7 +111,7 @@ fun ConnectBlob(
     contentDescription: String,
     modifier: Modifier = Modifier,
     size: Dp = 208.dp,
-    onClickLabel: String? = null,
+    actionLabel: String? = null,
     enabled: Boolean = true,
 ) {
     val visual = blobVisualFor(state)
@@ -113,14 +120,12 @@ fun ConnectBlob(
     val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
     val fill by animateColorAsState(visual.fill.container(scheme), if (reduced) snap() else effects, label = "fill")
     val onFill by animateColorAsState(visual.fill.content(scheme), if (reduced) snap() else effects, label = "onFill")
-    // Disconnected is outline only (M8.6 spec §3.3); the stroke fades rather
-    // than pops when another state's fill takes over.
-    val strokeTarget = if (visual.fill == BlobFill.Outline) scheme.outline else scheme.outline.copy(alpha = 0f)
-    val stroke by animateColorAsState(strokeTarget, if (reduced) snap() else effects, label = "stroke")
+    val glowColor = animatedGlowColor(visual, reduced)
+    val glowPresence = animatedGlowPresence(visual.glow, reduced)
+    val glowLevel = rememberGlowLevel(visual.glow, reduced)
 
     val geometry = rememberBlobGeometry(visual.shape, reduced)
     val rotation = rememberBlobRotation(visual.motion, reduced)
-    val haloAlpha = haloAlpha(visual.motion, reduced)
     val path = remember { Path() }
 
     val interactionSource = remember { MutableInteractionSource() }
@@ -133,7 +138,7 @@ fun ConnectBlob(
             }.clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = false, radius = size / 2),
-                onClickLabel = onClickLabel,
+                onClickLabel = actionLabel,
                 enabled = enabled,
                 onClick = onClick,
             )
@@ -141,38 +146,61 @@ fun ConnectBlob(
         modifier = target,
         contentAlignment = Alignment.Center,
     ) {
+        BlobGlowLayer(
+            blobSize = size,
+            fillPath = geometry::fillPath,
+            rotation = { rotation.value },
+            color = glowColor,
+            alpha = { glowPresence() * glowLevel() },
+        )
         Canvas(Modifier.fillMaxSize()) {
             geometry.fillPath(path)
             rotate(rotation.value) {
-                val alpha = haloAlpha()
-                if (alpha > 0f) {
-                    val spread = HALO_SPREAD.toPx()
-                    drawUnitPath(path, fill.copy(alpha = alpha), origin = -spread, side = this.size.width + 2 * spread)
-                }
-                val side = this.size.width
-                drawUnitPath(path, fill, origin = 0f, side = side)
-                if (stroke.alpha > 0f) {
-                    // The path is drawn in unit space, so the stroke width is
-                    // divided by the same scale to land at OUTLINE_WIDTH.
-                    drawUnitPath(path, stroke, origin = 0f, side = side, style = Stroke(OUTLINE_WIDTH.toPx() / side))
-                }
+                drawUnitPath(path, fill, origin = 0f, side = this.size.width)
             }
         }
-        // The loader's own progress semantics must not merge into the button node.
-        Box(Modifier.clearAndSetSemantics { }) { BlobCenterContent(visual.center, fill = fill, onFill = onFill) }
+        // The loader's own progress semantics must not merge into the button
+        // node, and the word is already the click label.
+        Column(
+            modifier = Modifier.clearAndSetSemantics { },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(WORD_GAP),
+        ) {
+            BlobCenterContent(visual.center, fill = fill, onFill = onFill)
+            if (actionLabel != null) ActionWord(actionLabel, onFill, maxWidth = size * 0.7f)
+        }
     }
 }
 
+/** The action under the centre icon: the design's 22/28 medium word (titleLarge here). */
+@Composable
+private fun ActionWord(
+    text: String,
+    color: Color,
+    maxWidth: Dp,
+) {
+    Text(
+        text = text,
+        color = color,
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        // Inside the shape's narrowest lobes, even for the Slanted and Cookie
+        // outlines, at any drift angle.
+        modifier = Modifier.widthIn(max = maxWidth),
+    )
+}
+
 /** Draws a path in MaterialShapes' unit square into an [side]-px square at [origin]. */
-private fun DrawScope.drawUnitPath(
+internal fun DrawScope.drawUnitPath(
     path: Path,
     color: Color,
     origin: Float,
     side: Float,
-    style: DrawStyle = Fill,
 ) {
     translate(origin, origin) {
-        scale(side, side, pivot = Offset.Zero) { drawPath(path, color, style = style) }
+        scale(side, side, pivot = Offset.Zero) { drawPath(path, color) }
     }
 }
 
@@ -231,6 +259,7 @@ private val cycleMorphs: List<Morph> by lazy {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun BlobPolygon.rounded(): RoundedPolygon =
     when (this) {
+        BlobPolygon.Puffy -> MaterialShapes.Puffy
         BlobPolygon.Circle -> MaterialShapes.Circle
         BlobPolygon.SoftBurst -> MaterialShapes.SoftBurst
         BlobPolygon.Cookie6Sided -> MaterialShapes.Cookie6Sided
@@ -348,35 +377,3 @@ private fun rememberBlobRotation(
     }
     return rotation
 }
-
-/**
- * The halo's alpha, read at draw time. [BlobMotion.Breathing] breathes
- * 0.08 <-> 0.5 over HALO_BREATH_MILLIS (the design's `breath` keyframes), or
- * is a solid ring when motion is reduced; [BlobMotion.StillHalo] (Stalled's
- * "halo still", M8.6 spec §3.3) is always that solid ring; anything else has
- * no halo.
- */
-@Composable
-private fun haloAlpha(
-    motion: BlobMotion,
-    reduced: Boolean,
-): () -> Float =
-    when {
-        motion == BlobMotion.StillHalo -> {
-            { HALO_ALPHA_SOLID }
-        }
-        motion != BlobMotion.Breathing -> {
-            { 0f }
-        }
-        reduced -> {
-            { HALO_ALPHA_SOLID }
-        }
-        else ->
-            rememberInfiniteTransition(label = "halo")
-                .animateFloat(
-                    initialValue = HALO_ALPHA_LOW,
-                    targetValue = HALO_ALPHA_HIGH,
-                    animationSpec = infiniteRepeatable(tween(BlobTiming.HALO_BREATH_MILLIS), RepeatMode.Reverse),
-                    label = "breath",
-                )::value
-    }

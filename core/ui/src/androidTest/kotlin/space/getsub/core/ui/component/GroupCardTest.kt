@@ -85,7 +85,7 @@ class GroupCardTest {
         }
         // "Expand", not "Collapse": expanded = false above, and GroupCard's
         // toggle description names the action a tap performs next — the
-        // same convention ConnectBlob's onClickLabel follows.
+        // same convention ConnectBlob's actionLabel follows.
         composeRule.onNodeWithContentDescription("Expand Local configs, 3 servers").performClick()
         toggled shouldBe true
     }

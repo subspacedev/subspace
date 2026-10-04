@@ -33,23 +33,83 @@ class BlobVisualTest {
     @Test
     fun eachStateMatchesTheSpecTable() {
         blobVisualFor(disconnected) shouldBe
-            BlobVisual(BlobShape.Circle, BlobFill.Outline, BlobCenter.Power, BlobMotion.SlowDrift)
+            BlobVisual(
+                BlobShape.Puffy,
+                BlobFill.Disconnected,
+                BlobCenter.Power,
+                BlobMotion.SlowDrift,
+                BlobGlow.DimStill(GlowRole.Primary),
+            )
         blobVisualFor(connecting) shouldBe
-            BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift)
+            BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
         blobVisualFor(open) shouldBe
-            BlobVisual(BlobShape.Cookie9, BlobFill.Connected, BlobCenter.Shield, BlobMotion.Breathing)
-        blobVisualFor(idle) shouldBe
-            BlobVisual(BlobShape.Cookie9, BlobFill.Connected, BlobCenter.Shield, BlobMotion.Breathing)
+            BlobVisual(
+                BlobShape.Cookie9,
+                BlobFill.Connected,
+                BlobCenter.Shield,
+                BlobMotion.MediumDrift,
+                BlobGlow.Breathing(GlowRole.Tertiary),
+            )
+        blobVisualFor(idle) shouldBe blobVisualFor(open)
         blobVisualFor(stalled) shouldBe
-            BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.StillHalo)
+            BlobVisual(
+                BlobShape.Cookie9,
+                BlobFill.Stalled,
+                BlobCenter.ShieldWarning,
+                BlobMotion.Still,
+                BlobGlow.DimStill(GlowRole.TertiaryContainer),
+            )
         blobVisualFor(reconnecting) shouldBe
-            BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
+            BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still, BlobGlow.None)
         blobVisualFor(blocked) shouldBe
-            BlobVisual(BlobShape.Square, BlobFill.Blocked, BlobCenter.VpnLock, BlobMotion.Still)
+            BlobVisual(BlobShape.Square, BlobFill.Blocked, BlobCenter.VpnLock, BlobMotion.Still, BlobGlow.None)
         blobVisualFor(disconnecting) shouldBe
-            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still)
+            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still, BlobGlow.None)
         blobVisualFor(failed) shouldBe
-            BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still)
+            BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still, BlobGlow.None)
+    }
+
+    /**
+     * The owner's 2026-10-04 change: Disconnected is filled and Puffy, while
+     * Disconnecting keeps Circle, so the two "off" states now differ by shape
+     * as well as centre (ARCHITECTURE.md §5.5).
+     */
+    @Test
+    fun disconnectedAndDisconnectingDifferInShape() {
+        blobVisualFor(disconnected).shape.restingPolygon() shouldBe BlobPolygon.Puffy
+        blobVisualFor(disconnecting).shape.restingPolygon() shouldBe BlobPolygon.Circle
+    }
+
+    /** Only a settled tunnel and the resting Disconnected blob glow; every in-between state does not. */
+    @Test
+    fun onlyConnectedStalledAndDisconnectedGlow() {
+        listOf(connecting, reconnecting, blocked, disconnecting, failed).forEach {
+            withClue("$it") { blobVisualFor(it).glow shouldBe BlobGlow.None }
+        }
+        listOf(disconnected, open, idle, stalled).forEach {
+            withClue("$it") { (blobVisualFor(it).glow == BlobGlow.None) shouldBe false }
+        }
+    }
+
+    /** M8.6 spec §2.6: the breath is decorative, so reduced motion holds it still at a visible strength. */
+    @Test
+    fun glowLevelUnderReducedMotion() {
+        BlobGlow.None.stillLevel(reduced = true) shouldBe 0f
+        BlobGlow.None.stillLevel(reduced = false) shouldBe 0f
+        BlobGlow.DimStill(GlowRole.Primary).stillLevel(reduced = false) shouldBe GLOW_LEVEL_DIM
+        BlobGlow.DimStill(GlowRole.Primary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_DIM
+        BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_STEADY
+        // Animated, so there is no single still level.
+        BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = false) shouldBe null
+    }
+
+    /** A real blur from Android 12 (RenderEffect); the layered fallback below it. */
+    @Test
+    fun glowTechniqueByApiLevel() {
+        glowTechnique(sdkInt = 26) shouldBe GlowTechnique.Layered
+        glowTechnique(sdkInt = 30) shouldBe GlowTechnique.Layered
+        glowTechnique(sdkInt = 31) shouldBe GlowTechnique.Blur
+        glowTechnique(sdkInt = 37) shouldBe GlowTechnique.Blur
     }
 
     /**

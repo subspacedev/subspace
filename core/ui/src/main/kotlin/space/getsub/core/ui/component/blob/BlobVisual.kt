@@ -8,23 +8,36 @@ import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.Health
 import space.getsub.core.ui.theme.BlobTiming
 
-enum class BlobShape { Circle, Morphing, Cookie9, Pill, Square, Slanted }
+enum class BlobShape { Puffy, Circle, Morphing, Cookie9, Pill, Square, Slanted }
 
 /**
  * The fill role, resolved against `MaterialTheme.colorScheme` by ConnectBlob
- * (M8.6 spec §3.3): [Outline] is no fill and a 2 dp `outline` stroke; the rest
- * are surfaceContainerHighest, secondaryContainer, tertiary,
- * tertiaryContainer, errorContainer, errorContainer.
+ * (M8.6 spec §3.3, amended 2026-10-04): primaryContainer,
+ * surfaceContainerHighest, secondaryContainer, tertiary, tertiaryContainer,
+ * errorContainer, errorContainer.
  */
-enum class BlobFill { Outline, Idle, Busy, Connected, Stalled, Blocked, Failed }
+enum class BlobFill { Disconnected, Idle, Busy, Connected, Stalled, Blocked, Failed }
 
 enum class BlobCenter { Power, Loader, Shield, ShieldWarning, VpnLock, Warning }
 
+/** Drift only: one turn per 14 s, 11 s or 5 s (BlobTiming), or none. */
+enum class BlobMotion { SlowDrift, MediumDrift, FastDrift, Still }
+
+/** The colour role a glow is drawn in, resolved against `MaterialTheme.colorScheme`. */
+enum class GlowRole { Primary, Tertiary, TertiaryContainer }
+
 /**
- * [Breathing] drifts with a breathing halo; [StillHalo] holds still with a
- * solid halo (M8.6 spec §3.3, Stalled's "halo still"); [Still] has no halo.
+ * The blurred, shape-following light behind the blob (M8.6 spec §3.3, amended
+ * 2026-10-04). [DimStill] holds one faint level; [Breathing] breathes over
+ * BlobTiming.HALO_BREATH_MILLIS, and holds still under reduced motion.
  */
-enum class BlobMotion { SlowDrift, FastDrift, Breathing, StillHalo, Still }
+sealed interface BlobGlow {
+    data object None : BlobGlow
+
+    data class DimStill(val role: GlowRole) : BlobGlow
+
+    data class Breathing(val role: GlowRole) : BlobGlow
+}
 
 /** How the blob draws one connection state (M8.6 spec §3.3). */
 data class BlobVisual(
@@ -32,6 +45,7 @@ data class BlobVisual(
     val fill: BlobFill,
     val center: BlobCenter,
     val motion: BlobMotion,
+    val glow: BlobGlow,
 )
 
 /**
@@ -45,33 +59,51 @@ data class BlobVisual(
 fun blobVisualFor(state: ConnectionState): BlobVisual =
     when (state) {
         ConnectionState.Disconnected ->
-            BlobVisual(BlobShape.Circle, BlobFill.Outline, BlobCenter.Power, BlobMotion.SlowDrift)
+            BlobVisual(
+                BlobShape.Puffy,
+                BlobFill.Disconnected,
+                BlobCenter.Power,
+                BlobMotion.SlowDrift,
+                BlobGlow.DimStill(GlowRole.Primary),
+            )
         is ConnectionState.Connecting ->
-            BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift)
+            BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
         is ConnectionState.Connected ->
             when (state.health) {
                 Health.Stalled ->
-                    BlobVisual(BlobShape.Cookie9, BlobFill.Stalled, BlobCenter.ShieldWarning, BlobMotion.StillHalo)
+                    BlobVisual(
+                        BlobShape.Cookie9,
+                        BlobFill.Stalled,
+                        BlobCenter.ShieldWarning,
+                        BlobMotion.Still,
+                        BlobGlow.DimStill(GlowRole.TertiaryContainer),
+                    )
                 Health.Open, Health.Idle ->
-                    BlobVisual(BlobShape.Cookie9, BlobFill.Connected, BlobCenter.Shield, BlobMotion.Breathing)
+                    BlobVisual(
+                        BlobShape.Cookie9,
+                        BlobFill.Connected,
+                        BlobCenter.Shield,
+                        BlobMotion.MediumDrift,
+                        BlobGlow.Breathing(GlowRole.Tertiary),
+                    )
             }
         is ConnectionState.Reconnecting ->
             if (state.blocked) {
-                BlobVisual(BlobShape.Square, BlobFill.Blocked, BlobCenter.VpnLock, BlobMotion.Still)
+                BlobVisual(BlobShape.Square, BlobFill.Blocked, BlobCenter.VpnLock, BlobMotion.Still, BlobGlow.None)
             } else {
-                BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still)
+                BlobVisual(BlobShape.Pill, BlobFill.Busy, BlobCenter.Loader, BlobMotion.Still, BlobGlow.None)
             }
         ConnectionState.Disconnecting ->
-            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still)
+            BlobVisual(BlobShape.Circle, BlobFill.Idle, BlobCenter.Loader, BlobMotion.Still, BlobGlow.None)
         is ConnectionState.Failed ->
-            BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still)
+            BlobVisual(BlobShape.Slanted, BlobFill.Failed, BlobCenter.Warning, BlobMotion.Still, BlobGlow.None)
     }
 
 /**
  * The MaterialShapes members the blob draws, by name, so the colour-free rule
  * can be tested without Compose. ConnectBlob maps each to its RoundedPolygon.
  */
-internal enum class BlobPolygon { Circle, SoftBurst, Cookie6Sided, Cookie9Sided, Pill, Square, Slanted }
+internal enum class BlobPolygon { Puffy, Circle, SoftBurst, Cookie6Sided, Cookie9Sided, Pill, Square, Slanted }
 
 /**
  * The Connecting shape cycle when motion is allowed, starting from where
@@ -86,6 +118,7 @@ internal val ConnectingCycle: List<BlobPolygon> = listOf(BlobPolygon.SoftBurst, 
 /** The polygon a shape settles on, in either motion mode. */
 internal fun BlobShape.restingPolygon(): BlobPolygon =
     when (this) {
+        BlobShape.Puffy -> BlobPolygon.Puffy
         BlobShape.Circle -> BlobPolygon.Circle
         BlobShape.Morphing -> BlobPolygon.SoftBurst
         BlobShape.Cookie9 -> BlobPolygon.Cookie9Sided
@@ -102,13 +135,10 @@ internal fun BlobShape.restingPolygon(): BlobPolygon =
 internal fun BlobShape.displayablePolygons(reduced: Boolean): Set<BlobPolygon> =
     if (this == BlobShape.Morphing && !reduced) ConnectingCycle.toSet() else setOf(restingPolygon())
 
-/**
- * The fill's container colour (M8.6 spec §3.3). [BlobFill.Outline] has none;
- * ConnectBlob strokes it in `outline` instead.
- */
+/** The fill's container colour (M8.6 spec §3.3). */
 internal fun BlobFill.container(scheme: ColorScheme): Color =
     when (this) {
-        BlobFill.Outline -> Color.Transparent
+        BlobFill.Disconnected -> scheme.primaryContainer
         BlobFill.Idle -> scheme.surfaceContainerHighest
         BlobFill.Busy -> scheme.secondaryContainer
         BlobFill.Connected -> scheme.tertiary
@@ -119,7 +149,7 @@ internal fun BlobFill.container(scheme: ColorScheme): Color =
 /** The matching on-colour, for the centre icon and loader. */
 internal fun BlobFill.content(scheme: ColorScheme): Color =
     when (this) {
-        BlobFill.Outline -> scheme.onSurfaceVariant
+        BlobFill.Disconnected -> scheme.onPrimaryContainer
         BlobFill.Idle -> scheme.onSurface
         BlobFill.Busy -> scheme.onSecondaryContainer
         BlobFill.Connected -> scheme.onTertiary
@@ -131,7 +161,23 @@ internal fun BlobFill.content(scheme: ColorScheme): Color =
 internal fun BlobMotion.driftMillis(): Int? =
     when (this) {
         BlobMotion.SlowDrift -> BlobTiming.IDLE_DRIFT_MILLIS
+        BlobMotion.MediumDrift -> BlobTiming.CONNECTED_DRIFT_MILLIS
         BlobMotion.FastDrift -> BlobTiming.CONNECTING_DRIFT_MILLIS
-        BlobMotion.Breathing -> BlobTiming.CONNECTED_DRIFT_MILLIS
-        BlobMotion.StillHalo, BlobMotion.Still -> null
+        BlobMotion.Still -> null
+    }
+
+/** The glow's colour role, or null when the state has none. */
+internal val BlobGlow.role: GlowRole?
+    get() =
+        when (this) {
+            BlobGlow.None -> null
+            is BlobGlow.DimStill -> role
+            is BlobGlow.Breathing -> role
+        }
+
+internal fun GlowRole.color(scheme: ColorScheme): Color =
+    when (this) {
+        GlowRole.Primary -> scheme.primary
+        GlowRole.Tertiary -> scheme.tertiary
+        GlowRole.TertiaryContainer -> scheme.tertiaryContainer
     }

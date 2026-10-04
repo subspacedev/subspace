@@ -62,7 +62,7 @@ private val SHEET_TITLE_BOTTOM_PADDING = 16.dp
  * @param open whether the sheet is shown. `false` composes nothing — the
  *   sheet (and the [rememberModalBottomSheetState] it would otherwise hold)
  *   does not exist in the composition tree while closed, the same convention
- *   ConnectBlob's halo uses for state this design system does not pay
+ *   ConnectBlob's glow breath uses for state this design system does not pay
  *   composition cost for when it isn't active.
  * @param titleRes the sheet's heading. Marked `Modifier.semantics { heading()
  *   }` so a screen-reader user can navigate directly to it rather than
