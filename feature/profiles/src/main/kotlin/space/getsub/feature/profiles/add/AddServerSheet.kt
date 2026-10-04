@@ -25,7 +25,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -84,12 +83,6 @@ internal const val IMPORT_BUSY_TEST_TAG = "import-busy"
  * own `contentTag` is.
  */
 internal const val IMPORT_PASTE_FIELD_TEST_TAG = "import-paste-field"
-
-/**
- * Identifies the subscription URL [OutlinedTextField] to instrumented tests,
- * the same reason [IMPORT_PASTE_FIELD_TEST_TAG] exists — Task 13.
- */
-internal const val ADD_SUBSCRIPTION_FIELD_TEST_TAG = "add-subscription-field"
 
 /**
  * The only place in the app that turns pasted or imported text into a stored
@@ -170,7 +163,7 @@ private fun AddServerSheetBody(
                             null
                         }
                     if (text != null) {
-                        handedToImport = viewModel.import(text, owner)
+                        handedToImport = viewModel.submit(text, owner)
                     } else {
                         viewModel.reportFileReadFailure(owner)
                     }
@@ -185,7 +178,7 @@ private fun AddServerSheetBody(
         actions =
         ImportActions(
             onInputChanged = viewModel::onInputChanged,
-            onImportClick = { viewModel.import(state.input) },
+            onImportClick = { viewModel.submit(state.input) },
             // "*/*": a subscription can be a share-link list, base64 blob,
             // Clash YAML or raw Xray JSON (ARCHITECTURE.md §7) — SubscriptionParser detects
             // the shape itself, so this does not narrow by extension or
@@ -195,12 +188,6 @@ private fun AddServerSheetBody(
             // has no NavController and does not know or care how scanning
             // is presented, only that tapping it should start.
             onScanClick = onScanQr,
-            // Task 13: the fifth route. Takes the URL directly (rather than
-            // an onSubscriptionUrlChanged + a no-arg click, the paste field's
-            // shape) because the URL field's own text lives in
-            // AddServerSheetContent's local composition state, not
-            // ImportState — see AddSubscriptionSection's KDoc for why.
-            onAddSubscription = viewModel::addSubscription,
             // The clipboard row: reads the primary clip here, where the Context is, then feeds the
             // same import(raw) the paste field uses. The text goes into the field too, so what was
             // imported is visible. Nothing about it is logged (ARCHITECTURE.md §5.6); an empty
@@ -210,7 +197,7 @@ private fun AddServerSheetBody(
                 val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)
                 if (!text.isNullOrBlank()) {
                     viewModel.onInputChanged(text.toString())
-                    viewModel.import(text.toString())
+                    viewModel.submit(text.toString())
                 }
             },
         ),
@@ -219,7 +206,7 @@ private fun AddServerSheetBody(
 }
 
 /**
- * [AddServerSheetContent]'s six callbacks, grouped for the same reason
+ * [AddServerSheetContent]'s five callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.list.ServersActions] is (both
  * pre-date and post-date detekt's `LongParameterList` threshold — this one
  * crossed it when Task 20 fix round 1 added [onScanClick]).
@@ -229,7 +216,6 @@ internal data class ImportActions(
     val onImportClick: () -> Unit,
     val onImportFromFileClick: () -> Unit,
     val onScanClick: () -> Unit,
-    val onAddSubscription: (String) -> Unit,
     val onImportClipboardClick: () -> Unit,
 )
 
@@ -266,7 +252,7 @@ internal fun AddServerSheetContent(
         OutlinedTextField(
             value = state.input,
             onValueChange = actions.onInputChanged,
-            label = { Text(stringResource(R.string.import_paste_label)) },
+            placeholder = { Text(stringResource(R.string.import_paste_placeholder)) },
             minLines = PASTE_FIELD_MIN_LINES,
             enabled = !state.busy,
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = RobotoMonoFontFamily),
@@ -282,8 +268,6 @@ internal fun AddServerSheetContent(
         }
 
         SourceActions(state, actions)
-
-        AddSubscriptionSection(busy = state.busy, onAddSubscription = actions.onAddSubscription)
 
         if (state.busy) BusyRow()
 
@@ -409,66 +393,6 @@ private fun IconTile(
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(22.dp),
             )
-        }
-    }
-}
-
-/**
- * The fifth [AddServerSheetContent] route — M3's plan Part 2 line 715
- * deferred "From subscription URL" to M4; this is that entry.
- *
- * The URL field's own text is local composition state, not [ImportState]:
- * [ImportActions.onAddSubscription] takes the URL directly (unlike the paste
- * field's `onInputChanged` + no-arg `onImportClick` pair) precisely so this
- * section needs no ViewModel round trip just to know what the user is
- * typing — see [ImportActions]'s own KDoc. `remember`, not
- * `rememberSaveable`: same reasoning [ImportState.input]'s KDoc gives for
- * keeping pasted config text out of the Activity's saved-instance-state
- * `Bundle` (ARCHITECTURE.md §5.6) applies to a subscription URL too.
- */
-@Composable
-private fun AddSubscriptionSection(
-    busy: Boolean,
-    onAddSubscription: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var url by remember { mutableStateOf("") }
-
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
-        Row(
-            modifier = Modifier.alpha(if (busy) DISABLED_ALPHA else 1f).padding(vertical = FIELD_GAP),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            IconTile(SubspaceIcons.CloudDownload)
-            Column {
-                Text(stringResource(R.string.add_subscription_title), style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    stringResource(R.string.add_subscription_supporting),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
-            OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
-                placeholder = { Text(stringResource(R.string.add_subscription_hint)) },
-                singleLine = true,
-                enabled = !busy,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = RobotoMonoFontFamily),
-                shape = SubspaceShapeTokens.pill,
-                modifier = Modifier.weight(1f).testTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG),
-            )
-
-            FilledTonalButton(
-                onClick = { onAddSubscription(url) },
-                enabled = !busy && url.isNotBlank(),
-            ) {
-                Text(stringResource(R.string.add_subscription_action))
-            }
         }
     }
 }

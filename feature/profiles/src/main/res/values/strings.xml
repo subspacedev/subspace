@@ -88,8 +88,8 @@
          interpolate the pasted text or file content itself, only bounded
          counts and field names. -->
     <string name="import_sheet_title">Add server</string>
-    <string name="import_paste_label">Share link, subscription, Clash YAML, or Xray JSON</string>
-    <string name="import_button">Import</string>
+    <string name="import_paste_placeholder">Paste a link, subscription URL or Xray JSON</string>
+    <string name="import_button">Add</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
          same import(raw) path this whole sheet already uses. -->
@@ -147,15 +147,11 @@
     <string name="import_detail_field_alter_id">Alter ID</string>
     <string name="import_detail_field_plugin">Plugin</string>
 
-    <!-- Task 13: the fifth AddServerSheet route, "From subscription URL"
-         (M3's plan Part 2 line 715 deferred it to M4). ARCHITECTURE.md §5.6 applies here
+    <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
+         input box. ARCHITECTURE.md §5.6 applies here
          too — the URL itself is never interpolated into any string below,
          only the closed FetchFailure/SyncResult vocabulary UserMessage
          carries (see SyncResult.toUserMessage() in ImportViewModel.kt). -->
-    <string name="add_subscription_title">From subscription URL</string>
-    <string name="add_subscription_supporting">Add a provider\'s URL and keep it updated</string>
-    <string name="add_subscription_hint">https://…</string>
-    <string name="add_subscription_action">Add subscription</string>
     <!-- %1$d = ProfileRepository-equivalent rows actually written by the
          first sync (SyncResult.Synced.added), never a count of servers the
          provider's response merely listed — same "rows written, not parsed"

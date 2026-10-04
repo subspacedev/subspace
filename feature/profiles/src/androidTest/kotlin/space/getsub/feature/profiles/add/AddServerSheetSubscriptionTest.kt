@@ -18,7 +18,7 @@ import space.getsub.core.ui.theme.SubspaceTheme
 import space.getsub.feature.profiles.R
 
 /**
- * Task 13: the fifth [AddServerSheetContent] route, "From subscription URL"
+ * Task 13 (reshaped by Task 7b onto the single input box): the subscription outcomes of [AddServerSheetContent]
  * — M3's plan Part 2 line 715 deferred it to M4.
  *
  * Same harness as [AddServerSheetTest]: [AddServerSheetContent] directly,
@@ -32,7 +32,7 @@ import space.getsub.feature.profiles.R
  * `:core:data`, the same reason [ProfileSource][space.getsub.feature.profiles.ProfileSource]
  * exists as a fakeable seam for JVM tests). What this file owns: that the
  * entry exists, that the URL field's own text reaches
- * [ImportActions.onAddSubscription] verbatim, and that every
+ * [ImportActions.onImportClick] verbatim, and that every
  * [SyncResult][space.getsub.core.data.sync.SyncResult] outcome
  * [ImportState.subscriptionResult] can carry renders its own distinct
  * string — [SubscriptionImportTest] proves the mapping to a resource id is
@@ -48,8 +48,8 @@ class AddServerSheetSubscriptionTest {
 
     private fun setContent(
         state: ImportState = ImportState(),
-        onAddSubscription: (String) -> Unit = {},
-    ) = setContent(mutableStateOf(state), onAddSubscription)
+        onImportClick: () -> Unit = {},
+    ) = setContent(mutableStateOf(state), onImportClick)
 
     /**
      * The [MutableState] overload, for the one test that needs the state to *change* after the
@@ -57,7 +57,7 @@ class AddServerSheetSubscriptionTest {
      */
     private fun setContent(
         state: MutableState<ImportState>,
-        onAddSubscription: (String) -> Unit = {},
+        onImportClick: () -> Unit = {},
     ): MutableState<ImportState> {
         composeRule.setContent {
             SubspaceTheme {
@@ -65,11 +65,10 @@ class AddServerSheetSubscriptionTest {
                     state = state.value,
                     actions =
                     ImportActions(
-                        onInputChanged = {},
-                        onImportClick = {},
+                        onInputChanged = { state.value = state.value.copy(input = it) },
+                        onImportClick = onImportClick,
                         onImportFromFileClick = {},
                         onScanClick = {},
-                        onAddSubscription = onAddSubscription,
                         onImportClipboardClick = {},
                     ),
                 )
@@ -79,28 +78,30 @@ class AddServerSheetSubscriptionTest {
     }
 
     @Test
-    fun theSubscriptionEntryIsPresent() {
+    fun theOneInputBoxIsPresentAndTheSeparateSubscriptionEntryIsGone() {
         setContent()
 
-        composeRule.onNodeWithText("From subscription URL").assertExists()
-        composeRule.onNodeWithTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG).assertExists()
-        composeRule.onNodeWithText("Add subscription").assertExists()
+        composeRule.onNodeWithTag(IMPORT_PASTE_FIELD_TEST_TAG).assertExists()
+        composeRule.onNodeWithText("Paste a link, subscription URL or Xray JSON").assertExists()
+        composeRule.onNodeWithText("Add").assertExists()
+        composeRule.onNodeWithText("From subscription URL").assertDoesNotExist()
+        composeRule.onNodeWithText("Add subscription").assertDoesNotExist()
     }
 
     @Test
     fun addSubscriptionButtonIsDisabledWhenTheUrlFieldIsBlank() {
         setContent()
 
-        composeRule.onNodeWithText("Add subscription").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
     fun addSubscriptionButtonIsEnabledOnceAUrlIsTyped() {
         setContent()
 
-        composeRule.onNodeWithTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
+        composeRule.onNodeWithTag(IMPORT_PASTE_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
 
-        composeRule.onNodeWithText("Add subscription").assertIsEnabled()
+        composeRule.onNodeWithText("Add").assertIsEnabled()
     }
 
     @Test
@@ -111,24 +112,27 @@ class AddServerSheetSubscriptionTest {
         // would fail on a disabled field and prove nothing about the button.
         val state = setContent(mutableStateOf(ImportState()))
 
-        composeRule.onNodeWithTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
-        composeRule.onNodeWithText("Add subscription").assertIsEnabled()
+        composeRule.onNodeWithTag(IMPORT_PASTE_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
+        composeRule.onNodeWithText("Add").assertIsEnabled()
 
         state.value = ImportState(busy = true)
 
         // busy dominates the `!busy && url.isNotBlank()` guard even though the URL is still there.
-        composeRule.onNodeWithText("Add subscription").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
-    fun enteringAUrlAndConfirmingInvokesTheCallbackWithIt() {
-        var added: String? = null
-        setContent(onAddSubscription = { added = it })
+    fun enteringAUrlAndConfirmingHandsItToTheSingleImportCallbackVerbatim() {
+        var clicked = false
+        val state = setContent(mutableStateOf(ImportState()), onImportClick = { clicked = true })
 
-        composeRule.onNodeWithTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
-        composeRule.onNodeWithText("Add subscription").performClick()
+        composeRule.onNodeWithTag(IMPORT_PASTE_FIELD_TEST_TAG).performTextInput("https://example.com/sub")
+        composeRule.onNodeWithText("Add").performClick()
 
-        added shouldBe "https://example.com/sub"
+        // Routing (subscription vs parse) is ImportViewModel.submit's job; the sheet only owns
+        // that the typed text reaches state.input unchanged and the one button fires.
+        state.value.input shouldBe "https://example.com/sub"
+        clicked shouldBe true
     }
 
     @Test

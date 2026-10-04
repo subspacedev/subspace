@@ -659,4 +659,79 @@ class ImportViewModelTest {
 
             viewModel.state.value.busy shouldBe false
         }
+
+    // Task 7b: submit() is the one entry point; it routes to addSubscription or import.
+
+    @Test
+    fun `submit of a lone url adds a subscription and does not parse`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("  https://example.com/sub\n")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            repository.lastAddSubscriptionUrl shouldBe "https://example.com/sub"
+            viewModel.state.value.completed shouldBe false
+        }
+
+    @Test
+    fun `submit of share links imports and does not add a subscription`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit(validRawJson)
+            advanceUntilIdle()
+            viewModel.state.first { it.completed }
+
+            repository.addSubscriptionCallCount shouldBe 0
+            viewModel.state.value.imported shouldBe 1
+        }
+
+    @Test
+    fun `submit of mixed links and a url line imports`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("https://example.com/sub\nvless://x")
+            advanceUntilIdle()
+            viewModel.state.first { it.completed }
+
+            repository.addSubscriptionCallCount shouldBe 0
+        }
+
+    @Test
+    fun `submit of a url from a file read that lost ownership does nothing`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+            val stale = viewModel.beginFileRead()
+            viewModel.beginFileRead()
+
+            viewModel.submit("https://example.com/sub", stale) shouldBe false
+            advanceUntilIdle()
+
+            repository.addSubscriptionCallCount shouldBe 0
+        }
+
+    @Test
+    fun `submit of a url from the owning file read adds a subscription and releases ownership`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+            val owner = viewModel.beginFileRead()
+
+            viewModel.submit("https://example.com/sub", owner) shouldBe true
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            // ownership released: a late cancel must not flip busy for a later operation
+            viewModel.cancelFileRead(owner)
+            viewModel.state.value.busy shouldBe false
+        }
 }

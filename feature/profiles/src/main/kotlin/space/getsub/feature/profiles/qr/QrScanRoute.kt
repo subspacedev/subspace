@@ -23,7 +23,7 @@ import space.getsub.feature.profiles.add.ImportViewModel
  * instance backing [space.getsub.feature.profiles.add.AddServerSheet]
  * there, not a fresh instance scoped to this destination — that sharing is
  * what lets a scanned payload land in
- * the exact `import(raw)` flow a paste or file import already uses, and it
+ * the exact `submit(raw)` flow a paste or file import already uses, and it
  * is why [onDone] carries no data: the result travels through the shared
  * ViewModel, not through a return value or `NavBackStackEntry.savedStateHandle`.
  * That handle is `Bundle`-backed (marshaled into the Activity's
@@ -31,9 +31,9 @@ import space.getsub.feature.profiles.add.ImportViewModel
  * [ImportViewModel]'s own KDoc already rules out for config material
  * (ARCHITECTURE.md §5.6). Sharing the ViewModel instance instead keeps a scanned payload in
  * process memory only, the same lifetime every other path into
- * `import(raw)` already has.
+ * `submit(raw)` already has.
  *
- * @param onDone called after a successful scan (once [ImportViewModel.import]
+ * @param onDone called after a successful scan (once [ImportViewModel.submit]
  *   has been started — not awaited; the sheet reflects its progress
  *   asynchronously the same way a paste does) and on cancel alike. Both
  *   cases return the caller to wherever it came from; neither is a dead end.
@@ -47,7 +47,7 @@ fun QrScanRoute(
 
     QrScanner(
         onResult = { raw ->
-            viewModel.import(raw)
+            viewModel.submit(raw)
             onDone()
         },
         onCancel = onDone,

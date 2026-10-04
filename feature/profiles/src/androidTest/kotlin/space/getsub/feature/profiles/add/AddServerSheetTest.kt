@@ -72,9 +72,6 @@ class AddServerSheetTest {
                         onImportClick = onImportClick,
                         onImportFromFileClick = onImportFromFileClick,
                         onScanClick = onScanClick,
-                        // Not this file's concern — AddServerSheetSubscriptionTest
-                        // (Task 13) owns the "From subscription URL" route.
-                        onAddSubscription = {},
                         onImportClipboardClick = onImportClipboardClick,
                     ),
                 )
@@ -101,13 +98,13 @@ class AddServerSheetTest {
     @Test
     fun importButtonIsDisabledWhenInputIsBlank() {
         setContent(state = ImportState(input = ""))
-        composeRule.onNodeWithText("Import").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
     fun importButtonIsEnabledWithNonBlankInputWhileNotBusy() {
         setContent(state = ImportState(input = "vless://x", busy = false))
-        composeRule.onNodeWithText("Import").assertIsEnabled()
+        composeRule.onNodeWithText("Add").assertIsEnabled()
     }
 
     @Test
@@ -115,7 +112,7 @@ class AddServerSheetTest {
         // AddServerSheet.kt:122's gate is `!state.busy && state.input.isNotBlank()`
         // — both halves matter independently; this pins the busy half.
         setContent(state = ImportState(input = "vless://x", busy = true))
-        composeRule.onNodeWithText("Import").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
@@ -123,7 +120,7 @@ class AddServerSheetTest {
         var clicked = false
         setContent(state = ImportState(input = "vless://x"), onImportClick = { clicked = true })
 
-        composeRule.onNodeWithText("Import").performClick()
+        composeRule.onNodeWithText("Add").performClick()
 
         clicked shouldBe true
     }
