@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +30,8 @@ import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.StatusChip
 import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.component.blob.ConnectBlob
+import space.getsub.core.ui.component.blob.ConnectBlobDefaults
 import space.getsub.core.ui.icon.SubspaceIcons
-import space.getsub.core.ui.theme.LocalSubspaceColors
 import space.getsub.core.ui.theme.tabular
 
 private const val UPTIME_TICK_MILLIS = 1_000L
@@ -65,7 +62,12 @@ internal fun HomeTopBar(
     }
 }
 
-/** The blob, the action button, label, detail and the unsupported note. */
+/**
+ * The blob (with the action word inside it), label, detail and the
+ * unsupported note. There is no separate Connect / Disconnect button: the
+ * blob is the control (M8.6 spec §4.1, amended 2026-10-04 at the owner's
+ * request).
+ */
 @Composable
 internal fun HomeHero(
     state: HomeState,
@@ -84,14 +86,21 @@ internal fun HomeHero(
             HomePrimaryAction.Disconnect -> { { if (state.canDisconnect) actions.onDisconnect() } }
             HomePrimaryAction.None -> { {} }
         }
-    val actionText =
-        when (action) {
-            HomePrimaryAction.Connect -> stringResource(R.string.home_action_connect)
-            HomePrimaryAction.Disconnect -> stringResource(R.string.home_action_disconnect)
-            HomePrimaryAction.None -> null
-        }
     val tappable =
         action == HomePrimaryAction.Disconnect || (action == HomePrimaryAction.Connect && state.canConnect)
+    // The word is offered only when a tap will do it: with nothing chosen,
+    // "Choose a server first" (the detail line) explains instead, and
+    // Connecting / Disconnecting show only the loader.
+    val actionText =
+        if (!tappable) {
+            null
+        } else {
+            when (action) {
+                HomePrimaryAction.Connect -> stringResource(R.string.home_action_connect)
+                HomePrimaryAction.Disconnect -> stringResource(R.string.home_action_disconnect)
+                HomePrimaryAction.None -> null
+            }
+        }
 
     Column(
         modifier = modifier,
@@ -105,11 +114,9 @@ internal fun HomeHero(
             actionLabel = actionText,
             enabled = tappable,
             size = BLOB_SIZE,
-            // The halo's clearance (ConnectBlob's KDoc).
-            modifier = Modifier.padding(16.dp),
+            // The glow's clearance (ConnectBlob's KDoc).
+            modifier = Modifier.padding(ConnectBlobDefaults.GlowClearance),
         )
-
-        if (actionText != null) HomeActionButton(action, actionText, tappable, onTap)
 
         Text(
             text = label,
@@ -134,29 +141,6 @@ internal fun HomeHero(
                 tone = BannerTone.Blocked,
             )
         }
-    }
-}
-
-/** The one button under the blob: the screen's single `pop` for Connect, tonal for Disconnect. */
-@Composable
-private fun HomeActionButton(
-    action: HomePrimaryAction,
-    text: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    if (action == HomePrimaryAction.Connect) {
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            colors =
-            ButtonDefaults.buttonColors(
-                containerColor = LocalSubspaceColors.current.pop,
-                contentColor = LocalSubspaceColors.current.onPop,
-            ),
-        ) { Text(text) }
-    } else {
-        FilledTonalButton(onClick = onClick) { Text(text) }
     }
 }
 

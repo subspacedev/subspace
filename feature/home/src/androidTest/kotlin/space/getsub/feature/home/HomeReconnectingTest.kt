@@ -3,6 +3,10 @@
 package space.getsub.feature.home
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -61,7 +65,7 @@ class HomeReconnectingTest {
      * Several independent refusals had to be lifted together for this to pass — [HomeState
      * .canDisconnect] excluded `Reconnecting`, and the primary action and the blob's enabled
      * state each had to offer it — so a regression restoring any one of them fails here. The
-     * exit is a visible Disconnect button and also the blob's click label.
+     * exit is the blob itself: "Disconnect" is drawn inside it and is its click label.
      */
     @Test
     fun reconnectingOffersAWorkingDisconnect() {
@@ -76,12 +80,27 @@ class HomeReconnectingTest {
             }
         }
 
-        composeRule.onNodeWithText("Disconnect").performClick()
-        disconnects shouldBe 1
-
         // The blob's content description is the state label; its click label is the action.
-        composeRule.onNodeWithContentDescription("Reconnecting").performClick()
-        disconnects shouldBe 2
+        composeRule.onNodeWithContentDescription("Reconnecting").assert(clickLabel("Disconnect")).performClick()
+        disconnects shouldBe 1
+    }
+
+    /** Blocked's Disconnect is the same exit, on the Square blob. */
+    @Test
+    fun blockedReconnectingOffersAWorkingDisconnect() {
+        var disconnects = 0
+        val state =
+            homeState(
+                connection = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = true),
+            )
+        composeRule.setContent {
+            TestTheme {
+                HomeScreenContent(state = state, actions = actions.copy(onDisconnect = { disconnects++ }))
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Blocked").assert(clickLabel("Disconnect")).performClick()
+        disconnects shouldBe 1
     }
 
     @Test
@@ -116,6 +135,11 @@ class HomeReconnectingTest {
         composeRule.onNodeWithText("Traffic is not protected", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertDoesNotExist()
     }
+
+    private fun clickLabel(expected: String) =
+        SemanticsMatcher("OnClick label is $expected") {
+            it.config.getOrNull(SemanticsActions.OnClick)?.label == expected
+        }
 
     private fun setContent(state: HomeState) {
         composeRule.setContent {
