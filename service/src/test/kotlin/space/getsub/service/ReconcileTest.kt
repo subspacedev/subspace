@@ -272,6 +272,10 @@ class ReconcileTest {
             ReconcileAction.Nothing
     }
 
+    /**
+     * Pure arm only: the service never reaches it, as `liveSession` is null while
+     * Reconnecting and the next backoff attempt reads the active row instead.
+     */
     @Test
     fun aSwitchWhileReconnectingStartsTheNextAttemptOnTheNewServer() {
         val reconnecting = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = true)

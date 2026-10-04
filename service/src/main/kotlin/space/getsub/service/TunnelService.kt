@@ -1242,7 +1242,9 @@ class TunnelService : VpnService() {
      */
     private fun enqueueSwitchIfRequested(activeRowId: Long?) {
         val liveRowId = synchronized(lock) { liveSession?.rowId }
-        if (switchRequested(liveRowId, activeRowId)) {
+        // `activeRunnable = true`: a candidate only. Whether this build can run the
+        // row is judged once, at dequeue, by [profileSwitchStillApplies].
+        if (switchRequested(liveRowId, activeRowId, activeRunnable = true)) {
             commandCoordinator.enqueue(TunnelCommand.Reconcile(ReconcileTrigger.ProfileSwitched))
         }
     }
@@ -3529,18 +3531,13 @@ class TunnelService : VpnService() {
                 wanted = settingsRepository.tunnelSessionWantedNow(),
                 profileRowId = settingsRepository.activeProfileIdNow(),
             )
-        // M8.6 Part 3 D1: re-checked at dequeue, not trusted from enqueue. Rapid
-        // picks (A → B → A), or the collector and the settle re-check both
-        // raising one switch, can leave a command whose switch has already
-        // happened or been undone; `reconcile` alone would answer `Restart` from
-        // `Connected` regardless and restart onto the row already live (review
-        // focus 1). Read here, on the coordinator, where the only restart that
-        // moves [liveSession]'s row also runs. No live session means nothing to
-        // move: a `Reconnecting` session's next attempt reads the active row
-        // anyway, and after a revoke or stop this must not reach `Release`.
-        if (trigger == ReconcileTrigger.ProfileSwitched &&
-            !switchRequested(synchronized(lock) { liveSession?.rowId }, intent.profileRowId)
-        ) {
+        // M8.6 Part 3 D1: re-checked at dequeue, not trusted from enqueue. See
+        // [profileSwitchStillApplies] for what it re-checks and why here.
+        if (trigger == ReconcileTrigger.ProfileSwitched && !profileSwitchStillApplies(intent.profileRowId)) {
+            // Skipping [adoptFrameworkStartId] (the `Nothing` effect) is harmless:
+            // every framework start enqueues its own reconcile
+            // ([TunnelCommandIngress.reconcile]), which adopts its token when that
+            // command is dequeued. This one has none of its own to adopt.
             return
         }
         when (val action = reconcile(intent, currentConnectionState(), trigger)) {
@@ -3550,6 +3547,47 @@ class TunnelService : VpnService() {
             ReconcileAction.Release -> releaseServiceWithoutPublishing()
             ReconcileAction.Nothing -> adoptFrameworkStartId()
         }
+    }
+
+    /**
+     * [reconcileNow]'s dequeue-time check for [ReconcileTrigger.ProfileSwitched]:
+     * [switchRequested] against the state *now*, on the coordinator, where the
+     * only restart that moves [liveSession]'s row also runs.
+     *
+     * - **Still a switch.** Rapid picks (A → B → A), or the collector and the
+     *   settle re-check both raising one switch, can leave a command whose
+     *   switch has already happened or been undone. `reconcile` alone answers
+     *   `Restart` from `Connected` regardless, and would restart onto the row
+     *   already live (review focus 1).
+     * - **Still a live session.** With none there is nothing to move. A
+     *   `Reconnecting` session's next attempt reads the active row anyway, and
+     *   after a revoke or stop this must not reach `Release`.
+     * - **A row this build can run** (Task 1 review, controller ruling): it
+     *   decodes and is `connectable`, the same test Home's connect button uses.
+     *   Otherwise the live tunnel is left alone — see [switchRequested]. Judged
+     *   here rather than in the collector so it reads the row as it is when the
+     *   switch would happen. [ReconcileTrigger.NetworkChanged] does not come
+     *   through here and keeps its M8 behaviour.
+     *
+     * A failed row read counts as not runnable: the session stays where it is.
+     * ARCHITECTURE.md §5.6: class name only.
+     */
+    private suspend fun profileSwitchStillApplies(activeRowId: Long?): Boolean {
+        val activeRunnable =
+            activeRowId != null &&
+                try {
+                    val row = profileRepository.profile(activeRowId)
+                    row != null && row.toProfile() != null && row.connectable
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
+                    Log.e(TAG, "active-profile row read failed: ${e.javaClass.simpleName}")
+                    false
+                }
+        val liveRowId = synchronized(lock) { liveSession?.rowId }
+        return switchRequested(liveRowId, activeRowId, activeRunnable)
     }
 
     /**
