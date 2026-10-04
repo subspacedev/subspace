@@ -70,6 +70,7 @@ class AddServerSheetSubscriptionTest {
                         onImportFromFileClick = {},
                         onScanClick = {},
                         onAddSubscription = onAddSubscription,
+                        onImportClipboardClick = {},
                     ),
                 )
             }

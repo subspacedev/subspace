@@ -76,7 +76,6 @@ private fun RenameGroupDialog(
 ) {
     var text by remember(group.id) { mutableStateOf(group.name) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(group.id) { focus.requestFocus() }
     SubspaceDialog(
         title = stringResource(R.string.servers_rename_group_title),
         confirmLabel = stringResource(R.string.servers_rename_group_confirm),
@@ -85,6 +84,9 @@ private fun RenameGroupDialog(
         onDismiss = onDismiss,
         confirmEnabled = text.isNotBlank(),
     ) {
+        // Inside the content lambda: it composes in the dialog's own window, so the requester is
+        // attached by the time this effect runs (from the caller's composition it could fire first).
+        LaunchedEffect(Unit) { focus.requestFocus() }
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },

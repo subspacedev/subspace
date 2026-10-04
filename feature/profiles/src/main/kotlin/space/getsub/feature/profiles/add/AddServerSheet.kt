@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +47,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -228,7 +230,7 @@ internal data class ImportActions(
     val onImportFromFileClick: () -> Unit,
     val onScanClick: () -> Unit,
     val onAddSubscription: (String) -> Unit,
-    val onImportClipboardClick: () -> Unit = {},
+    val onImportClipboardClick: () -> Unit,
 )
 
 /**
@@ -250,6 +252,7 @@ internal fun AddServerSheetContent(
         modifier =
         modifier
             .fillMaxWidth()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = CONTENT_HORIZONTAL_PADDING, vertical = CONTENT_BOTTOM_PADDING),
         verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
@@ -372,7 +375,7 @@ private fun ActionRow(
         modifier
             .fillMaxWidth()
             .alpha(if (enabled) 1f else DISABLED_ALPHA)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(vertical = FIELD_GAP),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),

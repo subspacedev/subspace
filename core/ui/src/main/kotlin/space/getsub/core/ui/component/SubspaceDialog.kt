@@ -56,7 +56,7 @@ fun SubspaceDialog(
         icon = icon,
         destructive = destructive,
     ) {
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DialogBody(body)
     }
 }
 
@@ -100,7 +100,7 @@ internal fun SubspaceDialogContent(
     destructive: Boolean,
 ) {
     SubspaceDialogSurface(title, confirmLabel, onConfirm, dismissLabel, onDismiss, icon, destructive, true) {
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DialogBody(body)
     }
 }
 
@@ -158,4 +158,9 @@ internal fun SubspaceDialogSurface(
             }
         }
     }
+}
+
+@Composable
+private fun DialogBody(body: String) {
+    Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

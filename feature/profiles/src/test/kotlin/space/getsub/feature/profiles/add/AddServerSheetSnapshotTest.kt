@@ -21,7 +21,7 @@ class AddServerSheetSnapshotTest {
     @get:Rule
     val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_5.copy(screenHeight = 2400))
 
-    private val noActions = ImportActions({}, {}, {}, {}, {})
+    private val noActions = ImportActions({}, {}, {}, {}, {}, {})
 
     private fun shoot(
         name: String,
