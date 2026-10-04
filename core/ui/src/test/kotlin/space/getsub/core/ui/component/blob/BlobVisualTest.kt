@@ -2,9 +2,13 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.ui.component.blob
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeUnique
+import io.kotest.matchers.comparables.shouldBeGreaterThanOrEqualTo
+import io.kotest.matchers.comparables.shouldBeLessThanOrEqualTo
 import io.kotest.matchers.shouldBe
 import org.junit.Test
 import space.getsub.core.model.ConnectionState
@@ -34,11 +38,11 @@ class BlobVisualTest {
     fun eachStateMatchesTheSpecTable() {
         blobVisualFor(disconnected) shouldBe
             BlobVisual(
-                BlobShape.Puffy,
+                BlobShape.Sunny,
                 BlobFill.Disconnected,
                 BlobCenter.Power,
                 BlobMotion.SlowDrift,
-                BlobGlow.DimStill(GlowRole.Primary),
+                BlobGlow.Tint(GlowRole.LightPrimary),
             )
         blobVisualFor(connecting) shouldBe
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
@@ -70,13 +74,13 @@ class BlobVisualTest {
     }
 
     /**
-     * The owner's 2026-10-04 change: Disconnected is filled and Puffy, while
+     * The owner's 2026-10-04 change: Disconnected is filled and Sunny, while
      * Disconnecting keeps Circle, so the two "off" states now differ by shape
      * as well as centre (ARCHITECTURE.md §5.5).
      */
     @Test
-    fun disconnectedAndDisconnectingDifferInShape() {
-        blobVisualFor(disconnected).shape.restingPolygon() shouldBe BlobPolygon.Puffy
+    fun disconnectedIsSunnyAndDisconnectingIsCircle() {
+        blobVisualFor(disconnected).shape.restingPolygon() shouldBe BlobPolygon.Sunny
         blobVisualFor(disconnecting).shape.restingPolygon() shouldBe BlobPolygon.Circle
     }
 
@@ -96,11 +100,39 @@ class BlobVisualTest {
     fun glowLevelUnderReducedMotion() {
         BlobGlow.None.stillLevel(reduced = true) shouldBe 0f
         BlobGlow.None.stillLevel(reduced = false) shouldBe 0f
-        BlobGlow.DimStill(GlowRole.Primary).stillLevel(reduced = false) shouldBe GLOW_LEVEL_DIM
-        BlobGlow.DimStill(GlowRole.Primary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_DIM
+        BlobGlow.DimStill(GlowRole.TertiaryContainer).stillLevel(reduced = false) shouldBe GLOW_LEVEL_DIM
+        BlobGlow.DimStill(GlowRole.TertiaryContainer).stillLevel(reduced = true) shouldBe GLOW_LEVEL_DIM
+        BlobGlow.Tint(GlowRole.LightPrimary).stillLevel(reduced = false) shouldBe GLOW_LEVEL_TINT
+        BlobGlow.Tint(GlowRole.LightPrimary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_TINT
         BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = true) shouldBe GLOW_LEVEL_STEADY
         // Animated, so there is no single still level.
         BlobGlow.Breathing(GlowRole.Tertiary).stillLevel(reduced = false) shouldBe null
+    }
+
+    /**
+     * The off-state tint only ever lightens: it resolves to whichever of
+     * primary and primaryContainer is lighter (tone 90 in a light scheme,
+     * tone 80 in a dark one), never the dark light-theme primary that read
+     * as a brown drop-shadow on the owner's device.
+     */
+    @Test
+    fun lightPrimaryIsTheLighterPrimaryRole() {
+        val light = lightColorScheme()
+        val dark = darkColorScheme()
+        GlowRole.LightPrimary.color(light) shouldBe light.primaryContainer
+        GlowRole.LightPrimary.color(dark) shouldBe dark.primary
+    }
+
+    /** Every glow stays within the clearance callers leave, and the canvas holds its faint tail. */
+    @Test
+    fun everyGlowFitsTheClearanceAndTheCanvas() {
+        listOf(disconnected, open, stalled).map { blobVisualFor(it).glow.style() }.forEach { style ->
+            withClue("$style") {
+                style.visibleSpread().value shouldBeLessThanOrEqualTo GLOW_CLEARANCE.value
+                GLOW_CANVAS_MARGIN.value shouldBeGreaterThanOrEqualTo style.tail().value
+            }
+        }
+        blobVisualFor(open).glow.style().visibleSpread().value shouldBeGreaterThanOrEqualTo 38f
     }
 
     /** A real blur from Android 12 (RenderEffect); the layered fallback below it. */

@@ -110,6 +110,11 @@ class ConnectBlobSnapshotTest {
     fun longActionLabel() =
         blob("long-action", connected(Health.Open), actionLabel = "Verbindung trennen und Tunnel schließen")
 
+    /** The same inside Sunny, the off-state shape, whose valleys cut deepest into the corners. */
+    @Test
+    fun longConnectLabel() =
+        blob("long-connect", ConnectionState.Disconnected, actionLabel = "Verbindung herstellen und schützen")
+
     /** The API 26-30 fallback (GlowTechnique.Layered), which no device in CI would draw. */
     @Test
     fun disconnectedLayered() = layered("disconnected", ConnectionState.Disconnected)

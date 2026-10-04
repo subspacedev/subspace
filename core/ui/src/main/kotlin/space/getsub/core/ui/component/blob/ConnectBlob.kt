@@ -75,11 +75,11 @@ private val BADGE_BACKING = 18.dp
 /** Values a caller of [ConnectBlob] needs. */
 object ConnectBlobDefaults {
     /**
-     * How far the glow is visible beyond the blob on every side (28 dp); a
-     * faint tail is drawn on to 40 dp. A caller must leave this much clear
+     * How far the glow is visible beyond the blob on every side (40 dp); a
+     * faint tail is drawn on to 64 dp. A caller must leave this much clear
      * around the blob and must not clip the blob's parent at all.
      */
-    val GlowClearance: Dp = GLOW_SPREAD
+    val GlowClearance: Dp = GLOW_CLEARANCE
 }
 
 /**
@@ -91,8 +91,8 @@ object ConnectBlobDefaults {
  * The click target is the full [size] square. The glow (Disconnected, Connected
  * and Stalled) is a blurred copy of the blob's own outline drawn behind it,
  * outside the layout bounds: visible to [ConnectBlobDefaults.GlowClearance]
- * (28 dp) beyond that square on every side, with a faint tail to 40 dp. A
- * caller must leave the 28 dp clear on all four sides and must not clip the
+ * (40 dp) beyond that square on every side, with a faint tail to 64 dp. A
+ * caller must leave the 40 dp clear on all four sides and must not clip the
  * blob's parent.
  *
  * [contentDescription] is the state's label. [actionLabel] is the action a
@@ -150,6 +150,7 @@ fun ConnectBlob(
     ) {
         BlobGlowLayer(
             blobSize = size,
+            glow = visual.glow,
             fillPath = geometry::fillPath,
             rotation = { rotation.value },
             color = glowColor,
@@ -261,7 +262,7 @@ private val cycleMorphs: List<Morph> by lazy {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun BlobPolygon.rounded(): RoundedPolygon =
     when (this) {
-        BlobPolygon.Puffy -> MaterialShapes.Puffy
+        BlobPolygon.Sunny -> MaterialShapes.Sunny
         BlobPolygon.Circle -> MaterialShapes.Circle
         BlobPolygon.SoftBurst -> MaterialShapes.SoftBurst
         BlobPolygon.Cookie6Sided -> MaterialShapes.Cookie6Sided

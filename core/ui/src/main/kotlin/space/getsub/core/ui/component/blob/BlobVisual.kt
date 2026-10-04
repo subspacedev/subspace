@@ -4,11 +4,12 @@ package space.getsub.core.ui.component.blob
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.Health
 import space.getsub.core.ui.theme.BlobTiming
 
-enum class BlobShape { Puffy, Circle, Morphing, Cookie9, Pill, Square, Slanted }
+enum class BlobShape { Sunny, Circle, Morphing, Cookie9, Pill, Square, Slanted }
 
 /**
  * The fill role, resolved against `MaterialTheme.colorScheme` by ConnectBlob
@@ -23,16 +24,23 @@ enum class BlobCenter { Power, Loader, Shield, ShieldWarning, VpnLock, Warning }
 /** Drift only: one turn per 14 s, 11 s or 5 s (BlobTiming), or none. */
 enum class BlobMotion { SlowDrift, MediumDrift, FastDrift, Still }
 
-/** The colour role a glow is drawn in, resolved against `MaterialTheme.colorScheme`. */
-enum class GlowRole { Primary, Tertiary, TertiaryContainer }
+/**
+ * The colour role a glow is drawn in, resolved against `MaterialTheme.colorScheme`.
+ * [LightPrimary] is whichever of primary and primaryContainer is lighter, so
+ * the off-state tint only ever lightens, in either theme.
+ */
+enum class GlowRole { LightPrimary, Tertiary, TertiaryContainer }
 
 /**
  * The blurred, shape-following light behind the blob (M8.6 spec §3.3, amended
- * 2026-10-04). [DimStill] holds one faint level; [Breathing] breathes over
- * BlobTiming.HALO_BREATH_MILLIS, and holds still under reduced motion.
+ * 2026-10-04). [Tint] is a very faint, wide, soft wash; [DimStill] holds one
+ * faint level; [Breathing] breathes over BlobTiming.HALO_BREATH_MILLIS, and
+ * holds still under reduced motion.
  */
 sealed interface BlobGlow {
     data object None : BlobGlow
+
+    data class Tint(val role: GlowRole) : BlobGlow
 
     data class DimStill(val role: GlowRole) : BlobGlow
 
@@ -60,11 +68,12 @@ fun blobVisualFor(state: ConnectionState): BlobVisual =
     when (state) {
         ConnectionState.Disconnected ->
             BlobVisual(
-                BlobShape.Puffy,
+                // The off-state shape: Sunny, a one-line swap (to Circle, say).
+                BlobShape.Sunny,
                 BlobFill.Disconnected,
                 BlobCenter.Power,
                 BlobMotion.SlowDrift,
-                BlobGlow.DimStill(GlowRole.Primary),
+                BlobGlow.Tint(GlowRole.LightPrimary),
             )
         is ConnectionState.Connecting ->
             BlobVisual(BlobShape.Morphing, BlobFill.Busy, BlobCenter.Loader, BlobMotion.FastDrift, BlobGlow.None)
@@ -103,7 +112,7 @@ fun blobVisualFor(state: ConnectionState): BlobVisual =
  * The MaterialShapes members the blob draws, by name, so the colour-free rule
  * can be tested without Compose. ConnectBlob maps each to its RoundedPolygon.
  */
-internal enum class BlobPolygon { Puffy, Circle, SoftBurst, Cookie6Sided, Cookie9Sided, Pill, Square, Slanted }
+internal enum class BlobPolygon { Sunny, Circle, SoftBurst, Cookie6Sided, Cookie9Sided, Pill, Square, Slanted }
 
 /**
  * The Connecting shape cycle when motion is allowed, starting from where
@@ -118,7 +127,7 @@ internal val ConnectingCycle: List<BlobPolygon> = listOf(BlobPolygon.SoftBurst, 
 /** The polygon a shape settles on, in either motion mode. */
 internal fun BlobShape.restingPolygon(): BlobPolygon =
     when (this) {
-        BlobShape.Puffy -> BlobPolygon.Puffy
+        BlobShape.Sunny -> BlobPolygon.Sunny
         BlobShape.Circle -> BlobPolygon.Circle
         BlobShape.Morphing -> BlobPolygon.SoftBurst
         BlobShape.Cookie9 -> BlobPolygon.Cookie9Sided
@@ -171,13 +180,19 @@ internal val BlobGlow.role: GlowRole?
     get() =
         when (this) {
             BlobGlow.None -> null
+            is BlobGlow.Tint -> role
             is BlobGlow.DimStill -> role
             is BlobGlow.Breathing -> role
         }
 
 internal fun GlowRole.color(scheme: ColorScheme): Color =
     when (this) {
-        GlowRole.Primary -> scheme.primary
+        GlowRole.LightPrimary ->
+            if (scheme.primary.luminance() >= scheme.primaryContainer.luminance()) {
+                scheme.primary
+            } else {
+                scheme.primaryContainer
+            }
         GlowRole.Tertiary -> scheme.tertiary
         GlowRole.TertiaryContainer -> scheme.tertiaryContainer
     }
