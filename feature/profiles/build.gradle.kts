@@ -45,10 +45,6 @@ dependencies {
     // Activity/Compose plumbing, not a new capability the way e.g. Compose UI
     // Testing was when it first unlocked instrumented Compose tests.
     implementation(libs.androidx.activity.compose)
-    // The overflow menu's rename/delete icons and the group caret — same
-    // artifact :feature:home and :app already carry, same -core-only choice.
-    // See THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // ServersViewModel and ImportViewModel drive their state through
     // viewModelScope, which needs a Main dispatcher — same gap
     // :feature:home's build.gradle.kts documents.
