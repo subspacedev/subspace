@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
@@ -352,8 +354,11 @@ private fun GroupSortChip(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
+        val sortDescription = stringResource(R.string.servers_sort_button, stringResource(sort.labelRes()))
         AssistChip(
             onClick = { menuOpen = true },
+            // The visible text is just the order; say what it is for assistive tech.
+            modifier = Modifier.semantics { contentDescription = sortDescription },
             label = { Text(stringResource(sort.labelRes()), maxLines = 1, softWrap = false) },
             trailingIcon = {
                 Icon(

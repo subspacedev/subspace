@@ -14,12 +14,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 
 /** One row of a [SubspaceMenu]; [destructive] rows read in the error colour. */
 data class MenuItem(
     @DrawableRes val icon: Int,
     val label: String,
     val destructive: Boolean = false,
+    /** Announced as selected (a current choice), for menus whose icon column marks one. */
+    val selected: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -48,6 +52,7 @@ internal fun ColumnScope.MenuRows(
         val tint = if (item.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         DropdownMenuItem(
             text = { Text(item.label, color = tint) },
+            modifier = Modifier.semantics { selected = item.selected },
             leadingIcon = { Icon(painterResource(item.icon), contentDescription = null, tint = tint) },
             onClick = {
                 onDismiss()

@@ -616,6 +616,32 @@ class ImportViewModelTest {
         }
 
     @Test
+    fun `a subscription that lands clears the box when the box held that URL`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("  https://example.com/sub ")
+
+            viewModel.submit("  https://example.com/sub ")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe ""
+        }
+
+    @Test
+    fun `a subscription from a scan keeps unrelated typed text`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("something I was typing")
+
+            viewModel.submit("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe "something I was typing"
+        }
+
+    @Test
     fun addSubscriptionWithAnInvalidUrlIsANoOp() =
         runTest {
             val repository = FakeProfileSource()

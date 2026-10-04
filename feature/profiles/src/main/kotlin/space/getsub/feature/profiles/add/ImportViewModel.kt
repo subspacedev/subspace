@@ -391,10 +391,11 @@ constructor(
             }
 
             // Mirrors the parse leg: clear the box once the subscription has landed (a URL can carry
-            // a token, and a second tap would silently re-sync); keep it on any failure.
+            // a token, and a second tap would silently re-sync); keep it on any failure. Only when
+            // the box holds this URL: a QR or clipboard URL must not wipe unrelated typed text.
             _state.update {
                 it.copy(
-                    input = if (result is SyncResult.Synced) "" else it.input,
+                    input = if (result is SyncResult.Synced && it.input.trim() == url.trim()) "" else it.input,
                     busy = false,
                     subscriptionResult = result.toUserMessage(),
                 )
