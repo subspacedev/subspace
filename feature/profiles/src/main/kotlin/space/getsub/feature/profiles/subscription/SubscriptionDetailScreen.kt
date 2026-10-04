@@ -13,6 +13,7 @@
 package space.getsub.feature.profiles.subscription
 
 import android.text.format.DateUtils
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,29 +22,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -64,8 +57,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.data.isDirectiveEnabled
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.HubRow
 import space.getsub.core.ui.component.QuotaBar
-import space.getsub.core.ui.component.SettingRow
+import space.getsub.core.ui.component.SectionTitle
+import space.getsub.core.ui.component.SubspaceDialog
+import space.getsub.core.ui.component.SwitchRow
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.SubspaceShapeTokens
+import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.toUserMessage
@@ -73,6 +74,7 @@ import space.getsub.feature.profiles.add.userMessageText
 
 private val CONTENT_PADDING = 16.dp
 private val FIELD_GAP = 12.dp
+private val ROW_GAP = 4.dp
 
 /**
  * Identifies the loading spinner to instrumented tests — same pattern as
@@ -171,7 +173,7 @@ private fun SubscriptionDetailTopBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                painter = painterResource(SubspaceIcons.ArrowBack),
                 contentDescription = stringResource(R.string.subscription_detail_back_description),
             )
         }
@@ -230,28 +232,40 @@ private fun DetailBody(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = CONTENT_PADDING)
             .padding(bottom = CONTENT_PADDING),
-        verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
     ) {
-        UrlRow(redactedUrl = state.redactedUrl)
-        LastFetchRow(state = state, onRefreshNow = actions.onRefreshNow)
-        state.refreshResult?.let { RefreshResultBanner(message = it, onDismiss = actions.onDismissRefreshResult) }
-        QuotaBar(usedBytes = state.quotaUsedBytes, totalBytes = state.quotaTotalBytes)
-        HwidRow(
-            checked = state.hwidEnabled,
-            globallyEnabled = state.globalHwidEnabled,
-            onCheckedChange = actions.onHwidEnabledChanged,
-        )
-        UserAgentRow(
-            value = state.userAgentOverride,
-            providerValue = state.providerUserAgent,
-            onSave = actions.onUserAgentOverrideChanged,
-        )
-
-        state.rows.forEach { row ->
-            DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
+        SectionCard(title = stringResource(R.string.subscription_detail_section_subscription)) {
+            UrlRow(redactedUrl = state.redactedUrl)
+            LastFetchRow(state = state, onRefreshNow = actions.onRefreshNow)
+            state.refreshResult?.let { RefreshResultBanner(message = it, onDismiss = actions.onDismissRefreshResult) }
+            if (state.quotaUsedBytes != null && state.quotaTotalBytes != null) {
+                QuotaBar(
+                    usedBytes = state.quotaUsedBytes,
+                    totalBytes = state.quotaTotalBytes,
+                    modifier = Modifier.padding(vertical = FIELD_GAP),
+                )
+            }
+        }
+        SectionCard(title = stringResource(R.string.subscription_detail_section_requests)) {
+            HwidRow(
+                checked = state.hwidEnabled,
+                globallyEnabled = state.globalHwidEnabled,
+                onCheckedChange = actions.onHwidEnabledChanged,
+            )
+            UserAgentRow(
+                value = state.userAgentOverride,
+                providerValue = state.providerUserAgent,
+                onSave = actions.onUserAgentOverrideChanged,
+            )
+        }
+        if (state.rows.isNotEmpty()) {
+            SectionCard(title = stringResource(R.string.subscription_detail_section_directives)) {
+                state.rows.forEach { row ->
+                    DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
+                }
+            }
         }
 
-        DeleteButton(onClick = { deleteRequested = true })
+        DeleteButton(onClick = { deleteRequested = true }, modifier = Modifier.padding(top = CONTENT_PADDING))
     }
 
     if (deleteRequested) {
@@ -267,15 +281,79 @@ private fun DetailBody(
     }
 }
 
+/** A [SectionTitle] over a `surfaceContainer` card — the same shape the server editor's sections use. */
+@Composable
+private fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SectionTitle(title)
+        Surface(
+            shape = SubspaceShapeTokens.card,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(CONTENT_PADDING),
+                verticalArrangement = Arrangement.spacedBy(ROW_GAP),
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+/**
+ * A read-only row with an optional [trailing] slot, for what [HubRow] (navigates) and
+ * [SwitchRow] (toggles) do not cover. [mono] renders [supporting] as a machine string, selectable.
+ */
+@Suppress("LongParameterList")
+@Composable
+private fun InfoRow(
+    @DrawableRes icon: Int,
+    label: String,
+    supporting: String?,
+    modifier: Modifier = Modifier,
+    mono: Boolean = false,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CONTENT_PADDING),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            if (supporting != null) {
+                val style = MaterialTheme.typography.bodyMedium.let { if (mono) it.mono() else it }
+                val supportingText: @Composable () -> Unit = {
+                    Text(text = supporting, style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (mono) SelectionContainer { supportingText() } else supportingText()
+            }
+        }
+        trailing()
+    }
+}
+
 @Composable
 private fun UrlRow(
     redactedUrl: String,
     modifier: Modifier = Modifier,
 ) {
-    SettingRow(
-        icon = Icons.Default.Info,
+    InfoRow(
+        icon = SubspaceIcons.Public,
         label = stringResource(R.string.subscription_detail_url_label),
-        supportingText = redactedUrl,
+        supporting = redactedUrl,
+        mono = true,
         modifier = modifier,
     )
 }
@@ -286,10 +364,10 @@ private fun LastFetchRow(
     onRefreshNow: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SettingRow(
-        icon = Icons.Default.Refresh,
+    InfoRow(
+        icon = SubspaceIcons.Sync,
         label = lastFetchLabel(state.lastFetchState),
-        supportingText = lastFetchSupportingText(state.lastFetchState),
+        supporting = lastFetchSupportingText(state.lastFetchState),
         trailing = { RefreshTrailing(isRefreshing = state.isRefreshing, onRefreshNow = onRefreshNow) },
         modifier = modifier,
     )
@@ -312,7 +390,7 @@ private fun RefreshTrailing(
     } else {
         IconButton(onClick = onRefreshNow, modifier = modifier) {
             Icon(
-                imageVector = Icons.Default.Refresh,
+                painter = painterResource(SubspaceIcons.Refresh),
                 contentDescription = stringResource(R.string.subscription_detail_refresh_action),
             )
         }
@@ -352,14 +430,12 @@ private fun relativeTime(epochMillis: Long): String =
         .toString()
 
 /**
- * Renders a [UserMessage] — see
- * [space.getsub.feature.profiles.add.AddServerSheet]'s own `SubscriptionResultText`
- * for the sibling copy this mirrors (private there, not reusable across files).
- */
-/**
  * The most recent manual [SubscriptionDetailActions.onRefreshNow] result — tapping it dismisses
  * it. No auto-dismiss timer: a failure reason the user did not get to read defeats the point of
  * showing it, and the next refresh already clears this up front regardless.
+ *
+ * A message with a [UserMessage.quantity] or the up-to-date string is a success; anything else
+ * is one of the closed failure strings and reads as blocked.
  */
 @Composable
 private fun RefreshResultBanner(
@@ -367,11 +443,12 @@ private fun RefreshResultBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Text(
+    val succeeded = message.quantity != null || message.resId == R.string.subscription_up_to_date
+    TonalBanner(
+        icon = if (succeeded) SubspaceIcons.CheckFilled else SubspaceIcons.Warning,
         text = userMessageText(message),
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onDismiss),
+        tone = if (succeeded) BannerTone.Neutral else BannerTone.Blocked,
+        modifier = modifier.clickable(onClick = onDismiss),
     )
 }
 
@@ -382,7 +459,6 @@ private fun HwidRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val label = stringResource(R.string.subscription_detail_hwid_label)
     val description =
         stringResource(
             if (globallyEnabled) {
@@ -391,18 +467,13 @@ private fun HwidRow(
                 R.string.subscription_detail_hwid_disabled_globally
             },
         )
-    SettingRow(
-        icon = Icons.Default.Lock,
-        label = label,
-        supportingText = description,
-        trailing = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                enabled = globallyEnabled,
-                modifier = Modifier.semantics { contentDescription = label },
-            )
-        },
+    SwitchRow(
+        icon = SubspaceIcons.Lock,
+        label = stringResource(R.string.subscription_detail_hwid_label),
+        supporting = description,
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = globallyEnabled,
         modifier = modifier,
     )
 }
@@ -415,21 +486,27 @@ private fun UserAgentRow(
     modifier: Modifier = Modifier,
 ) {
     var draft by remember(value) { mutableStateOf(value.orEmpty()) }
+    // A machine string: displayed, never logged (ARCHITECTURE.md §5.6).
     OutlinedTextField(
         value = draft,
         onValueChange = { draft = it },
         label = { Text(stringResource(R.string.subscription_detail_user_agent_label)) },
         supportingText = providerValue?.let { provider ->
             {
-                Text(stringResource(R.string.subscription_detail_user_agent_provider, provider))
+                Text(
+                    text = stringResource(R.string.subscription_detail_user_agent_provider, provider),
+                    style = MaterialTheme.typography.bodySmall.mono(),
+                )
             }
         },
         placeholder = { Text(stringResource(R.string.subscription_detail_user_agent_placeholder)) },
         singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.mono(),
+        shape = MaterialTheme.shapes.large,
         trailingIcon = {
             IconButton(onClick = { onSave(draft.ifBlank { null }) }) {
                 Icon(
-                    imageVector = Icons.Default.Done,
+                    painter = painterResource(SubspaceIcons.Check),
                     contentDescription = stringResource(R.string.subscription_detail_user_agent_save),
                 )
             }
@@ -438,6 +515,10 @@ private fun UserAgentRow(
     )
 }
 
+/**
+ * A directive: a [SwitchRow] for a toggle, a [HubRow] that opens the pin dialog for a number.
+ * A pinned directive also carries an unpin button beside the row.
+ */
 @Composable
 private fun DirectiveRowView(
     row: DirectiveRow,
@@ -446,20 +527,43 @@ private fun DirectiveRowView(
     modifier: Modifier = Modifier,
 ) {
     val label = stringResource(row.labelRes)
-    SettingRow(
-        icon = Icons.Default.Settings,
-        label = label,
-        supportingText = directiveSupportingText(row),
-        trailing = {
-            DirectiveRowTrailing(
-                row = row,
-                label = label,
-                onPin = onPin,
-                onUnpin = onUnpin,
-            )
-        },
-        modifier = modifier,
-    )
+    val supporting = directiveSupportingText(row)
+    var dialogOpen by remember { mutableStateOf(false) }
+
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        when (row.kind) {
+            DirectiveRowKind.Toggle ->
+                SwitchRow(
+                    icon = SubspaceIcons.Tune,
+                    label = label,
+                    supporting = supporting,
+                    checked = row.row.isEnabled,
+                    onCheckedChange = { checked -> onPin(row.row.key, if (checked) "true" else "false") },
+                    modifier = Modifier.weight(1f),
+                )
+            DirectiveRowKind.Hours, DirectiveRowKind.Seconds ->
+                HubRow(
+                    icon = SubspaceIcons.Tune,
+                    label = label,
+                    value = supporting,
+                    onClick = { dialogOpen = true },
+                    modifier = Modifier.weight(1f),
+                )
+        }
+        if (row.row.isPinned) UnpinButton(key = row.row.key, onUnpin = onUnpin)
+    }
+
+    if (dialogOpen) {
+        PinValueDialog(
+            label = label,
+            initialValue = row.row.value.orEmpty(),
+            onConfirm = { newValue ->
+                dialogOpen = false
+                onPin(row.row.key, newValue)
+            },
+            onDismiss = { dialogOpen = false },
+        )
+    }
 }
 
 @Composable
@@ -489,34 +593,6 @@ private fun formatDirectiveValue(
     }
 
 @Composable
-private fun DirectiveRowTrailing(
-    row: DirectiveRow,
-    label: String,
-    onPin: (String, String) -> Unit,
-    onUnpin: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    when (row.kind) {
-        DirectiveRowKind.Toggle ->
-            ToggleTrailing(
-                row = row,
-                label = label,
-                onPin = onPin,
-                onUnpin = onUnpin,
-                modifier = modifier,
-            )
-        DirectiveRowKind.Hours, DirectiveRowKind.Seconds ->
-            NumericTrailing(
-                row = row,
-                label = label,
-                onPin = onPin,
-                onUnpin = onUnpin,
-                modifier = modifier,
-            )
-    }
-}
-
-@Composable
 private fun UnpinButton(
     key: String,
     onUnpin: (String) -> Unit,
@@ -524,59 +600,8 @@ private fun UnpinButton(
 ) {
     IconButton(onClick = { onUnpin(key) }, modifier = modifier) {
         Icon(
-            imageVector = Icons.Default.Close,
+            painter = painterResource(SubspaceIcons.Close),
             contentDescription = stringResource(R.string.subscription_row_unpin_action),
-        )
-    }
-}
-
-@Composable
-private fun ToggleTrailing(
-    row: DirectiveRow,
-    label: String,
-    onPin: (String, String) -> Unit,
-    onUnpin: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (row.row.isPinned) UnpinButton(key = row.row.key, onUnpin = onUnpin)
-        Switch(
-            checked = row.row.isEnabled,
-            onCheckedChange = { checked -> onPin(row.row.key, if (checked) "true" else "false") },
-            modifier = Modifier.semantics { contentDescription = label },
-        )
-    }
-}
-
-@Composable
-private fun NumericTrailing(
-    row: DirectiveRow,
-    label: String,
-    onPin: (String, String) -> Unit,
-    onUnpin: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var dialogOpen by remember { mutableStateOf(false) }
-
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (row.row.isPinned) UnpinButton(key = row.row.key, onUnpin = onUnpin)
-        IconButton(onClick = { dialogOpen = true }) {
-            Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = stringResource(R.string.subscription_row_edit_description, label),
-            )
-        }
-    }
-
-    if (dialogOpen) {
-        PinValueDialog(
-            label = label,
-            initialValue = row.row.value.orEmpty(),
-            onConfirm = { newValue ->
-                dialogOpen = false
-                onPin(row.row.key, newValue)
-            },
-            onDismiss = { dialogOpen = false },
         )
     }
 }
@@ -589,26 +614,21 @@ private fun PinValueDialog(
     onDismiss: () -> Unit,
 ) {
     var text by remember { mutableStateOf(initialValue) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(label) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) {
-                Text(stringResource(R.string.subscription_row_pin_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.subscription_row_edit_dialog_cancel)) }
-        },
-    )
+    SubspaceDialog(
+        title = label,
+        confirmLabel = stringResource(R.string.subscription_row_pin_action),
+        onConfirm = { onConfirm(text) },
+        dismissLabel = stringResource(R.string.subscription_row_edit_dialog_cancel),
+        onDismiss = onDismiss,
+        confirmEnabled = text.isNotBlank(),
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+    }
 }
 
 @Composable
@@ -617,7 +637,11 @@ private fun DeleteButton(
     modifier: Modifier = Modifier,
 ) {
     TextButton(onClick = onClick, modifier = modifier) {
-        Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+        Icon(
+            painter = painterResource(SubspaceIcons.Delete),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+        )
         Spacer(modifier = Modifier.width(FIELD_GAP))
         Text(text = stringResource(R.string.subscription_detail_delete_action), color = MaterialTheme.colorScheme.error)
     }
@@ -631,29 +655,14 @@ private fun DeleteSubscriptionDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.subscription_detail_delete_confirm_title, name))
-        },
-        text = {
-            Text(
-                pluralStringResource(
-                    R.plurals.subscription_detail_delete_confirm_body,
-                    profileCount,
-                    profileCount,
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.subscription_detail_delete_confirm_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.subscription_detail_delete_cancel_action))
-            }
-        },
+    SubspaceDialog(
+        title = stringResource(R.string.subscription_detail_delete_confirm_title, name),
+        body = pluralStringResource(R.plurals.subscription_detail_delete_confirm_body, profileCount, profileCount),
+        confirmLabel = stringResource(R.string.subscription_detail_delete_confirm_action),
+        onConfirm = onConfirm,
+        dismissLabel = stringResource(R.string.subscription_detail_delete_cancel_action),
+        onDismiss = onDismiss,
+        icon = SubspaceIcons.Delete,
+        destructive = true,
     )
 }

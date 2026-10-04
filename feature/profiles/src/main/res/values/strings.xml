@@ -395,6 +395,9 @@
     <string name="subscription_detail_not_found_body">This subscription no longer exists or was never saved.</string>
     <string name="subscription_detail_not_found_back_button">Go back</string>
 
+    <string name="subscription_detail_section_subscription">Subscription</string>
+    <string name="subscription_detail_section_requests">Requests</string>
+    <string name="subscription_detail_section_directives">Provider settings</string>
     <string name="subscription_detail_url_label">Subscription URL</string>
     <string name="subscription_detail_never_fetched">Never refreshed yet</string>
     <!-- %1$s = a relative time, e.g. "3 hours ago" (DateUtils.getRelativeTimeSpanString, the
@@ -448,7 +451,5 @@
     <string name="subscription_row_pinned_declined">Provider suggests %1$s · you pinned %2$s</string>
     <string name="subscription_row_pin_action">Pin</string>
     <string name="subscription_row_unpin_action">Use provider value</string>
-    <!-- %1$s = the row's own label above. -->
-    <string name="subscription_row_edit_description">Edit %1$s</string>
     <string name="subscription_row_edit_dialog_cancel">Cancel</string>
 </resources>

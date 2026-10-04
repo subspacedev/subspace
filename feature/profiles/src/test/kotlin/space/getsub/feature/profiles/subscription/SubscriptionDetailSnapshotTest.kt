@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Additional permission: see Stores Exception in LICENSE.
+package space.getsub.feature.profiles.subscription
+
+import app.cash.paparazzi.DeviceConfig
+import app.cash.paparazzi.Paparazzi
+import org.junit.Rule
+import org.junit.Test
+import space.getsub.core.ui.preview.SubspacePreviewTheme
+import space.getsub.core.ui.preview.ThemeVariant
+import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.add.UserMessage
+
+/**
+ * M8.6 Part 3 Task 7: the subscription details screen in all four themes — a fetched subscription
+ * with quota, a pinned directive, a toggle and a refresh result, and a never-fetched one. Drives
+ * the stateless [SubscriptionDetailContent] with hand-built state.
+ */
+class SubscriptionDetailSnapshotTest {
+    @get:Rule
+    val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_5.copy(screenHeight = 2600))
+
+    private val noActions =
+        SubscriptionDetailActions(
+            onBack = {},
+            onRefreshNow = {},
+            onDismissRefreshResult = {},
+            onPinRow = { _, _ -> },
+            onUnpinRow = {},
+            onHwidEnabledChanged = {},
+            onUserAgentOverrideChanged = {},
+            onDeleteConfirmed = {},
+        )
+
+    private val fetched =
+        SubscriptionDetailState(
+            subscriptionId = 1L,
+            loading = false,
+            groupName = "Example Provider",
+            profileCount = 12,
+            redactedUrl = "https://panel.example.com/…",
+            lastFetchState = LastFetchState.Succeeded(System.currentTimeMillis() - FIVE_MINUTES_MS),
+            quotaUsedBytes = 37_580_963_840L,
+            quotaTotalBytes = 107_374_182_400L,
+            hwidEnabled = true,
+            userAgentOverride = "Subspace/1.0 (Android)",
+            providerUserAgent = "v2rayNG/1.8",
+            refreshResult = UserMessage(R.plurals.subscription_refreshed, 3),
+            rows =
+            listOf(
+                DirectiveRow(
+                    DirectiveRowKind.Hours,
+                    R.string.subscription_row_interval_label,
+                    SettingRowState("profile-update-interval", "24", declinedProviderValue = "6", isPinned = true),
+                ),
+                DirectiveRow(
+                    DirectiveRowKind.Toggle,
+                    R.string.subscription_row_auto_update_label,
+                    SettingRowState("update-always", "true", declinedProviderValue = null, isPinned = false),
+                ),
+            ),
+        )
+
+    private val neverFetched =
+        SubscriptionDetailState(
+            subscriptionId = 2L,
+            loading = false,
+            groupName = "New Provider",
+            profileCount = 0,
+            redactedUrl = "https://sub.example.org:8443/…",
+            lastFetchState = LastFetchState.NeverFetched,
+        )
+
+    private fun shoot(
+        name: String,
+        state: SubscriptionDetailState,
+    ) {
+        ThemeVariant.entries.forEach { v ->
+            paparazzi.snapshot(name = "$name-${v.fileSuffix}") {
+                SubspacePreviewTheme(v) { SubscriptionDetailContent(state = state, actions = noActions) }
+            }
+        }
+    }
+
+    @Test
+    fun fetchedWithQuotaAndDirectives() = shoot("subscription-fetched", fetched)
+
+    @Test
+    fun neverFetched() = shoot("subscription-never-fetched", neverFetched)
+
+    private companion object {
+        const val FIVE_MINUTES_MS = 330_000L
+    }
+}

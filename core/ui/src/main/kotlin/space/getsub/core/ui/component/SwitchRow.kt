@@ -78,12 +78,13 @@ fun SwitchRow(
     modifier: Modifier = Modifier,
     note: String? = null,
     colors: SwitchRowColors = SwitchRowDefaults.colors(),
+    enabled: Boolean = true,
 ) {
     Row(
         modifier =
         modifier
             .heightIn(min = 56.dp)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -107,6 +108,6 @@ fun SwitchRow(
             }
             if (note != null) Text(note, style = MaterialTheme.typography.bodyMedium, color = colors.content)
         }
-        Switch(checked = checked, onCheckedChange = null, colors = colors.switch)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = colors.switch)
     }
 }
