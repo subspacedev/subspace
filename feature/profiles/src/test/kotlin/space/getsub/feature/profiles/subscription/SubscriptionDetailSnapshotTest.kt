@@ -39,7 +39,7 @@ class SubscriptionDetailSnapshotTest {
             groupName = "Example Provider",
             profileCount = 12,
             redactedUrl = "https://panel.example.com/…",
-            lastFetchState = LastFetchState.Succeeded(System.currentTimeMillis() - FIVE_MINUTES_MS),
+            lastFetchState = LastFetchState.Succeeded(System.currentTimeMillis() - TWO_AND_A_HALF_HOURS_MS),
             quotaUsedBytes = 37_580_963_840L,
             quotaTotalBytes = 107_374_182_400L,
             hwidEnabled = true,
@@ -89,6 +89,9 @@ class SubscriptionDetailSnapshotTest {
     fun neverFetched() = shoot("subscription-never-fetched", neverFetched)
 
     private companion object {
-        const val FIVE_MINUTES_MS = 330_000L
+        // DateUtils floors to whole hours, so 2.5 h renders "2 hours ago" for
+        // anything from 2 h to 3 h: a 30-minute margin each side instead of the
+        // 30 s a minutes-based age leaves before the text flips.
+        const val TWO_AND_A_HALF_HOURS_MS = 9_000_000L
     }
 }
