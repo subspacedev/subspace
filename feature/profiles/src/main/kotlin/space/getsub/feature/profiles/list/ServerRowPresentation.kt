@@ -3,7 +3,9 @@
 package space.getsub.feature.profiles.list
 
 import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.ui.component.NoteTone
 import space.getsub.core.ui.format.flagIn
+import space.getsub.core.ui.format.nameWithoutFlag
 import java.text.BreakIterator
 import java.util.Locale
 
@@ -18,6 +20,9 @@ internal fun ServerRow.note(): RowNote? =
         compatibilityMode -> RowNote.Compatibility
         else -> null
     }
+
+/** Compatibility mode is a fact, not a fault; the other two stop the row working. */
+internal fun RowNote.tone(): NoteTone = if (this == RowNote.Compatibility) NoteTone.Info else NoteTone.Error
 
 private const val MAX_RANK = 3
 
@@ -62,6 +67,9 @@ internal fun ServerRow.pill(): PillText {
 
 /** The row's flag emoji wherever it sits in the name, else its initials. */
 internal fun ServerRow.leadingMark(): String = flagIn(name) ?: name.codeTileInitials()
+
+/** The name shown beside [leadingMark]: without the flag that tile already carries. */
+internal fun ServerRow.displayName(): String = nameWithoutFlag(name)
 
 /** True when the group's sort came from its provider (S6, M8.6 Part 3 R5). */
 internal fun ServersGroup.showsProviderOrder(): Boolean = sortFromProvider

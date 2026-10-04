@@ -68,6 +68,10 @@
 
     <!-- ServerRow (M8.6 Task 9). %1$s = the server's name. -->
     <string name="server_edit">Edit %1$s</string>
+    <!-- The latency pill: %1$s = its text ("42 ms", "—"). The second form is used while
+         the pill is disabled (nothing to re-test). -->
+    <string name="server_latency_retest">Latency %1$s, tap to re-test</string>
+    <string name="server_latency">Latency %1$s</string>
 
     <!-- QuotaBar (Task 14). %1$s/%2$s are already-formatted byte strings
          (e.g. "1.2 GB"), not raw numbers — see QuotaBar.kt's own

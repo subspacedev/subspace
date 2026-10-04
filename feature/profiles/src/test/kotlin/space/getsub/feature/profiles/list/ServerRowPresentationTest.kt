@@ -7,6 +7,7 @@ import org.junit.Test
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.ui.component.NoteTone
 
 /**
  * Defect 1 (device-fixes finding): the code tile in the Servers row took two
@@ -158,5 +159,24 @@ class ServerRowPresentationTest {
         val g = ServersGroup(id = 1, name = "g", totalProfileCount = 0, profiles = emptyList())
         g.copy(sortFromProvider = true).showsProviderOrder() shouldBe true
         g.showsProviderOrder() shouldBe false
+    }
+
+    @Test
+    fun `the display name drops the flag the tile already shows`() {
+        row(name = "🇩🇪 Frankfurt").displayName() shouldBe "Frankfurt"
+        row(name = "Хельсинки 🇫🇮 XHTTP").displayName() shouldBe "Хельсинки XHTTP"
+    }
+
+    @Test
+    fun `the display name keeps a name with no flag, or only a flag`() {
+        row(name = "US East").displayName() shouldBe "US East"
+        row(name = "🇩🇪").displayName() shouldBe "🇩🇪"
+    }
+
+    @Test
+    fun `only compatibility mode reads as information`() {
+        RowNote.NotConnectable.tone() shouldBe NoteTone.Error
+        RowNote.Dropped.tone() shouldBe NoteTone.Error
+        RowNote.Compatibility.tone() shouldBe NoteTone.Info
     }
 }

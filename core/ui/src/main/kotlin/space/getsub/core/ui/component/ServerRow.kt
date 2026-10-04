@@ -4,7 +4,6 @@
 
 package space.getsub.core.ui.component
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +24,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.R
@@ -33,6 +35,9 @@ import space.getsub.core.ui.theme.mono
 import space.getsub.core.ui.theme.tabular
 
 private const val UNSUPPORTED_ALPHA = 0.6f
+
+/** How a [ServerRow]'s note reads: [Error] for a blocker, [Info] for a neutral fact. */
+enum class NoteTone { Error, Info }
 
 /**
  * One server in a group (M8.6 spec §4.9). The row selects; the latency pill is
@@ -49,6 +54,12 @@ private const val UNSUPPORTED_ALPHA = 0.6f
  * picking a server is a settings write and the service refuses an unrunnable
  * one on its own (M8.6 Part 3 review focus 4); a dead row that ignores taps
  * would hide that decision from the user.
+ *
+ * The row is a `selectable` radio-style target, so [selected] reaches
+ * accessibility services; a selected row also shows a check before its pill,
+ * so the active server is never marked by colour alone. [noteTone] picks the
+ * note's colour: `error` for something that stops the row working, a muted
+ * tone for information such as compatibility mode.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -65,6 +76,7 @@ fun ServerRow(
     onTestLatency: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
+    noteTone: NoteTone = NoteTone.Error,
 ) {
     val scheme = MaterialTheme.colorScheme
     val dim = Modifier.alpha(if (enabled) 1f else UNSUPPORTED_ALPHA)
@@ -76,14 +88,22 @@ fun ServerRow(
     ) {
         Row(
             Modifier
-                .clickable(role = Role.Button, onClick = onSelect)
+                .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
                 .heightIn(min = 64.dp)
                 .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(flag, style = MaterialTheme.typography.titleLarge, modifier = dim)
-            ServerRowText(note, rank, name, detail, dim, Modifier.weight(1f))
+            ServerRowText(note, noteTone, rank, name, detail, dim, Modifier.weight(1f))
+            if (selected) {
+                Icon(
+                    painterResource(SubspaceIcons.Check),
+                    contentDescription = null,
+                    tint = scheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
             LatencyPill(latencyText, enabled, onTestLatency, dim)
             IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                 Icon(
@@ -101,6 +121,7 @@ fun ServerRow(
 @Composable
 private fun ServerRowText(
     note: String?,
+    noteTone: NoteTone,
     rank: Int?,
     name: String,
     detail: String,
@@ -110,7 +131,11 @@ private fun ServerRowText(
     val scheme = MaterialTheme.colorScheme
     Column(modifier) {
         if (note != null) {
-            Text(note, style = MaterialTheme.typography.labelMedium, color = scheme.error)
+            Text(
+                note,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (noteTone == NoteTone.Error) scheme.error else scheme.onSurfaceVariant,
+            )
         }
         Row(
             modifier = dim,
@@ -149,13 +174,15 @@ private fun LatencyPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val description =
+        stringResource(if (enabled) R.string.server_latency_retest else R.string.server_latency, text)
     Surface(
         onClick = onClick,
         enabled = enabled,
         shape = SubspaceShapeTokens.pill,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.heightIn(min = 32.dp),
+        modifier = modifier.heightIn(min = 32.dp).semantics { contentDescription = description },
     ) {
         Row(
             Modifier.heightIn(min = 32.dp).padding(horizontal = 10.dp),

@@ -2,6 +2,10 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.ui.component
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -60,5 +64,30 @@ class ServerRowTest {
         selected shouldBe 1
         rule.onNodeWithContentDescription("Edit Helsinki Edge").performClick()
         edited shouldBe 1
+    }
+
+    /** The active server is exposed to accessibility, not only drawn in a tint. */
+    @Test
+    fun theSelectedStateIsExposedInSemantics() {
+        rule.setContent {
+            SubspaceTheme(dynamicColor = false) {
+                Column {
+                    ServerRow(
+                        flag = "🇩🇪", name = "Frankfurt Alpha", detail = "VLESS", latencyText = "42 ms",
+                        selected = true, enabled = true, rank = null, note = null,
+                        onSelect = {}, onTestLatency = {}, onEdit = {},
+                    )
+                    ServerRow(
+                        flag = "🇳🇱", name = "Amsterdam Beta", detail = "VLESS", latencyText = "88 ms",
+                        selected = false, enabled = true, rank = null, note = null,
+                        onSelect = {}, onTestLatency = {}, onEdit = {},
+                    )
+                }
+            }
+        }
+        rule.onNode(hasText("Frankfurt Alpha")).assertIsSelected()
+        rule.onNode(hasText("Amsterdam Beta")).assertIsNotSelected()
+        // The pill names what it is and what tapping does.
+        rule.onNodeWithContentDescription("Latency 42 ms, tap to re-test").assertExists()
     }
 }

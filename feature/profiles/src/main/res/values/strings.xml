@@ -49,13 +49,15 @@
     <string name="servers_switched">Switched to %1$s</string>
     <string name="servers_switched_undo">Undo</string>
 
+    <!-- One line when a search or protocol filter leaves every group without a row. -->
+    <string name="servers_no_match">No servers match</string>
+
     <string name="servers_empty_title">No servers yet</string>
     <string name="servers_empty_body">Import a subscription or paste a config to add your first server.</string>
-    <!-- Load-bearing text: ServersAddActionTest.exactlyOneAddActionExistsWhenGroupsAreEmpty
-         counts nodes matching the literal "Add server" across this string and
-         servers_add_action to prove only one Add-server affordance exists when groups are
-         empty. Rewording this alone (without updating that test) breaks it even though the
-         product invariant it checks still holds. -->
+    <!-- Load-bearing text: ServersAddActionTest counts the literal "Add" (the header button,
+         servers_add_action) plus this "Add server" (the empty state's own button) to prove
+         exactly one add affordance exists in each state. Rewording either alone, without
+         updating that test, breaks it even though the product invariant still holds. -->
     <string name="servers_empty_action">Add server</string>
 
     <!-- RAW_JSON runs through the typed projection, not verbatim (§6) — "raw"

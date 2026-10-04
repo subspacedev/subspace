@@ -26,4 +26,15 @@ fun flagIn(text: String): String? {
     return null
 }
 
+/**
+ * [name] without the flag [flagIn] finds, for places that show that flag separately (a tile).
+ * The whitespace the flag leaves behind is collapsed and trimmed. A name with no flag, or
+ * made of nothing but a flag, comes back unchanged — an empty title helps nobody.
+ */
+fun nameWithoutFlag(name: String): String {
+    val flag = flagIn(name) ?: return name
+    val stripped = name.replaceFirst(flag, "").replace(Regex("\\s+"), " ").trim()
+    return stripped.ifEmpty { name }
+}
+
 private fun Int.isRegionalIndicator() = this in REGIONAL_INDICATOR_A..REGIONAL_INDICATOR_Z

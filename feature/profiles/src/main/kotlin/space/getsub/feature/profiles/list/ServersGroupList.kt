@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
 import space.getsub.core.ui.component.GroupCard
 import space.getsub.core.ui.component.GroupCardUpdateRow
 import space.getsub.core.ui.component.MenuItem
+import space.getsub.core.ui.component.NoteTone
 import space.getsub.core.ui.component.QuotaBar
 import space.getsub.core.ui.component.ServerRow
 import space.getsub.core.ui.icon.SubspaceIcons
@@ -123,6 +125,11 @@ internal fun ServersGroupList(
         ),
         verticalArrangement = Arrangement.spacedBy(GROUP_GAP),
     ) {
+        // A search or protocol filter that hides every row: say so once, rather than leaving
+        // the cards looking broken. (A group with no rows and no filter has totalProfileCount 0.)
+        if (groups.all { it.profiles.isEmpty() } && groups.any { it.totalProfileCount > 0 }) {
+            item(key = "no-match") { NoMatchLine() }
+        }
         items(groups, key = { it.id }) { group ->
             val menuItems = groupMenuItems(group, actions)
             GroupCard(
@@ -151,13 +158,16 @@ internal fun ServersGroupList(
                     )
                 },
             ) {
-                GroupMeasureBar(
-                    group = group,
-                    onTestGroup = { actions.onTestGroup(group.id) },
-                    onCancelTests = actions.onCancelTests,
-                    onSortChanged = { order -> actions.onGroupSortChanged(group.id, order) },
-                )
-                ServerRows(group = group, actions = actions)
+                // Nothing to test or sort when the filter leaves this group without rows.
+                if (group.profiles.isNotEmpty()) {
+                    GroupMeasureBar(
+                        group = group,
+                        onTestGroup = { actions.onTestGroup(group.id) },
+                        onCancelTests = actions.onCancelTests,
+                        onSortChanged = { order -> actions.onGroupSortChanged(group.id, order) },
+                    )
+                    ServerRows(group = group, actions = actions)
+                }
             }
         }
     }
@@ -190,6 +200,17 @@ private fun groupMenuItems(
         }
     }
 
+@Composable
+private fun NoMatchLine(modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(R.string.servers_no_match),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = modifier.fillMaxWidth().padding(vertical = EMPTY_GAP),
+    )
+}
+
 /** One [ServerRow] per visible profile of [group], with this group's ranks (M8.6 Part 3 R4). */
 @Composable
 private fun ServerRows(
@@ -200,7 +221,7 @@ private fun ServerRows(
     group.profiles.forEach { row ->
         ServerRow(
             flag = row.leadingMark(),
-            name = row.name,
+            name = row.displayName(),
             detail = "${row.protocolDisplay} · ${row.transport}",
             latencyText = pillText(row.pill()),
             selected = row.isActive,
@@ -209,6 +230,7 @@ private fun ServerRows(
             enabled = row.connectable,
             rank = ranks[row.id],
             note = row.note()?.let { noteText(it) },
+            noteTone = row.note()?.tone() ?: NoteTone.Error,
             onSelect = { actions.onProfileSelected(row.id) },
             onTestLatency = { actions.onTestProfile(row.id) },
             onEdit = { actions.onProfileEdit(row.id) },
@@ -321,7 +343,7 @@ private fun ProviderOrderMarker(modifier: Modifier = Modifier) {
     }
 }
 
-/** This group's own sort, as a text button over [SortMenu]. */
+/** This group's own sort, as an assist chip over [SortMenu] (same shape as the default-sort chip). */
 @Composable
 private fun GroupSortChip(
     sort: SortOrder,
@@ -330,14 +352,17 @@ private fun GroupSortChip(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        TextButton(onClick = { menuOpen = true }) {
-            Text(stringResource(sort.labelRes()), maxLines = 1, softWrap = false)
-            Icon(
-                painterResource(SubspaceIcons.ExpandMore),
-                contentDescription = null,
-                modifier = Modifier.padding(start = MARKER_GAP).size(SMALL_ICON_SIZE),
-            )
-        }
+        AssistChip(
+            onClick = { menuOpen = true },
+            label = { Text(stringResource(sort.labelRes()), maxLines = 1, softWrap = false) },
+            trailingIcon = {
+                Icon(
+                    painterResource(SubspaceIcons.ExpandMore),
+                    contentDescription = null,
+                    modifier = Modifier.size(SMALL_ICON_SIZE),
+                )
+            },
+        )
         SortMenu(expanded = menuOpen, current = sort, onDismiss = { menuOpen = false }, onPick = onSortChanged)
     }
 }

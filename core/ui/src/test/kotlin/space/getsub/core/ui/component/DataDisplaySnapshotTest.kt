@@ -82,6 +82,10 @@ class DataDisplaySnapshotTest {
                 "🇫🇮", "Helsinki Edge", "TROJAN · WS · TLS", "—", false, false, null,
                 "can't connect with this build", {}, {}, {},
             )
+            ServerRow(
+                "🇸🇪", "Stockholm Gamma", "VLESS · XHTTP · TLS", "120 ms", false, true, 3,
+                "Compatibility mode", {}, {}, {}, noteTone = NoteTone.Info,
+            )
         }
     }
 

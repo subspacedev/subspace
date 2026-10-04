@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -131,7 +132,7 @@ fun ServersScreen(
         }
     }
 
-    Box(modifier = modifier) {
+    Box(modifier = modifier.fillMaxSize()) {
         ServersScreenContent(
             state = state,
             actions =
@@ -209,8 +210,8 @@ internal data class ServersActions(
  * The stateless half — see [space.getsub.feature.home.HomeScreenContent]'s
  * KDoc for why this split exists.
  *
- * @param initiallyExpanded the groups that start open; only snapshot tests and
- *   instrumented tests set it, since a real session starts every group collapsed.
+ * @param initiallyExpanded the groups that start open; only the snapshot test sets it,
+ *   since a real session starts every group collapsed.
  */
 @Composable
 internal fun ServersScreenContent(
@@ -232,7 +233,7 @@ internal fun ServersScreenContent(
         if (state.groups.isNotEmpty()) actions.onServersShown()
     }
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
+    Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
         ServersHeader(onAddProfile = actions.onAddProfile, showAddAction = state.groups.isNotEmpty())
 
         ServersFilters(state = state, actions = actions)
@@ -261,7 +262,9 @@ internal fun ServersScreenContent(
                 onCancelTests = actions.onCancelTests,
                 onGroupSortChanged = actions.onGroupSortChanged,
             ),
-            modifier = Modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING),
+            // The list owns the height left under the filters, so the screen fills its host and
+            // the Undo snackbar anchors to the bottom edge even when the list is short.
+            modifier = Modifier.weight(1f).padding(horizontal = CONTENT_HORIZONTAL_PADDING),
         )
     }
 

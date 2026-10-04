@@ -37,6 +37,7 @@ import space.getsub.core.ui.component.StatTile
 import space.getsub.core.ui.component.ThroughputCard
 import space.getsub.core.ui.format.flagIn
 import space.getsub.core.ui.format.formatByteCount
+import space.getsub.core.ui.format.nameWithoutFlag
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
@@ -187,7 +188,7 @@ internal fun ActiveServerCard(
     val onClick: () -> Unit
     when {
         activeProfile != null -> {
-            headline = activeProfile.name
+            headline = nameWithoutFlag(activeProfile.name)
             actionDescription = stringResource(R.string.home_active_server_change_description)
             onClick = onNavigateToServers
         }
