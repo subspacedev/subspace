@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.home
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -13,7 +14,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.StartupStage
-import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.core.ui.preview.SubspacePreviewTheme
+import space.getsub.core.ui.preview.ThemeVariant
 
 /** M8.6 spec §4.2: the top half of Home. */
 class HomeHeroTest {
@@ -39,7 +41,7 @@ class HomeHeroTest {
         var routing = 0
         var perApp = 0
         composeRule.setContent {
-            SubspaceTheme {
+            TestTheme {
                 HomeScreenContent(
                     state = HomeState(activeRuleSetName = "Smart route"),
                     actions = actions.copy(onOpenRouting = { routing++ }, onOpenPerApp = { perApp++ }),
@@ -56,14 +58,14 @@ class HomeHeroTest {
     fun historyOpensTheSessionLog() {
         var opened = 0
         composeRule.setContent {
-            SubspaceTheme { HomeScreenContent(HomeState(), actions.copy(onOpenSessionLog = { opened++ })) }
+            TestTheme { HomeScreenContent(HomeState(), actions.copy(onOpenSessionLog = { opened++ })) }
         }
         composeRule.onNodeWithContentDescription("Session log").performClick()
         opened shouldBe 1
     }
 
     private fun setContent(state: HomeState) {
-        composeRule.setContent { SubspaceTheme { HomeScreenContent(state = state, actions = actions) } }
+        composeRule.setContent { TestTheme { HomeScreenContent(state = state, actions = actions) } }
     }
 
     private val actions =
@@ -77,4 +79,13 @@ class HomeHeroTest {
             onOpenPerApp = {},
             onOpenSessionLog = {},
         )
+
+    /**
+     * Reduced motion: ConnectBlob's drift and shape-cycle loops never finish, so under
+     * normal motion Compose never reaches idle and `setContent` times out. The loops are
+     * correct production behaviour (M8.6 spec §2.6); the tests only need a settled frame.
+     */
+    @Composable
+    private fun TestTheme(content: @Composable () -> Unit) =
+        SubspacePreviewTheme(ThemeVariant.FriendlyLight, reducedMotion = true, content = content)
 }

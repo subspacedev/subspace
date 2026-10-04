@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.home
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -12,7 +13,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
-import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.core.ui.preview.SubspacePreviewTheme
+import space.getsub.core.ui.preview.ThemeVariant
 
 /**
  * M8 spec §7.3 / ARCHITECTURE.md §5.5: [ConnectionState.Reconnecting] is neither [ConnectionState.Connected]
@@ -69,7 +71,7 @@ class HomeReconnectingTest {
                 connection = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = false),
             )
         composeRule.setContent {
-            SubspaceTheme {
+            TestTheme {
                 HomeScreenContent(state = state, actions = actions.copy(onDisconnect = { disconnects++ }))
             }
         }
@@ -117,7 +119,7 @@ class HomeReconnectingTest {
 
     private fun setContent(state: HomeState) {
         composeRule.setContent {
-            SubspaceTheme {
+            TestTheme {
                 HomeScreenContent(state = state, actions = actions)
             }
         }
@@ -136,4 +138,13 @@ class HomeReconnectingTest {
             onOpenPerApp = {},
             onOpenSessionLog = {},
         )
+
+    /**
+     * Reduced motion: ConnectBlob's drift and shape-cycle loops never finish, so under
+     * normal motion Compose never reaches idle and `setContent` times out. The loops are
+     * correct production behaviour (M8.6 spec §2.6); the tests only need a settled frame.
+     */
+    @Composable
+    private fun TestTheme(content: @Composable () -> Unit) =
+        SubspacePreviewTheme(ThemeVariant.FriendlyLight, reducedMotion = true, content = content)
 }
