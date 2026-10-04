@@ -1108,7 +1108,8 @@ This is the least portable, most version-dependent part of the codebase.
   while connected only took effect at the next autonomous restart (M8 ruling
   R37's "where the next reconcile restart goes"). A row this build cannot run
   (it fails to decode, or is not `connectable`) never moves a live session: the
-  pick persists and the tunnel stays on its current server. Source: the M8.6
+  pick persists and the tunnel stays on its current server until the next
+  autonomous restart, which follows the active row as in M8. Source: the M8.6
   spec's §8 amendment (M8.6 Part 3 D1).
 
 ---
