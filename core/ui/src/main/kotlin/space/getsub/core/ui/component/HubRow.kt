@@ -22,7 +22,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.icon.SubspaceIcons
 
-/** A Settings hub entry that opens a sub-screen. The whole row is one click target (M8.6 spec §3.1). */
+/**
+ * A Settings hub entry that opens a sub-screen. The whole row is one click target (M8.6 spec §3.1).
+ *
+ * [value] is one line with an ellipsis, as drawn. [valueMaxLines] lets a caller whose value must be
+ * read in full (a pinned directive on Subscription detail) let it wrap instead.
+ */
+// Six orthogonal parameters plus the modifier slot, the same shape SwitchRow's suppression covers.
+@Suppress("LongParameterList")
 @Composable
 fun HubRow(
     @DrawableRes icon: Int,
@@ -30,6 +37,7 @@ fun HubRow(
     value: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    valueMaxLines: Int = 1,
 ) {
     Row(
         modifier =
@@ -49,12 +57,11 @@ fun HubRow(
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             if (value != null) {
-                // One line, ellipsised, as drawn: a long value must not push the row taller.
                 Text(
                     value,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = valueMaxLines,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

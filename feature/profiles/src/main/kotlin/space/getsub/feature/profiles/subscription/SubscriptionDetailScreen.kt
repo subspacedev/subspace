@@ -548,6 +548,8 @@ private fun DirectiveRowView(
                     value = supporting,
                     onClick = { dialogOpen = true },
                     modifier = Modifier.weight(1f),
+                    // "Provider suggests 6 h · you pinned 24 h": both halves matter, so it wraps.
+                    valueMaxLines = Int.MAX_VALUE,
                 )
         }
         if (row.row.isPinned) UnpinButton(key = row.row.key, onUnpin = onUnpin)
