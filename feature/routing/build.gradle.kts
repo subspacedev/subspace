@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.compose")
     id("subspace.android.hilt")
+    // M8.6 spec §7.1: screenshot tests for the rule-set list and import review in all four themes.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -60,4 +62,10 @@ dependencies {
     androidTestImplementation(libs.kotest.assertions)
     debugImplementation(libs.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`, so an alpha BOM bump
+// cannot silently restyle a component.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }
