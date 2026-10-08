@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -147,6 +149,8 @@ internal fun ImportReviewSheet(
     SubspaceSheet(
         onDismiss = actions.onDismiss,
         modifier = modifier,
+        // A long review must open fully, not at a partial detent that hides the actions.
+        skipPartiallyExpanded = true,
         // Applying is the lock: materialisation must not be hidden while it is still running.
         dismissible = state.stage != Stage.Applying,
     ) {
@@ -180,6 +184,8 @@ internal fun ImportReviewSheetContent(
         modifier =
         modifier
             .fillMaxWidth()
+            // Gestures are off while Applying, so a long review must still scroll to reach "Stop download".
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = CONTENT_HORIZONTAL_PADDING)
             .padding(bottom = CONTENT_BOTTOM_PADDING),
         verticalArrangement = Arrangement.spacedBy(SECTION_GAP),

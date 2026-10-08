@@ -80,7 +80,7 @@ internal fun RuleSetCard(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        shape = SubspaceShapeTokens.card,
+        shape = SubspaceShapeTokens.cardLead,
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
@@ -282,7 +282,7 @@ private fun AssetStateRow(
     }
 }
 
-/** One non-alarming asset-state line. [MarkerRow] is for the states that warrant a warning. */
+/** One non-alarming asset-state line. [Banner] is for the states that warrant a warning. */
 @Composable
 private fun AssetStateNote(textRes: Int) {
     Text(

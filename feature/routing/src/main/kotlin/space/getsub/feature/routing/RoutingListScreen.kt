@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -224,7 +225,7 @@ internal fun RoutingListScreenContent(
 ) {
     // The row awaiting delete confirmation. Held by id so a list refresh that drops the row
     // (or renames it) cannot leave the dialog confirming a stale object.
-    var deleting by remember { mutableStateOf<Long?>(null) }
+    var deleting by rememberSaveable { mutableStateOf<Long?>(null) }
     Column(
         modifier =
         modifier

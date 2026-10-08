@@ -14,7 +14,7 @@
     <string name="routing_more_description">More actions for %1$s</string>
     <string name="routing_edit_label">Edit</string>
     <string name="routing_delete_label">Delete</string>
-    <string name="routing_delete_title">Delete %1$s?</string>
+    <string name="routing_delete_title">Delete “%1$s”?</string>
     <string name="routing_delete_body">This rule set is removed for good. If it is the one in use, routing turns off.</string>
     <string name="routing_delete_cancel">Cancel</string>
     <string name="routing_activate_description">Activate %1$s</string>
