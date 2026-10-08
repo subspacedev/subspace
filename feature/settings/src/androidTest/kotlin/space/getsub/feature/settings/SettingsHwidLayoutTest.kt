@@ -30,8 +30,8 @@ class SettingsHwidLayoutTest {
     private fun setContent() {
         composeRule.setContent {
             SubspaceTheme {
-                // M8.6 Part 4 Task 3: the HWID moved from the single Settings screen to the
-                // Device ID page. The check is unchanged; Task 4 moves it to the restyled page.
+                // M8.6 Part 4 Tasks 3-4: the HWID lives on the Device ID page. The checks are
+                // unchanged by the restyle.
                 SettingsPageContent(
                     page = SettingsPageId.DeviceId,
                     state = SettingsState(hwid = hwid, hwidEnabled = true),

@@ -13,11 +13,10 @@
     <!-- The three choices Appearance's segmented control offers. Each
          doubles as its own accessible label — "System", "Light", "Dark" —
          and %1$s below names which one is currently selected. -->
+    <string name="settings_theme_system_hint">System follows Android\'s dark theme setting.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
-    <string name="settings_theme_option_description">%1$s theme</string>
-    <string name="settings_theme_option_selected_description">%1$s theme, selected</string>
 
     <string name="settings_hwid_title">Send device ID</string>
     <string name="settings_hwid_summary">Some providers limit how many devices can use one subscription. Turning this off will stop those subscriptions from loading.</string>
@@ -45,8 +44,6 @@
     <string name="settings_ping_check_url_summary">Fetched through the proxy when testing. A 204 endpoint returns no content.</string>
     <string name="settings_ping_timeout">Timeout</string>
     <string name="settings_ping_timeout_value">%1$d s</string>
-    <string name="settings_ping_timeout_decrease">Shorter timeout</string>
-    <string name="settings_ping_timeout_increase">Longer timeout</string>
     <string name="settings_ping_on_launch">Test servers at launch</string>
     <string name="settings_ping_on_launch_summary">Measures each group once when you open the server list.</string>
     <string name="settings_ping_on_launch_metered">Also on mobile data</string>
@@ -121,6 +118,8 @@
     <string name="settings_geo_custom_source_label">Custom (%1$s)</string>
     <!-- %1$s is a formatted date, e.g. "2026-08-11". -->
     <string name="settings_geo_installed_at">Installed %1$s</string>
+    <string name="settings_geo_update_action">Update</string>
+    <string name="settings_geo_custom_source_short">Custom source</string>
     <string name="settings_geo_update_now">Update %1$s now</string>
     <!-- %1$s is the row's display name — a custom source only, so this button never appears on a
          catalogue row (branch review, Finding 3). -->

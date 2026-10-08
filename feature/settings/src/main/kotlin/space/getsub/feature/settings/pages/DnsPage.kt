@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
-package space.getsub.feature.settings
+package space.getsub.feature.settings.pages
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,10 +18,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.DnsValidation
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.ModeTile
+import space.getsub.core.ui.component.ModeTiles
+import space.getsub.core.ui.component.SectionTitle
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.mono
+import space.getsub.feature.settings.R
+import space.getsub.feature.settings.SettingsActions
+import space.getsub.feature.settings.SettingsState
+
+private val FIELDS_CARD_SHAPE = RoundedCornerShape(22.dp)
 
 /** The app-level resolver, used while no routing profile supplies effective DNS behavior. */
+@Composable
+internal fun DnsPage(
+    state: SettingsState,
+    actions: SettingsActions,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PageScaffold(title = stringResource(R.string.settings_dns_title), onBack = onBack, modifier = modifier) {
+        SettingsDnsSection(state = state, actions = actions)
+    }
+}
+
+/** The page body: protocol tiles, then the resolver and bootstrap fields on a tonal card. */
 @Composable
 internal fun SettingsDnsSection(
     state: SettingsState,
@@ -29,33 +55,39 @@ internal fun SettingsDnsSection(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        Text(
-            text = stringResource(R.string.settings_dns_title),
-            style = MaterialTheme.typography.titleMedium,
+        SectionTitle(stringResource(R.string.settings_dns_transport))
+        ModeTiles(
+            options =
+            DnsTransport.entries.map { transport ->
+                ModeTile(
+                    icon = if (transport == DnsTransport.DOH) SubspaceIcons.Lock else SubspaceIcons.Dns,
+                    label = transport.wireValue,
+                )
+            },
+            selected = DnsTransport.entries.indexOf(state.dnsTransport),
+            onSelect = { actions.onDnsTransportChanged(DnsTransport.entries[it]) },
         )
 
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            DnsTransport.entries.forEachIndexed { index, transport ->
-                SegmentedButton(
-                    selected = state.dnsTransport == transport,
-                    onClick = { actions.onDnsTransportChanged(transport) },
-                    shape = SegmentedButtonDefaults.itemShape(index, DnsTransport.entries.size),
-                    label = { Text(transport.wireValue) },
-                )
+        val isDoh = state.dnsTransport == DnsTransport.DOH
+        Surface(
+            shape = FIELDS_CARD_SHAPE,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                DnsAddressField(state = state, actions = actions, isDoh = isDoh)
+                if (isDoh) {
+                    DnsBootstrapField(state = state, actions = actions)
+                }
             }
         }
 
-        val isDoh = state.dnsTransport == DnsTransport.DOH
-        DnsAddressField(state = state, actions = actions, isDoh = isDoh)
-
-        if (isDoh) {
-            DnsBootstrapField(state = state, actions = actions)
-        }
-
         if (state.dnsOverriddenByProfile) {
-            Text(
+            TonalBanner(
+                icon = SubspaceIcons.Info,
                 text = stringResource(R.string.settings_dns_overridden),
-                style = MaterialTheme.typography.bodySmall,
+                tone = BannerTone.Neutral,
+                modifier = Modifier.padding(top = 12.dp),
             )
         }
     }
@@ -80,6 +112,7 @@ private fun DnsAddressField(
                 ),
             )
         },
+        textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
         modifier =
         Modifier
@@ -104,10 +137,12 @@ private fun DnsBootstrapField(
         label = { Text(stringResource(R.string.settings_dns_bootstrap)) },
         isError = draft.isNotBlank() && !DnsValidation.isAddressLiteral(draft),
         supportingText = { Text(stringResource(R.string.settings_dns_bootstrap_summary)) },
+        textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
         modifier =
         Modifier
             .fillMaxWidth()
+            .padding(top = 8.dp)
             .onFocusChanged { focus ->
                 if (!focus.hasFocus && draft != state.dnsBootstrapIp) {
                     actions.onDnsBootstrapIpChanged(draft)

@@ -12,6 +12,7 @@ import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.PingMode
 import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.feature.settings.pages.SettingsDnsSection
 
 class SettingsDnsSectionTest {
     @get:Rule
