@@ -37,7 +37,8 @@ import space.getsub.feature.routing.PerAppScreen
 import space.getsub.feature.routing.RoutingListScreen
 import space.getsub.feature.routing.RoutingQrScanRoute
 import space.getsub.feature.routing.RuleSetEditorScreen
-import space.getsub.feature.settings.SettingsScreen
+import space.getsub.feature.settings.SettingsPageScreen
+import space.getsub.feature.settings.hub.SettingsScreen
 import space.getsub.feature.settings.log.LogViewerScreen
 import space.getsub.core.ui.R as CoreUiR
 
@@ -68,7 +69,8 @@ private const val SETTINGS_VALUE = "settings"
  * from `:feature:profiles`, wired in Task 20's fix round 1 for the identical
  * reason), `Editor` ([EditorScreen], from `:feature:profiles`, wired in
  * Task 21 — the same "no later task owns this" treatment), `Settings`
- * ([SettingsScreen], from `:feature:settings`, Task 22), `RoutingList`
+ * ([SettingsScreen], from `:feature:settings`, Task 22; the hub since M8.6 Part 4, with
+ * its sub-pages at `SettingsPage`), `RoutingList`
  * ([RoutingListScreen], from `:feature:routing`, Task 15) and, as of Task 16,
  * `RuleSetEditor` ([RuleSetEditorScreen], from `:feature:routing` — Task 15's
  * own brief had declared both routes ahead of this one existing, wired to a
@@ -176,6 +178,8 @@ fun SubspaceNavHost(
                     onNavigateToRouting = { navController.navigate(RoutingList) },
                     onNavigateToPerApp = { navController.navigate(PerApp) },
                     onNavigateToLogViewer = { navController.navigate(LogViewer) },
+                    // M8.6 plan ruling R1: every other hub row opens a sub-page route.
+                    onOpenPage = { page -> navController.navigate(SettingsPage(page)) },
                 )
             }
             editorDestination(navController)
@@ -226,13 +230,14 @@ fun SubspaceNavHost(
 }
 
 /**
- * `null` for [Editor], [QrScan], [SubscriptionDetail], [RoutingList], [RuleSetEditor], [PerApp]
- * and [LogViewer] (and for no current destination yet) — the pill's cue to hide. The
- * `else -> null` branch is what covers the last five: only [Home], [Servers] and [Settings] get
+ * `null` for [Editor], [QrScan], [SubscriptionDetail], [RoutingList], [RuleSetEditor], [PerApp],
+ * [LogViewer] and [SettingsPage] (and for no current destination yet) — the pill's cue to hide.
+ * The `else -> null` branch is what covers all of them: only [Home], [Servers] and [Settings] get
  * an explicit branch, since those are the only three destinations this graph ever wants the pill
  * visible for — Task 15 (M5) confirms [RoutingList] and [RuleSetEditor] fall into that same
  * default bucket alongside [Editor] and [QrScan], Task 9 (M5.5) confirms [PerApp] falls into it
- * too, and M8.5 Task 7 confirms [LogViewer] does as well, rather than adding branches for any of
+ * too, M8.5 Task 7 confirms [LogViewer] does as well, and M8.6 Part 4 Task 3 confirms
+ * [SettingsPage] does too (a sub-page hides the pill, as Routing does), rather than adding branches for any of
  * them that would need to (incorrectly) return one of
  * [HOME_VALUE]/[SERVERS_VALUE]/[SETTINGS_VALUE].
  *
@@ -462,5 +467,10 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
         // the way [RoutingList] and [PerApp] are, which is the grouping this
         // function is actually keyed on.
         LogViewerScreen(onBack = { navController.popBackStack() })
+    }
+    composable<SettingsPage> { entry ->
+        // M8.6 plan ruling R1: one of the Settings hub's sub-pages, pushed from its rows.
+        val route: SettingsPage = entry.toRoute()
+        SettingsPageScreen(page = route.page, onBack = { navController.popBackStack() })
     }
 }

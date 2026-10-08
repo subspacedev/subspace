@@ -218,7 +218,7 @@ private fun rowForFileName(
  * add-custom-source form, and the scheduled-refresh metered toggle (Task 14's
  * [SettingsSource.geoRefreshOnMetered]).
  *
- * Deliberately **not** a `SectionHeader` plus this content in one composable — [SettingsScreen]
+ * Deliberately **not** a `SectionHeader` plus this content in one composable — [SettingsPageScreen]
  * places the header itself, the same split every other section in that file uses.
  */
 @Composable

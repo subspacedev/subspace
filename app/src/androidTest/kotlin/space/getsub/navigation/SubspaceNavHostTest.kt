@@ -29,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.ui.component.FloatingNavBar
 import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.feature.settings.SettingsPageId
 
 // Backtick names with spaces are avoided here (unlike the task brief's literal
 // text) for the same reason GroupCardTest.kt gives: minSdk 26 makes D8
@@ -111,6 +112,7 @@ class SubspaceNavHostTest {
                 composable<Settings> { }
                 composable<Editor> { }
                 composable<QrScan> { }
+                composable<SettingsPage> { }
             }
 
             if (selected != null) {
@@ -162,6 +164,7 @@ class SubspaceNavHostTest {
                 composable<Settings> { }
                 composable<Editor> { }
                 composable<QrScan> { }
+                composable<SettingsPage> { }
             }
         }
 
@@ -179,6 +182,34 @@ class SubspaceNavHostTest {
         composeRule.runOnIdle { localNavController.popBackStack() }
         composeRule.runOnIdle { localNavController.navigate(QrScan) }
         composeRule.runOnIdle { localNavController.currentDestination.selectedTopLevelValue() shouldBe null }
+
+        composeRule.runOnIdle { localNavController.popBackStack() }
+        composeRule.runOnIdle { localNavController.navigate(SettingsPage(SettingsPageId.Dns)) }
+        composeRule.runOnIdle { localNavController.currentDestination.selectedTopLevelValue() shouldBe null }
+    }
+
+    /**
+     * M8.6 plan ruling R1: a Settings sub-page is pushed, so the pill hides on it, through the
+     * real `if (selected != null)` gate, and comes back when the page is popped. Also proves the
+     * route's enum argument round-trips.
+     */
+    @Test
+    fun theNavBarHidesOnASettingsSubPage() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            SubspaceTheme {
+                fakeSubspaceNavHost(navController = navController, startDestination = Settings)
+            }
+        }
+
+        composeRule.runOnIdle { navController.navigate(SettingsPage(SettingsPageId.Appearance)) }
+        composeRule.onNodeWithContentDescription("Connect").assertDoesNotExist()
+        composeRule.runOnIdle {
+            navController.currentBackStackEntry?.toRoute<SettingsPage>()?.page shouldBe SettingsPageId.Appearance
+        }
+
+        composeRule.runOnIdle { navController.popBackStack() }
+        composeRule.onNodeWithContentDescription("Connect").assertExists()
     }
 
     /**

@@ -80,7 +80,8 @@ class HubValuesTest {
 
     @Test
     fun `geo falls back to source names when nothing is installed`() {
-        base.geoValue() shouldBe base.geoRows.map { it.displayName }
+        base.geoValue() shouldBe base.geoRows.map { it.displayName }.distinct()
+        base.geoValue().size shouldBe base.geoValue().toSet().size
     }
 
     @Test
@@ -102,5 +103,13 @@ class HubValuesTest {
         base.copy(lightweightMode = true, sessionConnected = true).lightweightExtraLine() shouldBe true
         base.copy(lightweightMode = true, sessionConnected = false).lightweightExtraLine() shouldBe false
         base.copy(lightweightMode = false, sessionConnected = true).lightweightExtraLine() shouldBe false
+    }
+
+    @Test
+    fun `dns shows a DoH URL's host and a DoU address as written`() {
+        dnsHubAddress(DnsTransport.DOH, "https://dns.cloudflare.com/dns-query") shouldBe "dns.cloudflare.com"
+        dnsHubAddress(DnsTransport.DOH, "https://dns.example.invalid:8443/q?x=1") shouldBe "dns.example.invalid:8443"
+        dnsHubAddress(DnsTransport.DOU, "1.1.1.1") shouldBe "1.1.1.1"
+        dnsHubAddress(DnsTransport.DOH, "") shouldBe ""
     }
 }

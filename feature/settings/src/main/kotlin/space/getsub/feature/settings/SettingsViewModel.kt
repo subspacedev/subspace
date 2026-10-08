@@ -205,8 +205,8 @@ constructor(
     /**
      * Not a survival setting (§7.2's three triggers are always-on, boot autostart and
      * fail-closed), so this never routes through [maybePromptForBattery] — the copy in
-     * [SettingsDiagnosticsSection] is this toggle's own warning, about exposure rather than about
-     * Doze killing the tunnel.
+     * [space.getsub.feature.settings.hub.DiagnosticsGroup] is this toggle's own warning, about
+     * exposure rather than about Doze killing the tunnel.
      *
      * Ruling R43 (revises F2 / ruling R39): does **not** restart the core to apply the change —
      * `ARCHITECTURE.md` §10.4's principle is that a diagnostic setting must not tear down a

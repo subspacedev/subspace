@@ -30,7 +30,10 @@ class SettingsHwidLayoutTest {
     private fun setContent() {
         composeRule.setContent {
             SubspaceTheme {
-                SettingsScreenContent(
+                // M8.6 Part 4 Task 3: the HWID moved from the single Settings screen to the
+                // Device ID page. The check is unchanged; Task 4 moves it to the restyled page.
+                SettingsPageContent(
+                    page = SettingsPageId.DeviceId,
                     state = SettingsState(hwid = hwid, hwidEnabled = true),
                     actions =
                     SettingsActions(
@@ -50,12 +53,7 @@ class SettingsHwidLayoutTest {
                         onGeoRefreshOnMeteredChanged = {},
                         onRemoveCustomGeoSource = {},
                     ),
-                    navigation =
-                    SettingsNavigation(
-                        onNavigateToRouting = {},
-                        onNavigateToPerApp = {},
-                        onNavigateToLogViewer = {},
-                    ),
+                    onBack = {},
                 )
             }
         }

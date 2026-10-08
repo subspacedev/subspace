@@ -17,7 +17,7 @@ import androidx.lifecycle.Lifecycle
  * Extracted as a pure function — rather than inlined in the `LaunchedEffect` — so the four cases
  * (not requested; requested but paused, stopped, or created; requested and resumed) have a JVM
  * test that needs no Compose runtime. Kept in its own file, rather than alongside
- * [SettingsScreen], because that file already sits at detekt's `TooManyFunctions` threshold.
+ * the old single Settings screen file, because that file already sits at detekt's `TooManyFunctions` threshold.
  */
 internal fun shouldLaunchVpnSettings(requested: Boolean, lifecycleState: Lifecycle.State): Boolean =
     requested && lifecycleState == Lifecycle.State.RESUMED

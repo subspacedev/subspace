@@ -46,9 +46,9 @@ internal fun SettingsState.latencyValue(): Pair<PingMode, Int> = pingMode to pin
 
 internal fun SettingsState.dnsValue(): Pair<DnsTransport, String> = dnsTransport to dnsAddress
 
-/** Installed asset file names; the source names while nothing is installed yet. */
+/** Installed asset file names; the source names (each once) while nothing is installed yet. */
 internal fun SettingsState.geoValue(): List<String> =
-    geoInstalledAssets.map { it.fileName }.ifEmpty { geoRows.map { it.displayName } }
+    geoInstalledAssets.map { it.fileName }.ifEmpty { geoRows.map { it.displayName } }.distinct()
 
 internal fun SettingsState.sessionLogValue(): SessionLogValue =
     if (lightweightMode) SessionLogValue.NotRecordingLightweight else SessionLogValue.Recording

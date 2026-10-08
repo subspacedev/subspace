@@ -3,6 +3,7 @@
 package space.getsub.navigation
 
 import kotlinx.serialization.Serializable
+import space.getsub.feature.settings.SettingsPageId
 
 /**
  * The connect / home screen. Top-level: appears in [space.getsub.core.ui.component.FloatingNavBar].
@@ -105,6 +106,14 @@ data object PerApp
  */
 @Serializable
 data object LogViewer
+
+/**
+ * One of the Settings hub's sub-pages (M8.6 plan ruling R1), pushed on top of the top-level
+ * destinations from a hub row. The pill hides while this is on screen, same reasoning as
+ * [RoutingList]: it is a page the user drills into and backs out of.
+ */
+@Serializable
+data class SettingsPage(val page: SettingsPageId)
 
 /**
  * Passed as [RuleSetEditor.ruleSetId] to start the create-new-rule-set flow.

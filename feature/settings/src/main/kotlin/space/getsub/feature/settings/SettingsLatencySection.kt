@@ -170,7 +170,7 @@ private fun LaunchTestingSwitches(
     }
 }
 
-private fun PingMode.labelRes(): Int =
+internal fun PingMode.labelRes(): Int =
     when (this) {
         PingMode.TCP -> R.string.settings_ping_mode_tcp
         PingMode.PROXY_HEAD -> R.string.settings_ping_mode_proxy_head

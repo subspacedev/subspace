@@ -85,10 +85,10 @@ internal data class SettingsState(
     val vpnSettingsAfterPrompt: Boolean = false,
     /**
      * Whether xray's `stats`/`policy`/`metrics` blocks are emitted so the per-server traffic
-     * breakdown (Task 7's [SettingsDiagnosticsSection]) can be shown on Home. Defaults to off —
-     * matches [space.getsub.core.data.SettingsRepository.perTagBreakdown]'s own default, which
-     * that property's KDoc documents as a security decision, not a taste one: see
-     * [SettingsDiagnosticsSection]'s summary text for what turning it on exposes.
+     * breakdown (the hub's [space.getsub.feature.settings.hub.DiagnosticsGroup]) can be shown on
+     * Home. Defaults to off — matches [space.getsub.core.data.SettingsRepository.perTagBreakdown]'s
+     * own default, which that property's KDoc documents as a security decision, not a taste one:
+     * see that group's summary text for what turning it on exposes.
      */
     val perTagBreakdown: Boolean = false,
     /** No traffic numbers and no session log, for slower phones. See [SettingsSource.lightweightMode]. */
@@ -118,7 +118,7 @@ internal data class SettingsState(
         get() = geoRowsFor(geoSources, selectedGeoSourceIds, geoInstalledAssets)
 
     /**
-     * Whether [SettingsDiagnosticsSection] shows the "applies to your next connection" notice
+     * Whether [space.getsub.feature.settings.hub.DiagnosticsGroup] shows the "applies to your next connection" notice
      * beneath the per-server breakdown switch (ruling R43, replacing review finding I-2's one-way
      * `perTagBreakdownPendingReconnect` latch).
      *
