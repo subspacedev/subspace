@@ -7,31 +7,28 @@
 package space.getsub.feature.routing
 
 import android.text.format.Formatter
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -41,6 +38,13 @@ import space.getsub.core.model.DnsState
 import space.getsub.core.model.RoutingSourceKind
 import space.getsub.core.model.RuleSetAssetFailure
 import space.getsub.core.model.RuleSetAssetState
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.MenuItem
+import space.getsub.core.ui.component.SubspaceMenu
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.component.WavyProgress
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.SubspaceShapeTokens
 
 /**
  * One rule set's card, split out of [RoutingListScreen] once M6 gave each row a
@@ -60,7 +64,6 @@ import space.getsub.core.model.RuleSetAssetState
 private val CARD_PADDING = 16.dp
 private val ROW_ICON_GAP = 8.dp
 private val MARKER_TOP_PADDING = 8.dp
-private val MARKER_ICON_SIZE = 16.dp
 
 internal data class RuleSetCardActions(
     val onSelect: () -> Unit,
@@ -77,8 +80,8 @@ internal fun RuleSetCard(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = SubspaceShapeTokens.card,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(CARD_PADDING)) {
@@ -86,16 +89,13 @@ internal fun RuleSetCard(
 
             if (row.missingGeoFiles.isNotEmpty()) {
                 val missing = row.missingGeoFiles.sorted().joinToString()
-                MarkerRow(
+                Banner(
                     text = stringResource(R.string.routing_missing_geo_files, missing),
-                    color = MaterialTheme.colorScheme.error,
+                    tone = BannerTone.Blocked,
                 )
             }
             if (row.hasFailedGeoUpdate) {
-                MarkerRow(
-                    text = stringResource(R.string.routing_update_failed),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Banner(text = stringResource(R.string.routing_update_failed))
             }
             // Three independent axes, never collapsed into one: missingGeoFiles
             // above blocks activation, hasFailedGeoUpdate reports a refresh of
@@ -104,20 +104,11 @@ internal fun RuleSetCard(
             when (row.dnsState) {
                 DnsState.None -> Unit
                 DnsState.Applied ->
-                    MarkerRow(
-                        text = stringResource(R.string.routing_dns_applied),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Banner(text = stringResource(R.string.routing_dns_applied), icon = SubspaceIcons.Dns)
                 DnsState.Invalid ->
-                    MarkerRow(
-                        text = stringResource(R.string.routing_dns_invalid),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Banner(text = stringResource(R.string.routing_dns_invalid), icon = SubspaceIcons.Warning)
                 DnsState.NeedsSniffing ->
-                    MarkerRow(
-                        text = stringResource(R.string.routing_dns_needs_sniffing),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Banner(text = stringResource(R.string.routing_dns_needs_sniffing), icon = SubspaceIcons.Warning)
             }
         }
     }
@@ -154,36 +145,56 @@ private fun RuleSetCardHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // A read-only row gets Duplicate in place of Edit, not beside it: the
-        // next sync overwrites this set, so an edit made here would silently
-        // disappear (M6 spec §4.2).
-        if (row.isReadOnly) {
-            // A word rather than an icon: the project depends only on
-            // material-icons-core, which has no copy glyph, and adding
-            // material-icons-extended for one row would need a §10.7
-            // justification this does not have. "Duplicate" also reads more
-            // plainly than any glyph would for an unusual action.
-            val duplicateDescription = stringResource(R.string.routing_duplicate_description, row.name)
-            TextButton(
-                onClick = actions.onDuplicate,
-                modifier = Modifier.semantics { contentDescription = duplicateDescription },
-            ) {
-                Text(stringResource(R.string.routing_duplicate_label))
-            }
-        } else {
-            IconButton(onClick = actions.onEdit) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = stringResource(R.string.routing_edit_description, row.name),
-                )
-            }
-        }
-        IconButton(onClick = actions.onDelete) {
+        CardMenu(row = row, actions = actions)
+    }
+}
+
+/**
+ * Edit / Duplicate / Delete in one overflow menu (M8.6 spec §4.5).
+ *
+ * A read-only row gets Duplicate in place of Edit, not beside it: the next sync overwrites that
+ * set, so an edit made here would silently disappear (M6 spec §4.2). Delete only asks for
+ * confirmation; the list screen owns the dialog.
+ */
+@Composable
+private fun CardMenu(
+    row: RuleSetRow,
+    actions: RuleSetCardActions,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
             Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = stringResource(R.string.routing_delete_description, row.name),
+                painter = painterResource(SubspaceIcons.MoreVert),
+                contentDescription = stringResource(R.string.routing_more_description, row.name),
             )
         }
+        SubspaceMenu(
+            expanded = expanded,
+            onDismiss = { expanded = false },
+            items =
+            listOf(
+                if (row.isReadOnly) {
+                    MenuItem(
+                        icon = SubspaceIcons.Edit,
+                        label = stringResource(R.string.routing_duplicate_label),
+                        onClick = actions.onDuplicate,
+                    )
+                } else {
+                    MenuItem(
+                        icon = SubspaceIcons.Edit,
+                        label = stringResource(R.string.routing_edit_label),
+                        onClick = actions.onEdit,
+                    )
+                },
+                MenuItem(
+                    icon = SubspaceIcons.Delete,
+                    label = stringResource(R.string.routing_delete_label),
+                    destructive = true,
+                    onClick = actions.onDelete,
+                ),
+            ),
+        )
     }
 }
 
@@ -239,18 +250,15 @@ private fun AssetStateRow(
                 )
                 // An undeclared total cannot drive a determinate bar; showing
                 // one anyway would invent a fraction out of nothing.
-                if (progress.totalBytes != null && progress.totalBytes > 0) {
-                    LinearProgressIndicator(
-                        progress = { progress.downloadedBytes.toFloat() / progress.totalBytes.toFloat() },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
+                WavyProgress(
+                    fraction =
+                    progress.totalBytes?.takeIf { it > 0 }?.let { progress.downloadedBytes.toFloat() / it.toFloat() },
+                    modifier = Modifier.padding(top = MARKER_TOP_PADDING),
+                )
             }
             IconButton(onClick = onCancelDownload) {
                 Icon(
-                    imageVector = Icons.Default.Close,
+                    painter = painterResource(SubspaceIcons.Close),
                     contentDescription = stringResource(R.string.routing_download_cancel_description, row.name),
                 )
             }
@@ -263,14 +271,14 @@ private fun AssetStateRow(
     when (row.assetState) {
         RuleSetAssetState.None -> Unit
         // Plain text, no warning glyph: these are ordinary states, and
-        // MarkerRow's icon made a working profile look like it had a problem.
+        // a banner's icon made a working profile look like it had a problem.
         RuleSetAssetState.Ready -> AssetStateNote(R.string.routing_asset_ready)
-        RuleSetAssetState.Pending -> AssetStateNote(R.string.routing_asset_pending)
+        RuleSetAssetState.Pending -> {
+            Banner(text = stringResource(R.string.routing_asset_pending), icon = SubspaceIcons.Sync)
+            WavyProgress(fraction = null, modifier = Modifier.padding(top = MARKER_TOP_PADDING))
+        }
         RuleSetAssetState.Failed ->
-            MarkerRow(
-                text = stringResource(row.assetFailure.messageRes()),
-                color = MaterialTheme.colorScheme.error,
-            )
+            Banner(text = stringResource(row.assetFailure.messageRes()), tone = BannerTone.Blocked)
     }
 }
 
@@ -302,28 +310,21 @@ private fun RuleSetAssetFailure?.messageRes(): Int =
     }
 
 /**
- * One activation-gate marker line. [text] alone is what a screen reader
- * announces — [Icons.Default.Warning] here is decorative
- * (`contentDescription = null`), the same reasoning [SettingRow][space.getsub.core.ui.component.SettingRow]'s
- * own icon documents.
+ * One activation-gate marker as a [TonalBanner] on the card. [text] alone is what a screen reader
+ * announces: the banner's glyph is decorative. The tone, not the glyph, says how serious it is:
+ * [BannerTone.Blocked] gates activation or reports a failed generation, [BannerTone.Neutral] does not.
  */
 @Composable
-internal fun MarkerRow(
+private fun Banner(
     text: String,
-    color: Color,
     modifier: Modifier = Modifier,
+    icon: Int = SubspaceIcons.Warning,
+    tone: BannerTone = BannerTone.Neutral,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.fillMaxWidth().padding(top = MARKER_TOP_PADDING),
-    ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(MARKER_ICON_SIZE),
-        )
-        Spacer(Modifier.width(ROW_ICON_GAP / 2))
-        Text(text = text, style = MaterialTheme.typography.bodySmall, color = color)
-    }
+    TonalBanner(
+        icon = icon,
+        text = text,
+        tone = tone,
+        modifier = modifier.padding(top = MARKER_TOP_PADDING),
+    )
 }

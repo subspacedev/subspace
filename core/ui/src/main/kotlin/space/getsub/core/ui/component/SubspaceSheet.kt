@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -25,6 +26,9 @@ internal val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
  * [skipPartiallyExpanded] opens the sheet straight to its full content height. A sheet with a text
  * input needs it: the partial detent is a fixed fraction of the screen, and the keyboard's own
  * padding would then eat all of it and hide the field.
+ *
+ * [dismissible] false locks the sheet open: swipe, scrim tap and system back do nothing and
+ * [onDismiss] is not called. Import review uses it while a download is materialising.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +36,7 @@ fun SubspaceSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     skipPartiallyExpanded: Boolean = false,
+    dismissible: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val sheetState =
@@ -42,11 +47,17 @@ fun SubspaceSheet(
             rememberBottomSheetState(initialValue = SheetValue.Hidden)
         }
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (dismissible) onDismiss() },
         modifier = modifier,
         sheetState = sheetState,
         shape = SheetShape,
+        sheetGesturesEnabled = dismissible,
         dragHandle = { BottomSheetDefaults.DragHandle() },
+        properties =
+        ModalBottomSheetProperties(
+            shouldDismissOnBackPress = dismissible,
+            shouldDismissOnClickOutside = dismissible,
+        ),
         content = content,
     )
 }

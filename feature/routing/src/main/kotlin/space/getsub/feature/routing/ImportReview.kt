@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import space.getsub.core.model.DnsState
 import space.getsub.core.model.ProfileDns
@@ -35,7 +36,11 @@ import space.getsub.core.model.RoutingProfile
 import space.getsub.core.model.RuleSetAssetFailure
 import space.getsub.core.parser.routing.ConversionDrop
 import space.getsub.core.parser.routing.ImportProblem
-import space.getsub.core.ui.component.SubspaceBottomSheet
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.SubspaceSheet
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.component.WavyProgress
+import space.getsub.core.ui.icon.SubspaceIcons
 
 private val CONTENT_HORIZONTAL_PADDING = 16.dp
 private val CONTENT_BOTTOM_PADDING = 16.dp
@@ -138,11 +143,11 @@ internal fun ImportReviewSheet(
     actions: ImportReviewActions,
     modifier: Modifier = Modifier,
 ) {
-    SubspaceBottomSheet(
-        open = state.stage != Stage.Done,
-        titleRes = state.titleRes(),
+    if (state.stage == Stage.Done) return
+    SubspaceSheet(
         onDismiss = actions.onDismiss,
         modifier = modifier,
+        // Applying is the lock: materialisation must not be hidden while it is still running.
         dismissible = state.stage != Stage.Applying,
     ) {
         ImportReviewSheetContent(state = state, actions = actions)
@@ -179,6 +184,11 @@ internal fun ImportReviewSheetContent(
             .padding(bottom = CONTENT_BOTTOM_PADDING),
         verticalArrangement = Arrangement.spacedBy(SECTION_GAP),
     ) {
+        Text(
+            text = stringResource(state.titleRes()),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
         when {
             state.stage == Stage.Rejected -> RejectedBody(state.problem)
             state.stage == Stage.Failed -> FailedBody(state.name, state.failure)
@@ -191,7 +201,7 @@ internal fun ImportReviewSheetContent(
             else -> ProfileBody(state)
         }
         if (state.stage == Stage.Applying) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            WavyProgress(fraction = null)
         }
         ActionRow(state = state, actions = actions)
     }
@@ -201,10 +211,10 @@ internal fun ImportReviewSheetContent(
 private fun ProfileBody(state: ImportReviewState) {
     Text(text = state.name, style = MaterialTheme.typography.titleMedium)
     if (state.replacesExisting) {
-        Text(
+        TonalBanner(
+            icon = SubspaceIcons.Warning,
             text = stringResource(R.string.import_review_replaces_existing),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
+            tone = BannerTone.Warning,
         )
     }
     RouteOutcome.entries.forEach { outcome ->
@@ -384,10 +394,10 @@ private fun FailedBody(
     failure: RuleSetAssetFailure?,
 ) {
     Text(text = name, style = MaterialTheme.typography.titleMedium)
-    Text(
+    TonalBanner(
+        icon = SubspaceIcons.Warning,
         text = stringResource(failure.sheetMessageRes()),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error,
+        tone = BannerTone.Blocked,
     )
 }
 
@@ -414,10 +424,10 @@ private fun RuleSetAssetFailure?.sheetMessageRes(): Int =
 
 @Composable
 private fun RejectedBody(problem: ImportProblem?) {
-    Text(
+    TonalBanner(
+        icon = SubspaceIcons.Warning,
         text = stringResource(problem.messageRes()),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error,
+        tone = BannerTone.Blocked,
     )
 }
 

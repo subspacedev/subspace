@@ -11,8 +11,12 @@
 
     <string name="routing_create_description">Create rule set</string>
     <string name="routing_back_description">Back</string>
-    <string name="routing_edit_description">Edit %1$s</string>
-    <string name="routing_delete_description">Delete %1$s</string>
+    <string name="routing_more_description">More actions for %1$s</string>
+    <string name="routing_edit_label">Edit</string>
+    <string name="routing_delete_label">Delete</string>
+    <string name="routing_delete_title">Delete %1$s?</string>
+    <string name="routing_delete_body">This rule set is removed for good. If it is the one in use, routing turns off.</string>
+    <string name="routing_delete_cancel">Cancel</string>
     <string name="routing_activate_description">Activate %1$s</string>
 
     <plurals name="routing_entry_count">
@@ -62,7 +66,6 @@
 
     <!-- Imported profiles are read-only; editing means editing a copy (M6 spec §4.2). -->
     <string name="routing_duplicate_label">Duplicate</string>
-    <string name="routing_duplicate_description">Duplicate and edit %1$s</string>
 
     <string name="routing_import_menu_description">Import a routing profile</string>
     <string name="routing_import_clipboard">Import from clipboard</string>
@@ -99,7 +102,7 @@
 
     <string name="rule_set_editor_entry_hint">Domain, address or geosite:/geoip: code</string>
     <string name="rule_set_editor_add_description">Add entry</string>
-    <!-- ARCHITECTURE.md §5.6: deliberately does not interpolate the entry itself, unlike routing_edit_description's
+    <!-- ARCHITECTURE.md §5.6: deliberately does not interpolate the entry itself, unlike routing_activate_description's
          rule-set name (a label the user chose, not a value it routes) — this row's own visible Text
          already carries the entry for a screen reader to reach. -->
     <string name="rule_set_editor_remove_entry_description">Remove entry</string>
@@ -147,7 +150,7 @@
     <!-- Import review sheet (Task 12). M6 spec §6: every channel confirms here.
          Geo rows interpolate host and filename only — never a URL (§5.6).
          Profile name is the provider-supplied label, same exemption as
-         routing_edit_description. -->
+         routing_activate_description. -->
     <string name="import_review_title">Review routing profile</string>
     <string name="import_review_rejected_title">Could not import</string>
     <string name="import_review_confirm">Import</string>

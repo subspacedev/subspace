@@ -145,8 +145,11 @@ class RoutingListScreenContentTest {
         setContent(RoutingState(ruleSets = listOf(providerRow)))
 
         composeRule.onNodeWithText("From \"NameVPN\"").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Duplicate and edit vpn").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Edit vpn").assertDoesNotExist()
+        // Duplicate and Edit now live in the card's overflow menu, so it is opened first; the
+        // assertion is unchanged in meaning: Duplicate is offered, Edit is not.
+        composeRule.onNodeWithContentDescription("More actions for vpn").performClick()
+        composeRule.onNodeWithText("Duplicate").assertIsDisplayed()
+        composeRule.onNodeWithText("Edit").assertDoesNotExist()
     }
 
     @Test
@@ -154,7 +157,9 @@ class RoutingListScreenContentTest {
         setContent(RoutingState(ruleSets = listOf(failedButActivatableRow)))
 
         composeRule.onNodeWithText("Made here").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Edit lan").assertIsDisplayed()
+        // Edit moved into the overflow menu (see the imported-profile test above).
+        composeRule.onNodeWithContentDescription("More actions for lan").performClick()
+        composeRule.onNodeWithText("Edit").assertIsDisplayed()
     }
 
     @Test
