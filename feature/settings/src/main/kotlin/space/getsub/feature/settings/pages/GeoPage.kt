@@ -27,6 +27,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.model.GeoDataKind
@@ -40,8 +41,7 @@ import space.getsub.feature.settings.GeoRow
 import space.getsub.feature.settings.R
 import space.getsub.feature.settings.SettingsActions
 import space.getsub.feature.settings.SettingsState
-import space.getsub.feature.settings.lastFailureMessageRes
-import space.getsub.feature.settings.messageRes
+import space.getsub.feature.settings.geoStatusFor
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -117,7 +117,8 @@ private fun GeoRowItem(
 ) {
     val sizeMb = (row.installedBytes ?: row.approximateBytes) / BYTES_PER_MEGABYTE
     val sizeLabel = stringResource(R.string.settings_geo_size_mb, sizeMb)
-    val statusLabel = row.statusLabel(updating, result)
+    val status = geoStatusFor(row, updating, result)
+    val statusLabel = stringResource(status.messageRes)
     val displayName =
         if (row.isCustom) {
             stringResource(R.string.settings_geo_custom_source_label, row.installFileName)
@@ -138,7 +139,12 @@ private fun GeoRowItem(
     ) {
         Icon(painterResource(SubspaceIcons.Public), contentDescription = null, modifier = Modifier.size(24.dp))
         Column(Modifier.weight(1f)) {
-            Text(row.installFileName, style = MaterialTheme.typography.bodyMedium.mono())
+            Text(
+                row.installFileName,
+                style = MaterialTheme.typography.bodyMedium.mono(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text =
                 if (row.isCustom) {
@@ -152,7 +158,7 @@ private fun GeoRowItem(
             Text(
                 text = stringResource(R.string.settings_geo_row_summary, sizeLabel, statusLabel),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (row.hasError && !updating) MaterialTheme.colorScheme.error else muted,
+                color = if (status.isError) MaterialTheme.colorScheme.error else muted,
             )
             if (detail.isNotEmpty()) {
                 Text(text = detail, style = MaterialTheme.typography.bodySmall, color = muted)
@@ -196,26 +202,6 @@ private fun GeoRowActions(
         }
     }
 }
-
-/**
- * A fresh in-session [GeoInstallResult] wins over the persisted marker *unless* it is a stale
- * "Installed" masking a failure some other actor (a scheduled refresh, another process) has since
- * recorded — a live failure must never be hidden behind an earlier success this session happened
- * to produce.
- */
-@Composable
-private fun GeoRow.statusLabel(
-    updating: Boolean,
-    result: GeoInstallResult?,
-): String =
-    when {
-        updating -> stringResource(R.string.settings_geo_status_updating)
-        hasError && result == GeoInstallResult.Installed -> stringResource(lastFailureMessageRes(lastFailure))
-        result != null -> stringResource(result.messageRes())
-        hasError -> stringResource(lastFailureMessageRes(lastFailure))
-        installedAt != null -> stringResource(R.string.settings_geo_status_installed)
-        else -> stringResource(R.string.settings_geo_status_not_installed)
-    }
 
 private fun formatInstalledAt(millis: Long): String =
     INSTALLED_AT_FORMATTER.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))

@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.settings
 
+import androidx.annotation.StringRes
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.InstalledGeoAsset
 import space.getsub.core.model.GeoDataKind
@@ -207,4 +208,32 @@ internal fun lastFailureMessageRes(lastFailure: String?): Int =
         // specifically" is about code paths, not about a persisted string a future app version, or
         // a hand-edited row, might carry) — never crashes the section over an unrecognised marker.
         else -> R.string.settings_geo_status_error
+    }
+
+/** The status line a [GeoRow] shows: its string and whether it is a failure. */
+internal data class GeoStatus(
+    @param:StringRes val messageRes: Int,
+    val isError: Boolean,
+)
+
+/**
+ * A fresh in-session [GeoInstallResult] wins over the persisted marker *unless* it is a stale
+ * "Installed" masking a failure some other actor (a scheduled refresh, another process) has since
+ * recorded — a live failure must never be hidden behind an earlier success this session happened
+ * to produce. The error flag follows the same branch as the text, so what is shown and how it is
+ * coloured cannot disagree.
+ */
+internal fun geoStatusFor(
+    row: GeoRow,
+    updating: Boolean,
+    result: GeoInstallResult?,
+): GeoStatus =
+    when {
+        updating -> GeoStatus(R.string.settings_geo_status_updating, isError = false)
+        row.hasError && result == GeoInstallResult.Installed ->
+            GeoStatus(lastFailureMessageRes(row.lastFailure), isError = true)
+        result != null -> GeoStatus(result.messageRes(), isError = result != GeoInstallResult.Installed)
+        row.hasError -> GeoStatus(lastFailureMessageRes(row.lastFailure), isError = true)
+        row.installedAt != null -> GeoStatus(R.string.settings_geo_status_installed, isError = false)
+        else -> GeoStatus(R.string.settings_geo_status_not_installed, isError = false)
     }

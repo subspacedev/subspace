@@ -79,6 +79,12 @@ private fun MethodTiles(
     actions: SettingsActions,
 ) {
     SectionTitle(stringResource(R.string.settings_ping_mode))
+    Text(
+        text = stringResource(state.pingMode.summaryRes()),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 10.dp),
+    )
     ModeTiles(
         options =
         PingMode.entries.map { mode ->
@@ -89,12 +95,6 @@ private fun MethodTiles(
         },
         selected = PingMode.entries.indexOf(state.pingMode),
         onSelect = { actions.onPingModeChanged(PingMode.entries[it]) },
-    )
-    Text(
-        text = stringResource(state.pingMode.summaryRes()),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
     )
 }
 

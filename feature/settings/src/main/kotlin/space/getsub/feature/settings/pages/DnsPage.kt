@@ -5,7 +5,6 @@ package space.getsub.feature.settings.pages
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -27,12 +26,11 @@ import space.getsub.core.ui.component.ModeTiles
 import space.getsub.core.ui.component.SectionTitle
 import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
 import space.getsub.feature.settings.R
 import space.getsub.feature.settings.SettingsActions
 import space.getsub.feature.settings.SettingsState
-
-private val FIELDS_CARD_SHAPE = RoundedCornerShape(22.dp)
 
 /** The app-level resolver, used while no routing profile supplies effective DNS behavior. */
 @Composable
@@ -70,7 +68,7 @@ internal fun SettingsDnsSection(
 
         val isDoh = state.dnsTransport == DnsTransport.DOH
         Surface(
-            shape = FIELDS_CARD_SHAPE,
+            shape = SubspaceShapeTokens.card,
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         ) {

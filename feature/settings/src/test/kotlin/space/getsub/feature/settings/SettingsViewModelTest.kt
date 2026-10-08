@@ -910,12 +910,28 @@ class SettingsViewModelTest {
             val viewModel = viewModel(source)
             advanceUntilIdle()
             viewModel.state.value.dynamicColor shouldBe true
-            // JVM tests see SDK 0: the switch is hidden below API 31.
-            viewModel.state.value.dynamicColorAvailable shouldBe false
 
             viewModel.onDynamicColorChanged(false)
             advanceUntilIdle()
             source.dynamicColorWrites shouldBe listOf(false)
+        }
+
+    @Test
+    fun `dynamic colour is unavailable below API 31 and available from it`() =
+        runTest {
+            fun availableAt(sdk: Int) =
+                SettingsViewModel(
+                    FakeSettingsSource(),
+                    FakeXraySource(),
+                    FakeAppVersionSource(),
+                    FakeGeoAssetSource(),
+                    platformSdk = object : PlatformSdk {
+                        override val sdkInt = sdk
+                    },
+                ).state.value.dynamicColorAvailable
+
+            availableAt(30) shouldBe false
+            availableAt(31) shouldBe true
         }
 
     @Test

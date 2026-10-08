@@ -12,6 +12,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -19,7 +24,10 @@ import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.theme.tabular
 import kotlin.math.roundToInt
 
-/** An integer-stepped slider with its label and current value on one line (M8.6 spec §3.1). */
+/**
+ * An integer-stepped slider with its label and current value on one line (M8.6 spec §3.1).
+ * [onValueChange] fires once per gesture, when it ends, with the final value.
+ */
 @Suppress("LongParameterList")
 @Composable
 fun SliderRow(
@@ -44,17 +52,29 @@ fun SliderRow(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+        // The drag lives in local state and is committed once it ends, so a slow write cannot drag
+        // the thumb back mid-gesture. Keyed on the caller's value: a new external value wins.
+        var local by remember(value) { mutableIntStateOf(value) }
+        var dirty by remember(value) { mutableStateOf(false) }
         val state =
             rememberSliderState(
-                value.toFloat(),
+                local.toFloat(),
                 (range.last - range.first - 1).coerceAtLeast(0),
                 range.first.toFloat()..range.last.toFloat(),
             )
-        // The caller's value is the source of truth; the state only tracks the drag.
-        SideEffect { state.value = value.toFloat() }
+        SideEffect { state.value = local.toFloat() }
+        // TalkBack's set-progress action and keyboard arrows call onValueChange then this, so
+        // they commit too. Touch commits on release.
         Slider(
             state = state,
-            onValueChange = { onValueChange(it.roundToInt().coerceIn(range)) },
+            onValueChangeFinished = {
+                if (dirty) onValueChange(local)
+                dirty = false
+            },
+            onValueChange = {
+                local = it.roundToInt().coerceIn(range)
+                dirty = true
+            },
             modifier = Modifier.semantics { contentDescription = label },
         )
     }

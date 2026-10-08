@@ -56,8 +56,9 @@ constructor(
     appVersionSource: AppVersionSource,
     private val geoAssetSource: GeoAssetSource,
     private val tunnelSessionSource: TunnelSessionSource = DisconnectedTunnelSessionSource,
+    platformSdk: PlatformSdk = DevicePlatformSdk,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(initialState(appVersionSource.version))
+    private val _state = MutableStateFlow(initialState(appVersionSource.version, platformSdk.sdkInt))
     val state: StateFlow<SettingsState> = _state.asStateFlow()
     private val dnsWriteRequests = Channel<DnsWriteRequest>(Channel.CONFLATED)
     private var dnsRevision = 0L
@@ -554,8 +555,11 @@ private data class DnsWriteRequest(
     override fun toString(): String = "DnsWriteRequest(revision=$revision, resolver=<redacted>)"
 }
 
-private fun initialState(appVersion: String) =
+private fun initialState(
+    appVersion: String,
+    sdkInt: Int,
+) =
     SettingsState(
         appVersion = appVersion,
-        dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+        dynamicColorAvailable = sdkInt >= Build.VERSION_CODES.S,
     )
