@@ -32,7 +32,7 @@ internal data class SettingsNavigation(
     val onNavigateToRouting: () -> Unit,
     val onNavigateToPerApp: () -> Unit,
     val onNavigateToLogViewer: () -> Unit,
-    val onOpenPage: (SettingsPageId) -> Unit = {},
+    val onOpenPage: (SettingsPageId) -> Unit,
 )
 
 /**

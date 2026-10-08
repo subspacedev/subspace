@@ -182,8 +182,10 @@
     <string name="settings_hub_device_id_not_sent">Not sent</string>
     <!-- %1$s is the test mode ("TCP" or "Proxy (HEAD)"), %2$d the timeout in seconds. -->
     <string name="settings_hub_latency">%1$s · %2$d s timeout</string>
-    <!-- %1$s is the app version, %2$s the Xray-core version (or its loading/unavailable text). -->
+    <!-- %1$s is the app version, %2$s the Xray-core version. -->
     <string name="settings_hub_about">Subspace %1$s · Xray %2$s</string>
+    <!-- While the Xray-core version is loading or unavailable. %1$s is the app version. -->
+    <string name="settings_hub_about_app_only">Subspace %1$s</string>
     <!-- M8.6 plan ruling R3: no line count, so the hub never reads the log. -->
     <string name="settings_hub_log_recording">Recording</string>
     <string name="settings_hub_log_lightweight">Not recording · lightweight mode</string>

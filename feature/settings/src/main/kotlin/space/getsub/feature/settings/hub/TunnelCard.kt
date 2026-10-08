@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,7 +25,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import space.getsub.core.ui.component.SwitchRow
+import androidx.compose.ui.unit.sp
 import space.getsub.core.ui.component.SwitchRowColors
 import space.getsub.core.ui.component.SwitchRowDefaults
 import space.getsub.core.ui.icon.SubspaceIcons
@@ -36,6 +38,10 @@ import space.getsub.feature.settings.SettingsState
  * (M8.6 spec §5.1, fix A10). A `tertiaryContainer` card whose switches use that container's own
  * roles (fix A12). The kill switch and lightweight mode each gain a second line only while it
  * applies ([killSwitchExtraLine], [lightweightExtraLine]).
+ *
+ * Its rows are drawn here rather than with the kit's `SwitchRow`, for fix A6: every subtitle fits
+ * on one line at 360dp, which needs the design's smaller supporting text and tighter gaps than the
+ * kit's general-purpose row.
  */
 @Composable
 internal fun TunnelCard(
@@ -50,48 +56,84 @@ internal fun TunnelCard(
         shape = SubspaceShapeTokens.cardLead,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = CARD_PADDING, vertical = 6.dp)) {
             TunnelLinkRow(
-                icon = SubspaceIcons.VpnLock,
-                label = stringResource(R.string.settings_always_on_title),
-                supporting = stringResource(R.string.settings_always_on_summary),
-                colors = colors,
-                onClick = actions.onOpenVpnSettings,
+                ALWAYS_ON,
+                colors,
+                actions.onOpenVpnSettings,
             )
-            SwitchRow(
-                icon = SubspaceIcons.RestartAlt,
-                label = stringResource(R.string.settings_boot_autostart_title),
-                supporting = stringResource(R.string.settings_boot_autostart_summary),
-                checked = state.bootAutostart,
-                onCheckedChange = actions.onBootAutostartChange,
-                colors = colors,
+            TunnelSwitchRow(
+                BOOT_AUTOSTART,
+                state.bootAutostart,
+                actions.onBootAutostartChange,
+                colors,
             )
-            SwitchRow(
-                icon = SubspaceIcons.Block,
-                label = stringResource(R.string.settings_fail_closed_title),
-                supporting = stringResource(R.string.settings_fail_closed_summary),
-                checked = state.failClosed,
-                onCheckedChange = actions.onFailClosedChange,
-                note = noteIf(state.killSwitchExtraLine(), R.string.settings_fail_closed_per_app_note),
-                colors = colors,
+            TunnelSwitchRow(
+                KILL_SWITCH.copy(note = KILL_SWITCH_NOTE.takeIf { state.killSwitchExtraLine() }),
+                state.failClosed,
+                actions.onFailClosedChange,
+                colors,
             )
             TunnelLinkRow(
-                icon = SubspaceIcons.BatterySaver,
-                label = stringResource(R.string.settings_battery_title),
-                supporting = stringResource(R.string.settings_battery_summary),
-                colors = colors,
-                onClick = actions.onOpenBatterySettings,
+                BATTERY,
+                colors,
+                actions.onOpenBatterySettings,
             )
-            SwitchRow(
-                icon = SubspaceIcons.Eco,
-                label = stringResource(R.string.settings_lightweight_title),
-                supporting = stringResource(R.string.settings_lightweight_summary),
-                checked = state.lightweightMode,
-                onCheckedChange = actions.onLightweightModeChange,
-                note = noteIf(state.lightweightExtraLine(), R.string.settings_lightweight_connected_note),
-                colors = colors,
+            TunnelSwitchRow(
+                LIGHTWEIGHT.copy(note = LIGHTWEIGHT_NOTE.takeIf { state.lightweightExtraLine() }),
+                state.lightweightMode,
+                actions.onLightweightModeChange,
+                colors,
             )
         }
+    }
+}
+
+private val CARD_PADDING = 12.dp
+
+private val ALWAYS_ON =
+    TunnelRowText(SubspaceIcons.VpnLock, R.string.settings_always_on_title, R.string.settings_always_on_summary)
+private val BOOT_AUTOSTART =
+    TunnelRowText(
+        SubspaceIcons.RestartAlt,
+        R.string.settings_boot_autostart_title,
+        R.string.settings_boot_autostart_summary,
+    )
+private val KILL_SWITCH =
+    TunnelRowText(SubspaceIcons.Block, R.string.settings_fail_closed_title, R.string.settings_fail_closed_summary)
+private val BATTERY =
+    TunnelRowText(SubspaceIcons.BatterySaver, R.string.settings_battery_title, R.string.settings_battery_summary)
+private val KILL_SWITCH_NOTE = R.string.settings_fail_closed_per_app_note
+private val LIGHTWEIGHT_NOTE = R.string.settings_lightweight_connected_note
+private val LIGHTWEIGHT =
+    TunnelRowText(SubspaceIcons.Eco, R.string.settings_lightweight_title, R.string.settings_lightweight_summary)
+private val ROW_GAP = 12.dp
+
+/** A Tunnel row's icon and copy; [note] is the conditional second line, or null. */
+private data class TunnelRowText(
+    @param:DrawableRes val icon: Int,
+    @param:StringRes val label: Int,
+    @param:StringRes val supporting: Int,
+    @param:StringRes val note: Int? = null,
+)
+
+/**
+ * A switch row. The whole row toggles, as the kit's `SwitchRow` does, so it is one toggleable node
+ * carrying its own label.
+ */
+@Composable
+private fun TunnelSwitchRow(
+    text: TunnelRowText,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    colors: SwitchRowColors,
+) {
+    TunnelRow(
+        text = text,
+        colors = colors,
+        modifier = Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+    ) {
+        Switch(checked = checked, onCheckedChange = null, colors = colors.switch)
     }
 }
 
@@ -101,27 +143,11 @@ internal fun TunnelCard(
  */
 @Composable
 private fun TunnelLinkRow(
-    @DrawableRes icon: Int,
-    label: String,
-    supporting: String,
+    text: TunnelRowText,
     colors: SwitchRowColors,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier =
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(painterResource(icon), contentDescription = null, tint = colors.content, modifier = Modifier.size(24.dp))
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.content)
-            Text(supporting, style = MaterialTheme.typography.bodyMedium, color = colors.supporting)
-        }
+    TunnelRow(text = text, colors = colors, modifier = Modifier.clickable(role = Role.Button, onClick = onClick)) {
         Icon(
             painterResource(SubspaceIcons.OpenInNew),
             contentDescription = null,
@@ -132,7 +158,32 @@ private fun TunnelLinkRow(
 }
 
 @Composable
-private fun noteIf(
-    show: Boolean,
-    @StringRes res: Int,
-): String? = if (show) stringResource(res) else null
+private fun TunnelRow(
+    text: TunnelRowText,
+    colors: SwitchRowColors,
+    modifier: Modifier,
+    trailing: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).then(modifier).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ROW_GAP),
+    ) {
+        Icon(
+            painterResource(text.icon),
+            contentDescription = null,
+            tint = colors.content,
+            // The design's 20px glyph.
+            modifier = Modifier.size(20.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(text.label), style = MaterialTheme.typography.bodyLarge, color = colors.content)
+            // bodySmall without its 0.4sp tracking, close to the design's plain 13px: fix A6 needs
+            // each subtitle on one line at 360dp, and the tracking alone costs a word there.
+            val small = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.sp)
+            Text(stringResource(text.supporting), style = small, color = colors.supporting)
+            text.note?.let { Text(stringResource(it), style = small, color = colors.content) }
+        }
+        trailing()
+    }
+}

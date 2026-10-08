@@ -53,6 +53,10 @@ internal fun SettingsState.geoValue(): List<String> =
 internal fun SettingsState.sessionLogValue(): SessionLogValue =
     if (lightweightMode) SessionLogValue.NotRecordingLightweight else SessionLogValue.Recording
 
-internal fun SettingsState.killSwitchExtraLine(): Boolean = failClosed && perApp.mode != PerAppMode.Off
+/**
+ * M8.6 spec §5.1: the kill switch's per-app line shows while per-app mode is not Off, whatever the
+ * switch reads (from the effective selection).
+ */
+internal fun SettingsState.killSwitchExtraLine(): Boolean = perApp.mode != PerAppMode.Off
 
 internal fun SettingsState.lightweightExtraLine(): Boolean = lightweightMode && sessionConnected

@@ -95,10 +95,13 @@ class SettingsTunnelSectionTest {
         toggled shouldBe true
     }
 
-    /** M8.6 plan review focus 5: the kill switch's per-app line shows only while per-app is not Off. */
+    /**
+     * M8.6 spec §5.1: the kill switch's per-app line shows only while per-app is not Off — with
+     * the kill switch off as well, since the line describes per-app, not the switch's position.
+     */
     @Test
     fun killSwitchPerAppLineFollowsPerAppMode() {
-        var state by mutableStateOf(tunnelState(failClosed = true))
+        var state by mutableStateOf(tunnelState(failClosed = false))
         composeRule.setContent {
             SubspaceTheme {
                 TunnelCard(state = state, actions = TunnelCardActions({}, {}, {}, {}, {}))
@@ -109,6 +112,12 @@ class SettingsTunnelSectionTest {
 
         state = state.copy(perApp = PerAppSelection(PerAppMode.AllowList, setOf("a.b")))
         composeRule.onNodeWithText(PER_APP_LINE).assertIsDisplayed()
+
+        state = state.copy(failClosed = true)
+        composeRule.onNodeWithText(PER_APP_LINE).assertIsDisplayed()
+
+        state = state.copy(perApp = PerAppSelection.OFF)
+        composeRule.onNodeWithText(PER_APP_LINE).assertDoesNotExist()
     }
 
     /** M8.6 plan review focus 5: lightweight mode's line shows only while connected. */

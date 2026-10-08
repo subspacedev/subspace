@@ -91,11 +91,12 @@ class HubValuesTest {
     }
 
     @Test
-    fun `kill switch extra line needs fail-closed and a per-app mode`() {
+    fun `kill switch extra line follows per-app mode alone, not the switch`() {
         val on = PerAppSelection(PerAppMode.DenyList, setOf("a"))
         base.copy(failClosed = true, perApp = on).killSwitchExtraLine() shouldBe true
-        base.copy(failClosed = false, perApp = on).killSwitchExtraLine() shouldBe false
+        base.copy(failClosed = false, perApp = on).killSwitchExtraLine() shouldBe true
         base.copy(failClosed = true, perApp = PerAppSelection.OFF).killSwitchExtraLine() shouldBe false
+        base.copy(failClosed = false, perApp = PerAppSelection.OFF).killSwitchExtraLine() shouldBe false
     }
 
     @Test

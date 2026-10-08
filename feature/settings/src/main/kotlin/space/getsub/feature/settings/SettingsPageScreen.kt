@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.ui.component.SettingRow
@@ -61,17 +62,21 @@ enum class SettingsPageId(
  * One Settings sub-page, pushed from the hub as `SettingsPage(page)` (M8.6 plan ruling R1).
  *
  * Until M8.6 Part 4 Task 4 restyles them, each page hosts the section composables the old single
- * Settings screen showed for that topic, under a plain top bar. Its view model is its own
- * instance; the hub reads the same Room-backed settings, so a change here shows on the hub when
- * the user comes back.
+ * Settings screen showed for that topic, under a plain top bar.
+ *
+ * @param viewModelStoreOwner the Settings tab's back-stack entry, so the hub and every page share
+ *   one [SettingsViewModel] (controller ruling, Task 3 fix round 1). A page-scoped one would be
+ *   cleared on Back, cancelling a geo download running in its `viewModelScope` and losing
+ *   `geoUpdateInFlight`/`geoUpdateResults`.
  */
 @Composable
 fun SettingsPageScreen(
     page: SettingsPageId,
+    viewModelStoreOwner: ViewModelStoreOwner,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: SettingsViewModel = hiltViewModel()
+    val viewModel: SettingsViewModel = hiltViewModel(viewModelStoreOwner)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val actions = remember(viewModel) { settingsActionsOf(viewModel) }
     SettingsPageContent(page = page, state = state, actions = actions, onBack = onBack, modifier = modifier)

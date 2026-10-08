@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -471,6 +472,19 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
     composable<SettingsPage> { entry ->
         // M8.6 plan ruling R1: one of the Settings hub's sub-pages, pushed from its rows.
         val route: SettingsPage = entry.toRoute()
-        SettingsPageScreen(page = route.page, onBack = { navController.popBackStack() })
+        // The hub and every page share the Settings entry's SettingsViewModel, so Back does not
+        // clear it and cancel a geo download running in its viewModelScope (Task 3 fix round 1).
+        // A page is only ever pushed from the hub, so Settings is below it, and a restored or
+        // saved-and-restored stack brings both back together. Should a page ever be reached
+        // without it (a future deep link), it falls back to its own entry rather than crash.
+        val owner: ViewModelStoreOwner =
+            remember(entry) {
+                try {
+                    navController.getBackStackEntry<Settings>()
+                } catch (_: IllegalArgumentException) {
+                    entry
+                }
+            }
+        SettingsPageScreen(page = route.page, viewModelStoreOwner = owner, onBack = { navController.popBackStack() })
     }
 }

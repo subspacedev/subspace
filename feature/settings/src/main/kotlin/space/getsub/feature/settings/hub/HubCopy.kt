@@ -8,7 +8,7 @@ import androidx.compose.ui.res.stringResource
 import space.getsub.core.model.DnsTransport
 import space.getsub.feature.settings.R
 import space.getsub.feature.settings.SettingsState
-import space.getsub.feature.settings.displayText
+import space.getsub.feature.settings.XrayVersionState
 import space.getsub.feature.settings.labelRes
 
 // The hub rows' value text (M8.6 spec §4.4, design copy), rendered from HubValues.kt's pure values.
@@ -62,4 +62,9 @@ internal fun dnsText(state: SettingsState): String {
 
 @Composable
 internal fun aboutText(state: SettingsState): String =
-    stringResource(R.string.settings_hub_about, state.appVersion, state.xrayVersion.displayText())
+    when (val xray = state.xrayVersion) {
+        is XrayVersionState.Available -> stringResource(R.string.settings_hub_about, state.appVersion, xray.version)
+        // Still loading, or the native call failed: the About page says which; the hub just leaves it out.
+        XrayVersionState.Loading, XrayVersionState.Unavailable ->
+            stringResource(R.string.settings_hub_about_app_only, state.appVersion)
+    }
