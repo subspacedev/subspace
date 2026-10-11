@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.routing
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.PerAppMode
+import space.getsub.core.ui.theme.SubspaceTheme
 
 /**
  * Layout and rendering facts a JVM state test cannot see — same reasoning as
@@ -29,6 +31,11 @@ import space.getsub.core.model.PerAppMode
 class PerAppScreenContentTest {
     @get:Rule
     val rule = createComposeRule()
+
+    // PerAppScreenContent reads LocalSubspaceColors, which throws outside SubspaceTheme.
+    private fun setThemedContent(content: @Composable () -> Unit) {
+        rule.setContent { SubspaceTheme(content = content) }
+    }
 
     private val noopActions =
         PerAppActions(
@@ -49,7 +56,7 @@ class PerAppScreenContentTest {
 
     @Test
     fun everyRowRendersItsLabel() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows), noopActions)
         }
 
@@ -61,7 +68,7 @@ class PerAppScreenContentTest {
     @Test
     fun anUninstalledSelectionIsMarkedRatherThanHidden() {
         val ghost = AppRow("com.example.deleted", "com.example.deleted", isSelected = true, isInstalled = false)
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows + ghost), noopActions)
         }
 
@@ -74,7 +81,7 @@ class PerAppScreenContentTest {
     @Test
     fun anEmptyAllowListWarnsAndBlocksSave() {
         val unselected = rows.map { it.copy(isSelected = false) }
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(
                 PerAppState(mode = PerAppMode.AllowList, rows = unselected, isDirty = true),
                 noopActions,
@@ -94,7 +101,7 @@ class PerAppScreenContentTest {
     // surprise someone.
     @Test
     fun anActiveTunnelIsAnnouncedBeforeSaving() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(
                 PerAppState(mode = PerAppMode.DenyList, rows = rows, isDirty = true, isTunnelActive = true),
                 noopActions,
@@ -108,7 +115,7 @@ class PerAppScreenContentTest {
     // hides the ticked rows must not read as "0 apps selected".
     @Test
     fun theCountReportsTheSelectionRatherThanTheFilteredRows() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(
                 PerAppState(
                     mode = PerAppMode.DenyList,
@@ -125,7 +132,7 @@ class PerAppScreenContentTest {
 
     @Test
     fun aCleanDraftCannotBeSaved() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows, isDirty = false), noopActions)
         }
 
@@ -134,7 +141,7 @@ class PerAppScreenContentTest {
 
     @Test
     fun offModeStillRendersTheModeChoices() {
-        rule.setContent { PerAppScreenContent(PerAppState(rows = rows), noopActions) }
+        setThemedContent { PerAppScreenContent(PerAppState(rows = rows), noopActions) }
 
         rule.onNodeWithText("Off").assertIsDisplayed()
         rule.onNodeWithText("Allow-list").assertIsDisplayed()
@@ -144,7 +151,7 @@ class PerAppScreenContentTest {
     // Fix A8: the tag follows the mode and the selection, row by row.
     @Test
     fun allowListTagsSelectedTunnelledAndOthersDirect() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(PerAppState(mode = PerAppMode.AllowList, rows = rows, selectedCount = 1), noopActions)
         }
 
@@ -155,7 +162,7 @@ class PerAppScreenContentTest {
 
     @Test
     fun denyListTagsSelectedDirectAndOthersTunnelled() {
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows, selectedCount = 1), noopActions)
         }
 
@@ -166,7 +173,7 @@ class PerAppScreenContentTest {
     // The design hides the list in Off: no rows, no tags, no count; the selection is only noted.
     @Test
     fun offShowsNoAppRowsOrTags() {
-        rule.setContent { PerAppScreenContent(PerAppState(rows = rows, selectedCount = 1), noopActions) }
+        setThemedContent { PerAppScreenContent(PerAppState(rows = rows, selectedCount = 1), noopActions) }
 
         rule.onAllNodesWithText("Bank").assertCountEquals(0)
         rule.onAllNodesWithText("Maps").assertCountEquals(0)
@@ -178,7 +185,7 @@ class PerAppScreenContentTest {
     @Test
     fun clearEmptiesThePickedTray() {
         var cleared = false
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(
                 PerAppState(mode = PerAppMode.DenyList, rows = rows, picked = rows.take(1), selectedCount = 1),
                 noopActions.copy(onClear = { cleared = true }),
@@ -195,7 +202,7 @@ class PerAppScreenContentTest {
     fun aGhostChipSitsInTheTrayAndClearRemovesIt() {
         val ghost = AppRow("com.example.deleted", "com.example.deleted", isSelected = true, isInstalled = false)
         var picked by mutableStateOf(listOf(ghost))
-        rule.setContent {
+        setThemedContent {
             PerAppScreenContent(
                 PerAppState(mode = PerAppMode.DenyList, picked = picked, selectedCount = picked.size),
                 noopActions.copy(onClear = { picked = emptyList() }),
@@ -209,7 +216,7 @@ class PerAppScreenContentTest {
 
     @Test
     fun noPicksMeansNoTray() {
-        rule.setContent { PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows), noopActions) }
+        setThemedContent { PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows), noopActions) }
 
         rule.onAllNodesWithText("Clear").assertCountEquals(0)
     }
