@@ -91,6 +91,15 @@ class DirectiveObfuscationTest {
             MaskResolution.Ignored(ObfuscationProblem.MultiplePackets)
     }
 
+    @Test fun `blank packets entries are ignored, so one real entry is still one`() {
+        resolve(mapOf("fragmentation-enable" to "1", "fragmentation-packets" to "tlshello,")).fragment shouldBe
+            MaskResolution.Resolved(defaultFragment, ObfuscationSource.Directive)
+        resolve(mapOf("fragmentation-enable" to "1", "fragmentation-packets" to ",")).fragment shouldBe
+            MaskResolution.Resolved(defaultFragment, ObfuscationSource.Directive)
+        resolve(mapOf("fragmentation-enable" to "1", "fragmentation-packets" to "1-2,,tlshello")).fragment shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.MultiplePackets)
+    }
+
     @Test fun `noise enable alone is the default random item`() {
         resolve(mapOf("noises-enable" to "1")).noise shouldBe
             MaskResolution.Resolved(

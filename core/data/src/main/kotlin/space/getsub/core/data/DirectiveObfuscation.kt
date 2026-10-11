@@ -86,8 +86,10 @@ public fun resolveObfuscation(
 @Suppress("ReturnCount") // One return per distinct refusal.
 private fun fragmentFromDirectives(d: Map<String, String?>): MaskResolution<FragmentSpec> {
     if (!isDirectiveEnabled(d[FRAGMENT_ENABLE])) return MaskResolution.Absent
-    val packets = d[FRAGMENT_PACKETS]?.takeIf(String::isNotBlank)
-    if (packets != null && packets.contains(',')) return MaskResolution.Ignored(ObfuscationProblem.MultiplePackets)
+    // Blank CSV entries ("tlshello,") are not packets; only two real entries are a refusal.
+    val packetEntries = d[FRAGMENT_PACKETS].orEmpty().split(',').filter(String::isNotBlank)
+    if (packetEntries.size > 1) return MaskResolution.Ignored(ObfuscationProblem.MultiplePackets)
+    val packets = packetEntries.singleOrNull()
     val defaults = FragmentSettings.DEFAULT
     val settings =
         defaults.copy(
