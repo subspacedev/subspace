@@ -8,9 +8,16 @@ import io.kotest.matchers.string.shouldNotContain
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
+import space.getsub.core.model.Applied
+import space.getsub.core.model.FragmentPackets
+import space.getsub.core.model.FragmentSpec
+import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.RoutingRuleSet
+import space.getsub.core.model.XrayRange
 import space.getsub.core.parser.OverrideTarget
 
 class RawConfigComposerTest {
@@ -489,5 +496,18 @@ class RawConfigComposerTest {
         val last = rules.last() as JsonObject
         last["balancerTag"]!!.jsonPrimitive.content shouldBe "Auto_Balancer"
         last.containsKey("outboundTag") shouldBe false
+    }
+
+    @Test
+    fun `fragment is injected in the pure and the override branch`() {
+        val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(1, 2), XrayRange(1, 1), null)
+        val obf = Obfuscation(Applied(spec, replaceOwn = false), null)
+        val raw = """{"outbounds":[{"tag":"proxy","protocol":"vless"}]}"""
+        for (override in listOf(null, OverrideBlocks("""{"rules":[]}""", """{"servers":[]}""", emptyList()))) {
+            val composed = RawConfigComposer.compose(raw, settings.copy(obfuscation = obf), "/assets", override)
+            val json = (composed as ComposeResult.Ok).json
+            val proxy = Json.parseToJsonElement(json).jsonObject["outbounds"]!!.jsonArray[0].jsonObject
+            proxy["streamSettings"]!!.jsonObject["finalmask"]!!.jsonObject["tcp"]!!.jsonArray.size shouldBe 1
+        }
     }
 }
