@@ -18,8 +18,7 @@ import org.junit.Test
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.SubspaceTheme
 
-// camelCase throughout — same DEX-040 constraint as SubspaceBottomSheetTest.kt and
-// FloatingNavBarTest.kt. Fix round 1,
+// camelCase throughout — same DEX-040 constraint as FloatingNavBarTest.kt. Fix round 1,
 // finding 3: this file existed nowhere before code review — GroupCard's
 // caret, overflow menu and their wiring to GroupCardActions were unverified
 // beyond compiling and passing the JVM ViewModel suite.

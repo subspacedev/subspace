@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the padding/size tokens below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's GroupCard.kt and SettingRow.kt for the same
+// initializes. See core/ui's GroupCard.kt and HubRow.kt for the same
 // pattern, and feature/routing's PerAppScreen.kt for the identical
 // structure this file follows.
 @file:Suppress("MagicNumber")

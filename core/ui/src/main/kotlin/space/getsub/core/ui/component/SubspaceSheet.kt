@@ -20,8 +20,8 @@ import androidx.compose.ui.unit.dp
 internal val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 
 /**
- * A modal bottom sheet in the card's top-corner shape. Unlike
- * [SubspaceBottomSheet] it carries no title: callers lay out their own content.
+ * A modal bottom sheet in the card's top-corner shape. It carries
+ * no title: callers lay out their own content.
  *
  * [skipPartiallyExpanded] opens the sheet straight to its full content height. A sheet with a text
  * input needs it: the partial detent is a fixed fraction of the screen, and the keyboard's own

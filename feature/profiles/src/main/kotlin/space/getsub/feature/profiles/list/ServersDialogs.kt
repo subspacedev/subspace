@@ -41,9 +41,8 @@ internal data class ServersDialogActions(
 
 /**
  * Renders the rename and/or delete confirmation for whichever group is
- * currently targeted — `null` renders nothing, the same "closed means absent
- * from composition" convention [space.getsub.core.ui.component.SubspaceBottomSheet]
- * uses for its own `open` flag.
+ * currently targeted — `null` renders nothing ("closed means absent from
+ * composition", the convention the other dialogs in this module follow).
  */
 @Composable
 internal fun ServersDialogs(

@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the padding/size tokens below — all are
 // the design's spacing, already named by the val each initializes. See core/ui's
-// GroupCard.kt and SettingRow.kt for the same pattern. TooManyFunctions: this
+// GroupCard.kt and HubRow.kt for the same pattern. TooManyFunctions: this
 // file's function count is the width of the form it renders — name, order,
 // domain strategy, three bucket cards of two fields each, the save bar — the
 // same reasoning EditorScreen.kt's own suppression gives.
