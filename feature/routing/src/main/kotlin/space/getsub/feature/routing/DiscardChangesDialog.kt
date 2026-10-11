@@ -6,7 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import space.getsub.core.ui.component.SubspaceDialog
@@ -53,7 +53,9 @@ internal fun DiscardGuard(
     onLeave: () -> Unit,
     content: @Composable (requestLeave: () -> Unit) -> Unit,
 ) {
-    var asking by rememberSaveable { mutableStateOf(false) }
+    // Plain remember, not saveable: the edits it guards are not saved, so after process death a
+    // restored dialog would sit over a clean form.
+    var asking by remember { mutableStateOf(false) }
 
     BackHandler(enabled = isDirty) { asking = true }
 
