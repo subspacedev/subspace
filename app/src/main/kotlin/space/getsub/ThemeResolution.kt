@@ -11,7 +11,7 @@ import space.getsub.core.data.ThemePreference
  *
  * [ThemePreference.Light] and [ThemePreference.Dark] override the system;
  * [ThemePreference.System] follows it. `null` covers the window before
- * [ThemeSource.theme]'s first emission from Room — [MainActivity] holds the
+ * [ThemeSource.appearance]'s first emission from Room — [MainActivity] holds the
  * first frame until that resolves, but this still needs a value to fall back
  * to in the meantime, and following the system is the least-surprising one.
  */

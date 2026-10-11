@@ -27,11 +27,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.Rule
 import org.junit.Test
-import space.getsub.core.ui.component.FloatingNavigationBar
+import space.getsub.core.ui.component.FloatingNavBar
 import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.feature.settings.SettingsPageId
 
 // Backtick names with spaces are avoided here (unlike the task brief's literal
-// text) for the same reason ConnectControlTest.kt gives: minSdk 26 makes D8
+// text) for the same reason GroupCardTest.kt gives: minSdk 26 makes D8
 // emit a DEX version that rejects spaces in synthetic class names, and any
 // lambda passed to a test method inherits that method's JVM name. camelCase
 // throughout, matching every other androidTest in this repo.
@@ -57,14 +58,14 @@ import space.getsub.core.ui.theme.SubspaceTheme
 // functions this file can already reach ([topLevelNavItems],
 // [NavHostController.navigateToTopLevel] and [selectedTopLevelValue] are all
 // `internal`, not `private`, in SubspaceNavHost.kt for exactly this reason)
-// plus the real [FloatingNavigationBar] component.
+// plus the real [FloatingNavBar] component.
 //
 // What this proves: the actual pill-visibility gating
-// (`if (selected != null) FloatingNavigationBar(...)`, reproduced verbatim
+// (`if (selected != null) FloatingNavBar(...)`, reproduced verbatim
 // here), the actual reselect-dedup wiring (`navigateToTopLevel`, called
 // unmodified), and the actual top-level/pushed classification
 // (`selectedTopLevelValue`, called unmodified) all behave correctly when
-// driven through a real NavHost and a real FloatingNavigationBar. What it
+// driven through a real NavHost and a real FloatingNavBar. What it
 // does NOT prove — the coverage genuinely lost here — is that the real
 // SubspaceNavHost composable's own five `composable<...> { ... }` bodies
 // (HomeScreen, ServersScreen, EditorScreen, QrScanRoute, SettingsScreen, all
@@ -77,7 +78,7 @@ import space.getsub.core.ui.theme.SubspaceTheme
 //
 // The "pill is visible" marker below checks "Connect" (Home's nav item), not
 // "Settings": Settings is the selected destination in every test here, and
-// FloatingNavigationBar gives a contentDescription only to UNSELECTED items
+// FloatingNavBar gives a contentDescription only to UNSELECTED items
 // (the selected one is named by its own visible Text instead — see its
 // KDoc). Home stays unselected throughout, so its content description is a
 // stable marker independent of which top-level destination happens to be
@@ -89,7 +90,7 @@ class SubspaceNavHostTest {
     private lateinit var navController: NavHostController
 
     /**
-     * The same [Box] + [NavHost] + [FloatingNavigationBar] shape
+     * The same [Box] + [NavHost] + [FloatingNavBar] shape
      * [SubspaceNavHost] itself uses — including its real
      * `if (selected != null)` gate and its real [topLevelNavItems] /
      * [NavHostController.navigateToTopLevel] — over five route bodies that
@@ -111,10 +112,11 @@ class SubspaceNavHostTest {
                 composable<Settings> { }
                 composable<Editor> { }
                 composable<QrScan> { }
+                composable<SettingsPage> { }
             }
 
             if (selected != null) {
-                FloatingNavigationBar(
+                FloatingNavBar(
                     items = topLevelNavItems(),
                     selected = selected,
                     onSelect = { value -> navController.navigateToTopLevel(value) },
@@ -162,6 +164,7 @@ class SubspaceNavHostTest {
                 composable<Settings> { }
                 composable<Editor> { }
                 composable<QrScan> { }
+                composable<SettingsPage> { }
             }
         }
 
@@ -179,6 +182,34 @@ class SubspaceNavHostTest {
         composeRule.runOnIdle { localNavController.popBackStack() }
         composeRule.runOnIdle { localNavController.navigate(QrScan) }
         composeRule.runOnIdle { localNavController.currentDestination.selectedTopLevelValue() shouldBe null }
+
+        composeRule.runOnIdle { localNavController.popBackStack() }
+        composeRule.runOnIdle { localNavController.navigate(SettingsPage(SettingsPageId.Dns)) }
+        composeRule.runOnIdle { localNavController.currentDestination.selectedTopLevelValue() shouldBe null }
+    }
+
+    /**
+     * M8.6 plan ruling R1: a Settings sub-page is pushed, so the pill hides on it, through the
+     * real `if (selected != null)` gate, and comes back when the page is popped. Also proves the
+     * route's enum argument round-trips.
+     */
+    @Test
+    fun theNavBarHidesOnASettingsSubPage() {
+        composeRule.setContent {
+            navController = rememberNavController()
+            SubspaceTheme {
+                fakeSubspaceNavHost(navController = navController, startDestination = Settings)
+            }
+        }
+
+        composeRule.runOnIdle { navController.navigate(SettingsPage(SettingsPageId.Appearance)) }
+        composeRule.onNodeWithContentDescription("Connect").assertDoesNotExist()
+        composeRule.runOnIdle {
+            navController.currentBackStackEntry?.toRoute<SettingsPage>()?.page shouldBe SettingsPageId.Appearance
+        }
+
+        composeRule.runOnIdle { navController.popBackStack() }
+        composeRule.onNodeWithContentDescription("Connect").assertExists()
     }
 
     /**

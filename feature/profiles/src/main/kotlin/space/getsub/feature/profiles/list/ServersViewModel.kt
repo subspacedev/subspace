@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.StoredProfile
@@ -54,6 +56,16 @@ constructor(
      * visible by [ServersGroup.sortFromProvider]).
      */
     private val groupSortOverrides = MutableStateFlow<Map<Long, SortOrder>>(emptyMap())
+
+    private val _switched = Channel<SwitchedEvent>(Channel.BUFFERED)
+
+    /** One-shot: a pick that moved a live session. The screen shows Undo. */
+    val switched: Flow<SwitchedEvent> = _switched.receiveAsFlow()
+
+    private val _declined = Channel<SwitchDeclinedEvent>(Channel.BUFFERED)
+
+    /** One-shot: a pick `:bg` will not apply to the live session. The screen says so, no action. */
+    val switchDeclined: Flow<SwitchDeclinedEvent> = _declined.receiveAsFlow()
 
     private val _state = MutableStateFlow(ServersState())
     val state: StateFlow<ServersState> = _state.asStateFlow()
@@ -223,15 +235,35 @@ constructor(
     /**
      * Picks [id] as the active profile — what Home connects to next.
      *
-     * Since M8 it can also move a session that is already running, but not at
-     * once: the tunnel keeps running the server it was on until the service
-     * next reconnects on its own — after a network change, or on a retry after
-     * a failure — and then it comes back up on [id]. The service follows the
-     * active profile by design; selecting a server while connected is not
-     * ignored, only deferred.
+     * While a session is live this also moves it, at once (M8.6 Part 3 D1):
+     * `:bg` observes the write and restarts the core onto [id], keeping the
+     * TUN. Picking the server already connected restarts nothing. A pick made
+     * while the tunnel is still connecting is applied once it connects. This
+     * only writes the setting; the service decides and performs the switch.
      */
     fun onProfileSelected(id: Long) {
-        viewModelScope.launch { profileSource.setActiveProfile(id) }
+        viewModelScope.launch {
+            val previousId = profileSource.activeProfileId.first()
+            val live = profileSource.tunnelActive.first()
+            profileSource.setActiveProfile(id)
+            if (!live || previousId == null || previousId == id) return@launch
+            // `:bg` declines to move a live session onto a server this build can't run: a
+            // connectable pick is a switch worth offering Undo for, an unconnectable one needs
+            // saying, because the selection moved but the tunnel did not.
+            val rows = _state.value.groups.flatMap { it.profiles }
+            val picked = rows.firstOrNull { it.id == id } ?: return@launch
+            if (picked.connectable) {
+                _switched.send(SwitchedEvent(newName = picked.displayName(), previousId = previousId))
+            } else {
+                val kept = rows.firstOrNull { it.id == previousId } ?: return@launch
+                _declined.send(SwitchDeclinedEvent(keptName = kept.displayName()))
+            }
+        }
+    }
+
+    /** Puts [previousId] back as the active server; `:bg` moves the session back the same way. */
+    fun onUndoSwitch(previousId: Long) {
+        viewModelScope.launch { profileSource.setActiveProfile(previousId) }
     }
 
     fun onRenameGroup(

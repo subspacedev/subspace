@@ -4,6 +4,7 @@
 
 package space.getsub.core.ui.theme
 
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -51,6 +52,8 @@ val RobotoFlexFontFamily =
         robotoFlexWeight(FontWeight.Normal),
         robotoFlexWeight(FontWeight.Medium),
         robotoFlexWeight(FontWeight.SemiBold),
+        // Only the emphasized label roles (SemiBold + one step) use Bold.
+        robotoFlexWeight(FontWeight.Bold),
     )
 
 /**
@@ -65,10 +68,9 @@ val RobotoMonoFontFamily =
     )
 
 /**
- * The 15 M3 type roles, mapped from `tokens/typography.css`'s
- * `--type-*-size` / `-line` / `-weight` / `-tracking` quadruples.
+ * The 15 M3 type roles, mapped from the M8.6 spec §2.4.
  */
-val SubspaceTypography =
+private val baseline =
     Typography(
         displayLarge = TextStyle(
             fontFamily = RobotoFlexFontFamily,
@@ -171,8 +173,71 @@ val SubspaceTypography =
         labelSmall = TextStyle(
             fontFamily = RobotoFlexFontFamily,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             lineHeight = 16.sp,
             letterSpacing = 0.5.sp,
         ),
     )
+
+/**
+ * The same weight one step (100) heavier, at the same size, line height and
+ * tracking: what an `*Emphasized` role means here.
+ */
+private fun TextStyle.emphasized(): TextStyle =
+    copy(fontWeight = FontWeight((fontWeight ?: FontWeight.Normal).weight + EMPHASIS_WEIGHT_STEP))
+
+private const val EMPHASIS_WEIGHT_STEP = 100
+
+/**
+ * The 15 baseline roles plus their M3 Expressive `*Emphasized` twins. The
+ * 15-argument Typography constructor copies each baseline style into its
+ * emphasized slot unchanged (material3 1.5.0-alpha29), which makes
+ * emphasized text indistinguishable; this constructor sets them explicitly,
+ * each one weight step above its baseline (Normal → Medium → SemiBold → Bold),
+ * all weights bundled in [RobotoFlexFontFamily].
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+val SubspaceTypography =
+    Typography(
+        displayLarge = baseline.displayLarge,
+        displayMedium = baseline.displayMedium,
+        displaySmall = baseline.displaySmall,
+        headlineLarge = baseline.headlineLarge,
+        headlineMedium = baseline.headlineMedium,
+        headlineSmall = baseline.headlineSmall,
+        titleLarge = baseline.titleLarge,
+        titleMedium = baseline.titleMedium,
+        titleSmall = baseline.titleSmall,
+        bodyLarge = baseline.bodyLarge,
+        bodyMedium = baseline.bodyMedium,
+        bodySmall = baseline.bodySmall,
+        labelLarge = baseline.labelLarge,
+        labelMedium = baseline.labelMedium,
+        labelSmall = baseline.labelSmall,
+        displayLargeEmphasized = baseline.displayLarge.emphasized(),
+        displayMediumEmphasized = baseline.displayMedium.emphasized(),
+        displaySmallEmphasized = baseline.displaySmall.emphasized(),
+        headlineLargeEmphasized = baseline.headlineLarge.emphasized(),
+        headlineMediumEmphasized = baseline.headlineMedium.emphasized(),
+        headlineSmallEmphasized = baseline.headlineSmall.emphasized(),
+        titleLargeEmphasized = baseline.titleLarge.emphasized(),
+        titleMediumEmphasized = baseline.titleMedium.emphasized(),
+        titleSmallEmphasized = baseline.titleSmall.emphasized(),
+        bodyLargeEmphasized = baseline.bodyLarge.emphasized(),
+        bodyMediumEmphasized = baseline.bodyMedium.emphasized(),
+        bodySmallEmphasized = baseline.bodySmall.emphasized(),
+        labelLargeEmphasized = baseline.labelLarge.emphasized(),
+        labelMediumEmphasized = baseline.labelMedium.emphasized(),
+        labelSmallEmphasized = baseline.labelSmall.emphasized(),
+    )
+
+/** OpenType feature for tabular (fixed-width) figures (M8.6 spec §2.4). */
+// Suppressed: public interface name TabularFigures (per spec) conflicts with detekt's const-naming rule.
+@Suppress("TopLevelPropertyNaming")
+const val TabularFigures: String = "tnum"
+
+/** Same style, figures fixed-width, so changing numbers do not jitter. */
+fun TextStyle.tabular(): TextStyle = copy(fontFeatureSettings = TabularFigures)
+
+/** Same size and weight in Roboto Mono, for machine strings only (M8.6 spec §2.4). */
+fun TextStyle.mono(): TextStyle = copy(fontFamily = RobotoMonoFontFamily)

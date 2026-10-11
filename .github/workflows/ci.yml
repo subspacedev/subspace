@@ -21,10 +21,25 @@ jobs:
         with:
           submodules: recursive
 
+      # Two JDKs. Gradle itself must run on 21: gradle/gradle-daemon-jvm.properties
+      # pins toolchainVersion=21 because Paparazzi 2.0 needs it. The modules still
+      # compile against a 17 toolchain (jvmToolchain(17) in build-logic and
+      # subspace.jvm), and no toolchain download repository is configured, so 17
+      # has to be on the machine too. setup-java exports the last version listed
+      # as JAVA_HOME, so 21 goes last; both are also exported as
+      # JAVA_HOME_<v>_X64, which the next step hands to Gradle's toolchain
+      # detection explicitly rather than trusting it to find /opt/hostedtoolcache.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: |
+            17
+            21
+
+      - name: Point Gradle toolchain detection at both JDKs
+        run: |
+          mkdir -p ~/.gradle
+          echo 'org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64' >> ~/.gradle/gradle.properties
 
       # libXray v26.7.11 declares Go 1.26.3. The patched AAR is built from
       # source below, so CI needs the same compiler rather than whichever Go
@@ -33,10 +48,12 @@ jobs:
         with:
           go-version: '1.26.3'
 
-      # compileSdk is 37 (see app/build.gradle.kts and the note in
-      # subspace.android.library).
+      # compileSdk is 37.1 — release(37) { minorApiLevel = 1 } in
+      # app/build.gradle.kts and subspace.android.library. The Compose
+      # 1.13.0-alpha artifacts behind the M8.6 Material 3 Expressive work require
+      # it, so the package below is `platforms;android-37.1`.
       #
-      # The package is `platforms;android-37.0`, NOT `platforms;android-37`.
+      # The package is minor-versioned, NOT `platforms;android-37`.
       # Google's repository2-3.xml ships android-36, android-36.1,
       # android-37.0, android-37.1 and android-37.2-beta1 — minor-versioned
       # platforms began at 36.1, and there has never been a bare android-37.
@@ -44,7 +61,7 @@ jobs:
       # "Failed to find package" line buried under the licence text.
       #
       # This is easy to miss locally: Android Studio creates a
-      # platforms/android-37 SYMLINK pointing at android-37.0, so a dev
+      # platforms/android-37 SYMLINK pointing at a minor-versioned platform, so a dev
       # machine resolves the non-existent name happily and CI does not.
       # An earlier version of this file claimed the runner "already ships
       # platforms;android-37, verified 2026-07-25". It does not, and never
@@ -58,7 +75,7 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           # NDK r29 is the version libXray's own v26.7.11 release workflow uses.
-          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0 ndk;29.0.14206865'
+          packages: 'platform-tools platforms;android-37.1 build-tools;37.0.0 ndk;29.0.14206865'
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -77,6 +94,12 @@ jobs:
       # that path. A missing proguard-rules.pro sat green through seven
       # task reviews for exactly this reason — every prior verification
       # used checkAll or assembleDebug, never `build`.
+      #
+      # `check` includes :core:ui's verifyPaparazziDebug. The committed goldens
+      # were recorded on macOS; Linux font rasterisation can differ enough to
+      # trip a text-heavy golden. If one fails here and not locally, that is the
+      # likely cause — compare the diff image before re-recording, and do not
+      # loosen the comparison threshold to make it pass.
       - name: Build (assemble + check, including the release/R8 path)
         run: ./gradlew build
 

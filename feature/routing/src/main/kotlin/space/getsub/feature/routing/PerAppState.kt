@@ -9,6 +9,8 @@ import space.getsub.core.model.PerAppMode
  *
  * @param rows already filtered by [query] — the screen renders what it is given
  *   and never filters again, so a search box and a list cannot disagree.
+ * @param picked every selected row, **unfiltered** by [query] — the tray of picked apps shows the
+ *   whole selection for the same reason [selectedCount] does.
  * @param selectedCount how many packages the draft has ticked **in total**, not
  *   how many are ticked among [rows]. The two differ the moment a query is
  *   typed, and every decision that is about the selection rather than about
@@ -26,6 +28,7 @@ import space.getsub.core.model.PerAppMode
 internal data class PerAppState(
     val mode: PerAppMode = PerAppMode.Off,
     val rows: List<AppRow> = emptyList(),
+    val picked: List<AppRow> = emptyList(),
     val selectedCount: Int = 0,
     val query: String = "",
     val isDirty: Boolean = false,

@@ -5,6 +5,7 @@ package space.getsub.feature.settings
 import io.kotest.matchers.shouldBe
 import org.junit.Test
 import space.getsub.feature.settings.log.shouldFollow
+import space.getsub.feature.settings.log.showJumpToLatest
 
 class LogFollowTest {
     @Test
@@ -20,5 +21,12 @@ class LogFollowTest {
     @Test
     fun `a reader who scrolled up is not pulled down`() {
         shouldFollow(lastVisibleIndex = 40, previousSize = 100) shouldBe false
+    }
+
+    @Test
+    fun `jump to latest shows only while the last line is off screen`() {
+        showJumpToLatest(lastVisibleIndex = 9, size = 10) shouldBe false
+        showJumpToLatest(lastVisibleIndex = 4, size = 10) shouldBe true
+        showJumpToLatest(lastVisibleIndex = -1, size = 0) shouldBe false
     }
 }

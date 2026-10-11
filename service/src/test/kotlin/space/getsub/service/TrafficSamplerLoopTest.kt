@@ -14,6 +14,7 @@ import space.getsub.core.model.TrafficSample
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * F4's race hazard, reproduced deterministically the same way [LogcatReaderTest]'s F3 probe
@@ -95,6 +96,7 @@ class TrafficSamplerLoopTest {
                     samples.add(sample)
                     if (samples.size == 3) gotThirdSample.countDown()
                 },
+                clock = { 0L },
                 intervalMillis = 5,
             )
 
@@ -142,6 +144,7 @@ class TrafficSamplerLoopTest {
                     samples.add(sample)
                     gotSample.countDown()
                 },
+                clock = { 0L },
                 intervalMillis = 5,
             )
 
@@ -215,6 +218,7 @@ class TrafficSamplerLoopTest {
                     if (samples.size == 2) gotSecondSample.countDown()
                     if (samples.size == 3) gotThirdSample.countDown()
                 },
+                clock = { 0L },
                 intervalMillis = 5,
             )
 
@@ -279,6 +283,7 @@ class TrafficSamplerLoopTest {
                     if (samples.size == 2) gotSecondSample.countDown()
                     if (samples.size == 3) gotThirdSample.countDown()
                 },
+                clock = { 0L },
                 intervalMillis = 5,
             )
 
@@ -332,6 +337,7 @@ class TrafficSamplerLoopTest {
                     samples.add(sample)
                     if (samples.size == 2) gotSecondSample.countDown()
                 },
+                clock = { 0L },
                 intervalMillis = 5,
             )
 
@@ -362,5 +368,98 @@ class TrafficSamplerLoopTest {
         val proxyTick2 = samples[1].perTag.single { it.tag == "proxy" }
         assertEquals(35L, proxyTick2.uplinkBytes)
         assertEquals(35L, proxyTick2.downlinkBytes)
+    }
+
+    /** M8.6 spec §4.1.1: each emitted sample carries 28 buckets, oldest first. */
+    @Test
+    fun `every emitted sample carries the session's throughput ring`() {
+        val bucket = space.getsub.core.model.ThroughputWindow.BUCKET_MILLIS
+        val now = AtomicLong(0)
+        val readCount = AtomicInteger(0)
+        val samples = mutableListOf<TrafficSample>()
+        val gotThree = CountDownLatch(1)
+        val scope = CoroutineScope(Dispatchers.IO + Job())
+        val loop =
+            TrafficSamplerLoop(
+                scope = scope,
+                read = {
+                    when (readCount.incrementAndGet()) {
+                        1 -> reading(0, 0)
+                        2 -> reading(100, 50)
+                        3 -> {
+                            now.set(bucket)
+                            reading(300, 50)
+                        }
+                        else -> null
+                    }
+                },
+                emit = { sample ->
+                    samples.add(sample)
+                    if (samples.size == 3) gotThree.countDown()
+                },
+                clock = { now.get() },
+                intervalMillis = 5,
+            )
+        try {
+            loop.start()
+            assertTrue(gotThree.await(5, TimeUnit.SECONDS))
+        } finally {
+            loop.stop()
+            scope.cancel()
+        }
+        val history = samples[2].throughput
+        assertEquals(28, history.size)
+        // Tick 1 is the baseline; tick 2 adds 150 in bucket 0; tick 3 adds 200 in bucket 1.
+        assertEquals(List(26) { 0L } + listOf(150L, 200L), history)
+    }
+
+    /**
+     * M8.6 spec §4.1.1 / review focus 2: a retained-TUN restart partway through
+     * a bucket keeps adding to that bucket, with no spike and no negative.
+     */
+    @Test
+    fun `a restart partway through a bucket continues the same bucket`() {
+        val readCount = AtomicInteger(0)
+        val secondEmitted = CountDownLatch(1)
+        val releaseThird = CountDownLatch(1)
+        val samples = mutableListOf<TrafficSample>()
+        val gotThird = CountDownLatch(1)
+        val scope = CoroutineScope(Dispatchers.IO + Job())
+        val loop =
+            TrafficSamplerLoop(
+                scope = scope,
+                read = {
+                    when (readCount.incrementAndGet()) {
+                        1 -> reading(0, 0)
+                        2 -> reading(100, 0)
+                        // The restarted counters, from zero. Ticks 3 and later all return
+                        // this: if the restart signal lands while tick 3's read() is in flight,
+                        // the loop discards tick 3 by design and tick 4 is the one counted.
+                        else -> {
+                            releaseThird.await(5, TimeUnit.SECONDS)
+                            reading(10, 0)
+                        }
+                    }
+                },
+                emit = { sample ->
+                    samples.add(sample)
+                    if (samples.size == 2) secondEmitted.countDown()
+                    if (samples.size == 3) gotThird.countDown()
+                },
+                clock = { 0L },
+                intervalMillis = 5,
+            )
+        try {
+            loop.start()
+            assertTrue(secondEmitted.await(5, TimeUnit.SECONDS))
+            loop.notifyCountersRestarted()
+            releaseThird.countDown()
+            assertTrue(gotThird.await(5, TimeUnit.SECONDS))
+        } finally {
+            loop.stop()
+            scope.cancel()
+        }
+        assertEquals(110L, samples[2].throughput.last())
+        assertTrue(samples[2].throughput.all { it >= 0 })
     }
 }

@@ -142,10 +142,10 @@ compile error.
 :core:parser            Subscription and share-link parsing. Pure, heavily tested.
 :core:ui                Design system: theme, tokens, shared Compose components
 :core:xray              Config JSON generation, libXray lifecycle wrapper
-:feature:home           Connect button, active profile, traffic counters
+:feature:home           Connect blob, active profile, traffic counters and throughput history
 :feature:profiles       Profile list, editor, subscription management
 :feature:routing        Rule editor, per-app selection
-:feature:settings       Preferences, geo file updates, logs
+:feature:settings       Settings hub and sub-pages, geo file updates, logs
 :service                TunnelService, tun2socks JNI bridge, notification
 ```
 
@@ -378,6 +378,17 @@ later one that restores the correct terminal state. Source:
 `docs/agent/specs/2026-09-17-m8.5-observability-design.md` §9 row 21 (M8.5
 Part 3, Task 20 and fix round 2); verified on device in
 `docs/agent/research/2026-09-28-m8.5-part3-device-verification.md`.
+
+**Every connection state must be identifiable without colour (2026-10-03).**
+Dynamic colour (§14.8) lets the wallpaper choose the colour the connected
+state is drawn in, so colour cannot be what tells the user the tunnel is up.
+Each state differs from every other in its shape or its centre icon, and
+carries its own label. States that share a centre icon never show a common
+shape in either motion mode, Connecting's shape cycle included. Open and Idle
+are deliberately one visual (both healthy) and differ only in their detail
+line. `blobVisualFor` and `displayablePolygons` in `:core:ui` are where this
+lives, and `BlobVisualTest` checks it. Source:
+`docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §3.2–3.3.
 
 ### 5.6 Do not log config contents
 
@@ -1085,6 +1096,21 @@ This is the least portable, most version-dependent part of the codebase.
   `TunnelService.restartCoreRetainingTun`) — a single point a device run can
   flip to the soft alternative if it turns out to suffice. Test this by
   physically toggling Wi-Fi, repeatedly, not by unit test.
+- **Switching server while connected (2026-10-04, M8.6 Part 3 D1)** — a server
+  picked while a session is live is now restarted onto at once. `:main` still
+  only writes `active_profile_id`; `:bg` observes it and enqueues a
+  `ProfileSwitched` reconcile, which `reconcile()` answers with the same
+  `ReconcileAction.Restart` as a network change, so the core restarts onto the
+  new row with the TUN retained (`restartCoreRetainingTun`). Re-picking the
+  live server restarts nothing, a switch made while `Connecting` is applied
+  once the session settles `Connected`, and the command is re-checked when the
+  coordinator dequeues it. This reverses the M8 deferral, where a server picked
+  while connected only took effect at the next autonomous restart (M8 ruling
+  R37's "where the next reconcile restart goes"). A row this build cannot run
+  (it fails to decode, or is not `connectable`) never moves a live session: the
+  pick persists and the tunnel stays on its current server until the next
+  autonomous restart, which follows the active row as in M8. Source: the M8.6
+  spec's §8 amendment (M8.6 Part 3 D1).
 
 ---
 
@@ -1393,6 +1419,15 @@ tiles, and skips log capture for sessions started while it is on. It does **not*
 stop the once-a-second hev counter read: that sample is the health detector's only
 input, so "nothing coming back" (§5.5) keeps working.
 
+**Throughput history (M8.6).** `:bg` keeps a 28-bucket, 60-minute throughput ring
+per session (`ThroughputRing`, owned by `TrafficSamplerLoop`), in memory only and
+reset with the session (M8.6 spec §4.1.1). It is fed from the sampler's own
+deltas, so the counter wrap and restart rules apply once rather than twice. It is
+timed on `SystemClock.elapsedRealtime`, so buckets keep advancing through Doze.
+It rides on every `TrafficSample` as `throughput`, so there is no new AIDL method.
+Home draws it as the throughput card; Home's connect control is `ConnectBlob`
+(`:core:ui`), which replaced `ConnectControl`.
+
 ### 14.5 tun2socks implementation — RESOLVED for now
 
 **`hev-socks5-tunnel` v2.16.0**, built from source via CMake/NDK. The build
@@ -1429,6 +1464,60 @@ the from-source libXray build path first.
 
 The practical consequence today: **no proprietary dependencies**, which is why
 §2 specifies ZXing rather than ML Kit.
+
+### 14.8 Dynamic colour — RESOLVED (2026-10-03), reversing the earlier ban
+
+The app uses Material You colour on Android 12+ by default, including for the
+connected state, with a "Dynamic colour" switch in Settings → Appearance and
+the friendly fallback palette below Android 12 or with the switch off.
+
+This reverses a rule that lived in `Theme.kt`: no dynamic colour, so that the
+connected colour could never be reassigned. The owner's intent was Material 3
+Expressive from the start, and the ban came from misreading that intent. The
+guarantee the ban protected now rests on §5.5's "identifiable without colour"
+rule instead.
+
+The Expressive components need material3 `1.5.0-alpha*`, which brings all of
+Compose to alpha. Only `:core:ui` may use the experimental Expressive APIs
+(`checkExpressiveOptIn` fails the build otherwise), so moving to 1.5.0 stable
+later touches one module. Source:
+`docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §1;
+`docs/agent/research/2026-10-03-m3-expressive-availability.md`.
+
+### 14.9 Settings structure, icons and launcher icon (M8.6 Part 4)
+
+**Settings is a hub plus sub-pages.** The `Settings` top-level route shows the
+hub: a tunnel card and one row per topic, each row carrying its current value
+(pure functions in `:feature:settings`, so they are unit-tested). A row opens
+`SettingsPage(SettingsPageId)`, one route with an enum argument covering
+Appearance, Device ID, Latency, DNS, Geo and About. Routing, Per-app proxy and
+the session log keep their own routes, reached from the hub. A sub-page hides
+the navigation pill, as Routing does; this falls out of
+`selectedTopLevelValue()`'s `else -> null` branch rather than a new case.
+
+The hub and every sub-page share **one `SettingsViewModel`, owned by the
+`Settings` back-stack entry** (`viewModelStoreOwner =
+getBackStackEntry<Settings>()`). A per-page ViewModel would die when its page
+left the stack and cancel an in-flight geo download; the shared one keeps the
+lifetime the old single screen had. Do not give a sub-page its own
+`hiltViewModel()`.
+
+**Icons come from Material Symbols only.** `SubspaceIcons` in `:core:ui`
+exposes the vector drawables under `core/ui/src/main/res/drawable/sym_*.xml`,
+imported by `scripts/import-material-symbols.sh`. `material-icons-core` is gone
+from every module. Do not add `androidx.compose.material.icons`; import the
+glyph you need with the script instead. The pre-redesign `SettingRow`,
+`SectionHeader` and `SubspaceBottomSheet` were deleted in Part 4; the kit's
+hub rows, group cards and `SubspaceSheet` replace them. Rationale and licence:
+`THIRD_PARTY.md` and M8.6 spec §2.7.
+
+**The launcher icon is the "5b" adaptive icon** with a monochrome layer for
+Android 13+ themed icons (`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`:
+`ic_launcher_background` colour, `ic_launcher_foreground`,
+`ic_launcher_monochrome`). `minSdk` is 26, so the adaptive icon is used on every
+supported version and there are no legacy PNG mipmaps; the monochrome layer only
+takes effect on Android 13+. Rendering on Android 8–11 is owner-pending
+(M8.6 spec §7.4 row 13).
 
 ---
 

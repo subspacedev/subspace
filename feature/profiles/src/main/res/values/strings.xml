@@ -7,12 +7,12 @@
 
     <!-- The header action that opens AddServerSheet. Distinct from
          servers_empty_action, which is the empty state's own button: this one
-         is present whenever the screen is, so a user with existing groups is
-         not left hunting through a group's overflow menu. -->
-    <string name="servers_add_action">Add server</string>
+         is present whenever there are groups, so a user with existing groups is
+         not left hunting through a group's overflow menu. Short ("Add") per the
+         M8.6 design; the empty state keeps the longer "Add server". -->
+    <string name="servers_add_action">Add</string>
 
-    <string name="servers_search_placeholder">Search servers</string>
-    <string name="servers_search_clear_description">Clear search</string>
+    <string name="servers_search_placeholder">Search name or transport</string>
 
     <!-- The "no protocol filter" chip. ServersState.ALL_PROTOCOLS_SENTINEL is
          a domain sentinel compared in Kotlin, never rendered directly — this
@@ -36,19 +36,29 @@
          number obtainable in that state times that app's local endpoint, not the
          server — a device run produced 1 ms for Singapore. -->
     <string name="servers_latency_foreign_vpn">Another VPN</string>
-    <string name="servers_latency_description">%1$s latency</string>
-    <string name="servers_test_one">Test %1$s</string>
     <string name="servers_test_group">Test all</string>
     <string name="servers_test_cancel">Stop testing</string>
-    <string name="servers_sort_from_provider">Order set by provider</string>
+    <!-- Beside the screen-level sort chip (M8.6 design). -->
+    <string name="servers_sort_default_hint">Default for every group</string>
+    <!-- The group measure bar's marker, then the explanation (M8.6 Part 3 R5): the
+         user's per-group sort overrides the provider's order; only the default is ignored. -->
+    <string name="servers_sort_provider_marker">Provider\'s order</string>
+    <string name="servers_sort_provider_note">The default sort doesn\'t apply here; pick a sort to override</string>
+
+    <!-- %1$s = the server just picked; the action reverts to the previous one. -->
+    <string name="servers_switched">Switched to %1$s</string>
+    <string name="servers_switched_undo">Undo</string>
+    <string name="servers_switch_declined">Can\'t connect with this build \u2014 still on %1$s</string>
+
+    <!-- One line when a search or protocol filter leaves every group without a row. -->
+    <string name="servers_no_match">No servers match</string>
 
     <string name="servers_empty_title">No servers yet</string>
     <string name="servers_empty_body">Import a subscription or paste a config to add your first server.</string>
-    <!-- Load-bearing text: ServersAddActionTest.exactlyOneAddActionExistsWhenGroupsAreEmpty
-         counts nodes matching the literal "Add server" across this string and
-         servers_add_action to prove only one Add-server affordance exists when groups are
-         empty. Rewording this alone (without updating that test) breaks it even though the
-         product invariant it checks still holds. -->
+    <!-- Load-bearing text: ServersAddActionTest counts the literal "Add" (the header button,
+         servers_add_action) plus this "Add server" (the empty state's own button) to prove
+         exactly one add affordance exists in each state. Rewording either alone, without
+         updating that test, breaks it even though the product invariant still holds. -->
     <string name="servers_empty_action">Add server</string>
 
     <!-- RAW_JSON runs through the typed projection, not verbatim (§6) — "raw"
@@ -58,16 +68,8 @@
          and any other transport (kcp, httpupgrade, hysteria), is unconnectable in
          this build. Deliberately doesn't say "protocol" — it must stay honest for
          both reasons a row can land here. -->
-    <string name="servers_not_connectable">Not supported by this build yet</string>
-    <string name="servers_no_longer_offered">No longer offered by this provider</string>
-
-    <!-- %1$s = server name, %2$s = protocol (e.g. "VLESS"), %3$s = transport
-         summary (e.g. "ws · tls · 443") — never an address, uuid, or key. -->
-    <string name="servers_row_description_select">Select %1$s as active server, %2$s, %3$s</string>
-    <string name="servers_row_description_active">%1$s, %2$s, %3$s, currently active</string>
-    <!-- Task 21: the row's edit button, separate from the row tap itself
-         (which sets the profile active) — opens the profile editor. -->
-    <string name="servers_row_edit_description">Edit %1$s</string>
+    <string name="servers_not_connectable">Can\'t connect with this build</string>
+    <string name="servers_no_longer_offered">No longer offered by the provider</string>
 
     <string name="servers_rename_group_title">Rename group</string>
     <string name="servers_rename_group_confirm">Rename</string>
@@ -87,12 +89,17 @@
          interpolate the pasted text or file content itself, only bounded
          counts and field names. -->
     <string name="import_sheet_title">Add server</string>
-    <string name="import_paste_label">Share link, subscription, Clash YAML, or Xray JSON</string>
-    <string name="import_button">Import</string>
+    <string name="import_paste_placeholder">Link, subscription URL or Xray JSON</string>
+    <string name="import_button">Add</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
          same import(raw) path this whole sheet already uses. -->
     <string name="import_scan_qr_button">Scan QR code</string>
+    <string name="import_from_clipboard_button">Import from clipboard</string>
+    <string name="import_from_clipboard_supporting">Share links, a subscription, or a config you copied</string>
+    <string name="import_from_file_supporting">Pick a text, YAML, or JSON file</string>
+    <string name="import_scan_qr_supporting">Read a server QR code with the camera</string>
+    <string name="import_working">Working…</string>
     <!-- Fix round 1, finding 2: shown when the picked file could not be read
          at all (a stale/revoked URI, or an I/O error mid-read) — never the
          underlying exception's own message, which can carry a path or
@@ -141,14 +148,11 @@
     <string name="import_detail_field_alter_id">Alter ID</string>
     <string name="import_detail_field_plugin">Plugin</string>
 
-    <!-- Task 13: the fifth AddServerSheet route, "From subscription URL"
-         (M3's plan Part 2 line 715 deferred it to M4). ARCHITECTURE.md §5.6 applies here
+    <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
+         input box. ARCHITECTURE.md §5.6 applies here
          too — the URL itself is never interpolated into any string below,
          only the closed FetchFailure/SyncResult vocabulary UserMessage
          carries (see SyncResult.toUserMessage() in ImportViewModel.kt). -->
-    <string name="add_subscription_title">From subscription URL</string>
-    <string name="add_subscription_hint">https://…</string>
-    <string name="add_subscription_action">Add subscription</string>
     <!-- %1$d = ProfileRepository-equivalent rows actually written by the
          first sync (SyncResult.Synced.added), never a count of servers the
          provider's response merely listed — same "rows written, not parsed"
@@ -201,7 +205,11 @@
     <string name="editor_vmess_security_label">Encryption</string>
     <string name="editor_method_label">Cipher</string>
     <string name="editor_network_label">Network</string>
-    <string name="editor_security_label">Security</string>
+    <string name="editor_section_server">Server</string>
+    <string name="editor_section_credentials">Credentials</string>
+    <string name="editor_section_transport">Transport</string>
+    <string name="editor_section_security">Security</string>
+    <string name="editor_section_raw_json">Raw JSON</string>
     <string name="editor_security_none">None</string>
     <string name="editor_tls_server_name_label">Server name (SNI)</string>
     <string name="editor_tls_fingerprint_label">Fingerprint</string>
@@ -384,6 +392,9 @@
     <string name="subscription_detail_not_found_body">This subscription no longer exists or was never saved.</string>
     <string name="subscription_detail_not_found_back_button">Go back</string>
 
+    <string name="subscription_detail_section_subscription">Subscription</string>
+    <string name="subscription_detail_section_requests">Requests</string>
+    <string name="subscription_detail_section_directives">Provider settings</string>
     <string name="subscription_detail_url_label">Subscription URL</string>
     <string name="subscription_detail_never_fetched">Never refreshed yet</string>
     <!-- %1$s = a relative time, e.g. "3 hours ago" (DateUtils.getRelativeTimeSpanString, the
@@ -437,7 +448,5 @@
     <string name="subscription_row_pinned_declined">Provider suggests %1$s · you pinned %2$s</string>
     <string name="subscription_row_pin_action">Pin</string>
     <string name="subscription_row_unpin_action">Use provider value</string>
-    <!-- %1$s = the row's own label above. -->
-    <string name="subscription_row_edit_description">Edit %1$s</string>
     <string name="subscription_row_edit_dialog_cancel">Cancel</string>
 </resources>

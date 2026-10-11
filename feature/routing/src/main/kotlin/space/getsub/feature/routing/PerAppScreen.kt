@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the padding/size tokens below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's GroupCard.kt and SettingRow.kt for the same
+// initializes. See core/ui's GroupCard.kt and HubRow.kt for the same
 // pattern. TooManyFunctions: the mode selector, the two independent
 // warnings, search, the row list and the discard dialog are each their own
 // section — the same reasoning RuleSetEditorScreen.kt's own suppression
@@ -15,30 +15,33 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,24 +51,45 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.model.PerAppMode
+import space.getsub.core.ui.component.BannerTone
+import space.getsub.core.ui.component.ModeTile
+import space.getsub.core.ui.component.ModeTiles
+import space.getsub.core.ui.component.OutcomeTag
+import space.getsub.core.ui.component.SearchField
+import space.getsub.core.ui.component.TonalBanner
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.LocalSubspaceColors
+import space.getsub.core.ui.theme.SubspaceShapeTokens
+import space.getsub.core.ui.theme.mono
 
-private val CONTENT_HORIZONTAL_PADDING = 24.dp
-private val SECTION_GAP = 20.dp
+private val CONTENT_PADDING = 20.dp
+private val SECTION_GAP = 14.dp
 private val ROW_GAP = 12.dp
-private val ROW_ICON_GAP = 8.dp
-private val ROW_VERTICAL_PADDING = 12.dp
 private val APP_ICON_SIZE = 40.dp
-private val MARKER_ICON_SIZE = 16.dp
-private val MARKER_TOP_PADDING = 8.dp
+private val TRAY_ICON_SIZE = 48.dp
+private val TRAY_CHIP_WIDTH = 60.dp
+private val LIST_CORNER = 28.dp
+private val LIST_TAIL_CORNER = 10.dp
+private val SAVE_CLEARANCE = 112.dp
 
 /**
  * The per-app proxy picker (M5.5 spec §7): mode selector, search and the
@@ -108,6 +132,7 @@ fun PerAppScreen(
             onSetMode = viewModel::setMode,
             onToggle = viewModel::toggle,
             onSearch = viewModel::search,
+            onClear = viewModel::clear,
             onSave = viewModel::save,
             onDiscard = viewModel::discard,
             onBack = { if (state.isDirty) showDiscardDialog = true else onBack() },
@@ -117,6 +142,7 @@ fun PerAppScreen(
 
     if (showDiscardDialog) {
         DiscardChangesDialog(
+            body = stringResource(R.string.per_app_discard_body),
             onConfirm = {
                 showDiscardDialog = false
                 viewModel.discard()
@@ -132,6 +158,7 @@ internal data class PerAppActions(
     val onSetMode: (PerAppMode) -> Unit,
     val onToggle: (String) -> Unit,
     val onSearch: (String) -> Unit,
+    val onClear: () -> Unit,
     val onSave: () -> Unit,
     val onDiscard: () -> Unit,
     val onBack: () -> Unit,
@@ -141,6 +168,10 @@ internal data class PerAppActions(
  * The stateless half — see
  * [space.getsub.feature.home.HomeScreenContent]'s KDoc for why this
  * split exists.
+ *
+ * Everything below the header scrolls in one [LazyColumn] (this list runs to every installed app,
+ * so only visible rows may compose) and the Save bar floats over its bottom, as the rule set
+ * editor's does (M8.6 spec §4.7).
  */
 @Composable
 internal fun PerAppScreenContent(
@@ -148,53 +179,86 @@ internal fun PerAppScreenContent(
     actions: PerAppActions,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(horizontal = CONTENT_HORIZONTAL_PADDING)) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             HeaderRow(onBack = actions.onBack)
+            PerAppList(state, actions, Modifier.weight(1f))
+        }
+        SaveBar(
+            enabled = state.isDirty && !state.isEmptyAllowList,
+            reconnects = state.isTunnelActive && state.isDirty,
+            onSave = actions.onSave,
+            modifier = Modifier.align(Alignment.BottomStart).padding(CONTENT_PADDING),
+        )
+    }
+}
 
-            ModeSection(
-                mode = state.mode,
-                onSetMode = actions.onSetMode,
-                modifier = Modifier.padding(top = SECTION_GAP),
-            )
-
-            if (state.isEmptyAllowList) {
-                EmptyAllowListWarning()
-            }
-            if (state.isTunnelActive && state.isDirty) {
-                ReconnectNotice()
-            }
-
-            if (state.mode != PerAppMode.Off) {
-                SearchField(
-                    query = state.query,
-                    onQueryChanged = actions.onSearch,
-                    modifier = Modifier.padding(top = SECTION_GAP),
+@Composable
+private fun PerAppList(
+    state: PerAppState,
+    actions: PerAppActions,
+    modifier: Modifier = Modifier,
+) {
+    val gap = Modifier.padding(bottom = SECTION_GAP)
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(start = CONTENT_PADDING, end = CONTENT_PADDING, bottom = SAVE_CLEARANCE),
+    ) {
+        item { ModeSection(state.mode, actions.onSetMode, gap) }
+        item { SummaryBanner(state, gap) }
+        if (state.isEmptyAllowList) {
+            item {
+                // The UI half of PerAppState.isEmptyAllowList's guard (M5.5 spec §6.3): Save
+                // is disabled below, this is the explanation.
+                TonalBanner(
+                    icon = SubspaceIcons.Warning,
+                    text = stringResource(R.string.per_app_empty_allow_list),
+                    tone = BannerTone.Warning,
+                    modifier = gap,
                 )
             }
-
-            SelectedCountText(
-                // The whole selection, never the visible slice of it: typing a
-                // query must not appear to untick what the user chose.
-                count = state.selectedCount,
-                modifier = Modifier.padding(top = ROW_GAP),
-            )
         }
-
-        AppRowList(
-            rows = state.rows,
-            onToggle = actions.onToggle,
-            modifier = Modifier.weight(1f).padding(horizontal = CONTENT_HORIZONTAL_PADDING),
-        )
-
-        Button(
-            onClick = actions.onSave,
-            enabled = state.isDirty && !state.isEmptyAllowList,
-            modifier =
-            Modifier
-                .padding(horizontal = CONTENT_HORIZONTAL_PADDING, vertical = ROW_GAP),
-        ) {
-            Text(stringResource(R.string.per_app_save))
+        if (state.mode == PerAppMode.Off && state.selectedCount > 0) {
+            item {
+                Text(
+                    text =
+                    pluralStringResource(
+                        R.plurals.per_app_off_kept,
+                        state.selectedCount,
+                        state.selectedCount,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = gap,
+                )
+            }
+        }
+        if (state.mode != PerAppMode.Off) {
+            if (state.picked.isNotEmpty()) {
+                item { PickedTray(state.mode, state.picked, actions.onToggle, actions.onClear, gap) }
+            }
+            item {
+                SearchField(
+                    query = state.query,
+                    onQueryChange = actions.onSearch,
+                    placeholder = stringResource(R.string.per_app_search_hint),
+                    modifier = gap,
+                )
+            }
+        }
+        // Off hides the list and the count, as the design does; the selection itself is kept in
+        // the view model. A query typed earlier stays too: its search field is back on screen,
+        // showing it, as soon as a list mode is picked again.
+        if (state.mode != PerAppMode.Off) {
+            item {
+                SelectedCountText(
+                    // The whole selection, never the visible slice of it: typing a
+                    // query must not appear to untick what the user chose.
+                    count = state.selectedCount,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            appRows(state, actions.onToggle)
         }
     }
 }
@@ -204,130 +268,152 @@ private fun HeaderRow(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier =
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(start = 10.dp, end = CONTENT_PADDING, top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                painter = painterResource(SubspaceIcons.ArrowBack),
                 contentDescription = stringResource(R.string.per_app_back),
             )
         }
-        Text(text = stringResource(R.string.per_app_title), style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = stringResource(R.string.per_app_title),
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(start = 4.dp).semantics { heading() },
+        )
     }
 }
 
-/** The three [PerAppMode] choices, each a labelled, summarised radio row. */
+/** The three [PerAppMode] choices, as the kit's connected tiles. */
 @Composable
 private fun ModeSection(
     mode: PerAppMode,
     onSetMode: (PerAppMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        PerAppMode.entries.forEachIndexed { index, entry ->
-            ModeRow(
-                title = entry.title(),
-                summary = entry.summary(),
-                selected = entry == mode,
-                onSelect = { onSetMode(entry) },
-                modifier = if (index == 0) Modifier else Modifier.padding(top = ROW_GAP),
-            )
+    val options =
+        PerAppMode.entries.map { entry ->
+            val (icon, label, sub) =
+                when (entry) {
+                    PerAppMode.Off ->
+                        Triple(SubspaceIcons.SelectAll, R.string.per_app_mode_off, R.string.per_app_mode_off_sub)
+                    PerAppMode.AllowList ->
+                        Triple(
+                            SubspaceIcons.PlaylistAddCheck,
+                            R.string.per_app_mode_allow,
+                            R.string.per_app_mode_allow_sub,
+                        )
+                    PerAppMode.DenyList ->
+                        Triple(SubspaceIcons.Block, R.string.per_app_mode_deny, R.string.per_app_mode_deny_sub)
+                }
+            ModeTile(icon, stringResource(label), stringResource(sub))
         }
-    }
+    ModeTiles(
+        options = options,
+        selected = PerAppMode.entries.indexOf(mode),
+        onSelect = { onSetMode(PerAppMode.entries[it]) },
+        modifier = modifier,
+    )
 }
 
+/** What the current mode and selection mean, in a sentence (the design's live summary). */
 @Composable
-private fun PerAppMode.title(): String =
-    when (this) {
-        PerAppMode.Off -> stringResource(R.string.per_app_mode_off)
-        PerAppMode.AllowList -> stringResource(R.string.per_app_mode_allow)
-        PerAppMode.DenyList -> stringResource(R.string.per_app_mode_deny)
-    }
-
-@Composable
-private fun PerAppMode.summary(): String =
-    when (this) {
-        PerAppMode.Off -> stringResource(R.string.per_app_mode_off_summary)
-        PerAppMode.AllowList -> stringResource(R.string.per_app_mode_allow_summary)
-        PerAppMode.DenyList -> stringResource(R.string.per_app_mode_deny_summary)
-    }
-
-@Composable
-private fun ModeRow(
-    title: String,
-    summary: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
+private fun SummaryBanner(
+    state: PerAppState,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onSelect),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onSelect)
-        Spacer(Modifier.width(ROW_ICON_GAP))
-        Column {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
+    val n = state.selectedCount
+    val text =
+        when {
+            state.mode == PerAppMode.Off -> stringResource(R.string.per_app_summary_off)
+            state.mode == PerAppMode.AllowList && n == 0 -> stringResource(R.string.per_app_summary_allow_empty)
+            state.mode == PerAppMode.DenyList && n == 0 -> stringResource(R.string.per_app_summary_deny_empty)
+            state.mode == PerAppMode.AllowList -> pluralStringResource(R.plurals.per_app_summary_allow, n, n)
+            else -> pluralStringResource(R.plurals.per_app_summary_deny, n, n)
+        }
+    TonalBanner(
+        icon = if (state.mode == PerAppMode.DenyList) SubspaceIcons.ArrowOutward else SubspaceIcons.Shield,
+        text = text,
+        modifier = modifier,
+    )
+}
+
+/** The picked apps, horizontally scrolling, with Clear (fix A8). Tapping a chip unpicks that app. */
+@Composable
+private fun PickedTray(
+    mode: PerAppMode,
+    picked: List<AppRow>,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             Text(
-                text = summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text =
+                stringResource(
+                    if (mode == PerAppMode.DenyList) R.string.per_app_tray_deny else R.string.per_app_tray_allow,
+                    picked.size,
+                ),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.semantics { heading() },
             )
+            TextButton(onClick = onClear) { Text(stringResource(R.string.per_app_clear)) }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 6.dp)) {
+            items(picked, key = { it.packageName }) { row -> TrayChip(row, onRemove = { onRemove(row.packageName) }) }
         }
     }
 }
 
-/**
- * The UI half of [PerAppState.isEmptyAllowList]'s guard (M5.5 spec §6.3) — styled like
- * [RuleSetRow]'s own blocking marker, the same red-warning-icon-plus-text
- * shape for the same reason: a control being disabled below is a hint, this
- * text is the explanation.
- */
 @Composable
-private fun EmptyAllowListWarning(modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.fillMaxWidth().padding(top = MARKER_TOP_PADDING),
-    ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(MARKER_ICON_SIZE),
-        )
-        Spacer(Modifier.width(ROW_ICON_GAP / 2))
-        Text(
-            text = stringResource(R.string.per_app_empty_allow_list),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
-}
-
-/** M5.5 spec §7.3: told before committing, not after the tunnel drops. */
-@Composable
-private fun ReconnectNotice(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(R.string.per_app_reconnect_notice),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.fillMaxWidth().padding(top = MARKER_TOP_PADDING),
-    )
-}
-
-@Composable
-private fun SearchField(
-    query: String,
-    onQueryChanged: (String) -> Unit,
+private fun TrayChip(
+    row: AppRow,
+    onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChanged,
-        modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(stringResource(R.string.per_app_search_hint)) },
-        leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
-        singleLine = true,
-    )
+    val removeLabel = stringResource(R.string.per_app_tray_remove, row.label)
+    Column(
+        modifier =
+        modifier
+            .width(TRAY_CHIP_WIDTH)
+            .clickable(role = Role.Button, onClick = onRemove)
+            .semantics { contentDescription = removeLabel },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box {
+            AppGlyph(row, TRAY_ICON_SIZE)
+            Surface(
+                shape = SubspaceShapeTokens.pill,
+                color = MaterialTheme.colorScheme.onSurface,
+                contentColor = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
+            ) {
+                Icon(painterResource(SubspaceIcons.Close), contentDescription = null, modifier = Modifier.padding(4.dp))
+            }
+        }
+        Text(
+            text = row.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @Composable
@@ -344,37 +430,44 @@ private fun SelectedCountText(
 }
 
 /**
- * A [LazyColumn] rather than [RoutingListScreenContent]'s scrolling `Column`:
- * this list runs to every installed app, not a handful of rule sets, so only
- * the visible rows may ever compose.
+ * The app rows as one rounded list. Each row is its own lazy item with the card's corners applied
+ * to the first and last, so only the visible rows ever compose.
  */
-@Composable
-private fun AppRowList(
-    rows: List<AppRow>,
+private fun LazyListScope.appRows(
+    state: PerAppState,
     onToggle: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier.fillMaxWidth()) {
-        items(rows, key = { it.packageName }) { row ->
-            AppRowItem(row = row, onToggle = { onToggle(row.packageName) })
+    val rows = state.rows
+    itemsIndexed(rows, key = { _, row -> row.packageName }) { index, row ->
+        val first = index == 0
+        val last = index == rows.lastIndex
+        val shape =
+            RoundedCornerShape(
+                topStart = if (first) LIST_CORNER else 0.dp,
+                topEnd = if (first) LIST_CORNER else 0.dp,
+                bottomEnd = if (last) LIST_CORNER else 0.dp,
+                bottomStart = if (last) LIST_TAIL_CORNER else 0.dp,
+            )
+        Surface(shape = shape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+            AppRowItem(row = row, mode = state.mode, onToggle = { onToggle(row.packageName) })
         }
     }
 }
 
 /**
- * One app: its icon, label and package name, plus [AppRow.isInstalled]'s
- * marker when false — shown, never hidden (M5.5 spec §7.2). ARCHITECTURE.md §5.6: the package
- * name is rendered, not logged.
+ * One app: its icon, label and package name (mono), the [OutcomeTag] saying where its traffic
+ * goes, and [AppRow.isInstalled]'s note when false — shown, never hidden (M5.5 spec §7.2).
+ * ARCHITECTURE.md §5.6: the package name is rendered, not logged.
  *
- * The package name is skipped as supporting text when it equals [AppRow.label]
- * outright rather than merely being a substring of it: that equality is
- * exactly [PerAppViewModel]'s own `ghostRows` (there is no other label to give
- * a package no longer installed), and rendering the identical string twice
- * would put two nodes with the same text in the tree for no reader's benefit.
+ * The package name is skipped as supporting text when it equals [AppRow.label] outright rather
+ * than merely being a substring of it: that equality is exactly [PerAppViewModel]'s own
+ * `ghostRows` (there is no other label to give a package no longer installed), and rendering the
+ * identical string twice would put two nodes with the same text in the tree for no reader's benefit.
  */
 @Composable
 private fun AppRowItem(
     row: AppRow,
+    mode: PerAppMode,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -382,21 +475,27 @@ private fun AppRowItem(
         modifier =
         modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = ROW_VERTICAL_PADDING),
+            .toggleable(value = row.isSelected, role = Role.Checkbox, onValueChange = { onToggle() })
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
-        Checkbox(checked = row.isSelected, onCheckedChange = { onToggle() })
-        Spacer(Modifier.width(ROW_ICON_GAP))
-        AppIcon(packageName = row.packageName)
-        Spacer(Modifier.width(ROW_ICON_GAP))
+        AppGlyph(row, APP_ICON_SIZE)
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = row.label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = row.label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (row.isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (row.packageName != row.label) {
                 Text(
                     text = row.packageName,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.mono(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (!row.isInstalled) {
@@ -407,34 +506,49 @@ private fun AppRowItem(
                 )
             }
         }
+        OutcomeTag(outcomeFor(mode, row.isSelected))
     }
 }
 
 /**
- * [packageName]'s launcher icon, resolved from the platform rather than
- * carried on [AppRow] — see [space.getsub.core.data.InstalledAppsSource]'s
- * own KDoc for why a `Drawable` stays out of the data layer. `null` for a
- * package no longer installed (M5.5 spec §7.2's ghost rows): nothing to resolve,
- * and the row's own "not installed" text already says so.
+ * [row]'s launcher icon, resolved from the platform rather than carried on [AppRow] — see
+ * [space.getsub.core.data.InstalledAppsSource]'s own KDoc for why a `Drawable` stays out of the
+ * data layer. Where there is none (a package no longer installed, M5.5 spec §7.2's ghost rows, or
+ * no PackageManager to ask, as in a screenshot test) a tile with the label's initial stands in.
  *
- * [Image], not `Icon`: an app's launcher icon is full-colour art, not a
- * monochrome glyph, so it must not be tinted the way `Icon` tints its content.
+ * [Image], not `Icon`: an app's launcher icon is full-colour art, not a monochrome glyph, so it
+ * must not be tinted the way `Icon` tints its content.
  */
 @Composable
-private fun AppIcon(
-    packageName: String,
+private fun AppGlyph(
+    row: AppRow,
+    size: Dp,
     modifier: Modifier = Modifier,
 ) {
     val packageManager = LocalContext.current.packageManager
-    val icon = remember(packageName) { packageManager.appIconOrNull(packageName) }
+    val icon = remember(row.packageName) { packageManager.appIconOrNull(row.packageName) }
     if (icon != null) {
-        Image(bitmap = icon, contentDescription = null, modifier = modifier.size(APP_ICON_SIZE))
+        Image(bitmap = icon, contentDescription = null, modifier = modifier.size(size))
     } else {
-        Spacer(modifier.size(APP_ICON_SIZE))
+        val s = MaterialTheme.colorScheme
+        Surface(
+            shape = RoundedCornerShape(size / 3),
+            color = if (row.isInstalled) s.secondaryContainer else Color.Transparent,
+            contentColor = if (row.isInstalled) s.onSecondaryContainer else s.onSurfaceVariant,
+            border = if (row.isInstalled) null else BorderStroke(2.dp, s.outlineVariant),
+            modifier = modifier.size(size),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = if (row.isInstalled) row.label.take(1).uppercase() else "?",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
     }
 }
 
-/** `null` for an uninstalled package rather than throwing — the caller has no fallback art to show either way. */
+/** `null` for an uninstalled package rather than throwing — the caller falls back to the initial tile. */
 private fun PackageManager.appIconOrNull(packageName: String): ImageBitmap? {
     val drawable =
         try {
@@ -452,29 +566,46 @@ private fun PackageManager.appIconOrNull(packageName: String): ImageBitmap? {
 }
 
 /**
- * Confirms losing the draft before [PerAppScreen] actually pops — see
- * [PerAppScreen]'s own `showDiscardDialog` comment for why this is raised
- * from there rather than from [PerAppScreenContent].
- *
- * `internal`, not `private`: [PerAppScreen] itself needs no Hilt binding to
- * render (its ViewModel lookup is the only reason [PerAppScreenContentTest]
- * cannot exercise it directly), so this one composable is tested on its own —
- * content and callback wiring — rather than leaving the back-gesture
- * confirmation's UI with zero coverage. See `DiscardChangesDialogTest`.
+ * The screen's one standout button, in the pop colour (M8.6 spec §2.3). While [reconnects] it
+ * carries the note M5.5 spec §7.3 asks for: told before committing, not after the tunnel drops.
  */
 @Composable
-internal fun DiscardChangesDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
+private fun SaveBar(
+    enabled: Boolean,
+    reconnects: Boolean,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.per_app_discard_title)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.per_app_discard_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.per_app_discard_cancel)) }
-        },
-    )
+    val pop = LocalSubspaceColors.current
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Button(
+            onClick = onSave,
+            enabled = enabled,
+            shape = SubspaceShapeTokens.card,
+            colors = ButtonDefaults.buttonColors(containerColor = pop.pop, contentColor = pop.onPop),
+            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            modifier = Modifier.heightIn(min = 56.dp),
+        ) {
+            Icon(painterResource(SubspaceIcons.Check), contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                text = stringResource(R.string.per_app_save),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        if (reconnects) {
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface) {
+                Text(
+                    text = stringResource(R.string.per_app_reconnect_notice),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
+    }
 }

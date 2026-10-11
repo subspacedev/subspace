@@ -2,21 +2,33 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the content paddings below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's ConnectControl.kt for the same pattern.
-@file:Suppress("MagicNumber")
+// initializes. See core/ui's GroupCard.kt for the same pattern.
+@file:Suppress("MagicNumber", "TooManyFunctions")
 
 package space.getsub.feature.profiles.add
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,12 +37,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +54,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import space.getsub.core.parser.ParseFailure
-import space.getsub.core.ui.component.SubspaceBottomSheet
+import space.getsub.core.ui.component.SubspaceSheet
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.RobotoMonoFontFamily
+import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.feature.profiles.R
 import java.io.IOException
 
@@ -46,6 +65,7 @@ private val CONTENT_HORIZONTAL_PADDING = 16.dp
 private val CONTENT_BOTTOM_PADDING = 16.dp
 private val FIELD_GAP = 8.dp
 private const val PASTE_FIELD_MIN_LINES = 4
+private const val DISABLED_ALPHA = 0.38f
 
 /**
  * Identifies the busy [CircularProgressIndicator] to instrumented tests —
@@ -65,12 +85,6 @@ internal const val IMPORT_BUSY_TEST_TAG = "import-busy"
 internal const val IMPORT_PASTE_FIELD_TEST_TAG = "import-paste-field"
 
 /**
- * Identifies the subscription URL [OutlinedTextField] to instrumented tests,
- * the same reason [IMPORT_PASTE_FIELD_TEST_TAG] exists — Task 13.
- */
-internal const val ADD_SUBSCRIPTION_FIELD_TEST_TAG = "add-subscription-field"
-
-/**
  * The only place in the app that turns pasted or imported text into a stored
  * [space.getsub.core.data.StoredProfile] — before this task, Home
  * could connect to a stored profile and Servers could pick one, but nothing
@@ -81,8 +95,7 @@ internal const val ADD_SUBSCRIPTION_FIELD_TEST_TAG = "add-subscription-field"
  * halves of the outcome, listed by [ParseFailure.index] so a user can be told
  * which entry failed without that entry ever being rendered (ARCHITECTURE.md §5.6).
  *
- * @param open whether the sheet is shown — see [SubspaceBottomSheet]'s own
- *   `open` for why closed means "not composed", not "composed but invisible".
+ * @param open whether the sheet is shown — closed means "not composed", not "composed but invisible".
  * @param onDismiss scrim tap, swipe down, or the drag handle's dismiss action.
  * @param onScanQr the "Scan QR code" button (Task 20 fix round 1). The
  *   caller (ultimately `SubspaceNavHost`'s `QrScan` composable, via
@@ -101,12 +114,8 @@ internal fun AddServerSheet(
     onScanQr: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SubspaceBottomSheet(
-        open = open,
-        titleRes = R.string.import_sheet_title,
-        onDismiss = onDismiss,
-        modifier = modifier,
-    ) {
+    if (!open) return
+    SubspaceSheet(onDismiss = onDismiss, modifier = modifier, skipPartiallyExpanded = true) {
         AddServerSheetBody(onScanQr = onScanQr)
     }
 }
@@ -154,7 +163,7 @@ private fun AddServerSheetBody(
                             null
                         }
                     if (text != null) {
-                        handedToImport = viewModel.import(text, owner)
+                        handedToImport = viewModel.submit(text, owner)
                     } else {
                         viewModel.reportFileReadFailure(owner)
                     }
@@ -169,7 +178,7 @@ private fun AddServerSheetBody(
         actions =
         ImportActions(
             onInputChanged = viewModel::onInputChanged,
-            onImportClick = { viewModel.import(state.input) },
+            onImportClick = { viewModel.submit(state.input) },
             // "*/*": a subscription can be a share-link list, base64 blob,
             // Clash YAML or raw Xray JSON (ARCHITECTURE.md §7) — SubscriptionParser detects
             // the shape itself, so this does not narrow by extension or
@@ -179,12 +188,18 @@ private fun AddServerSheetBody(
             // has no NavController and does not know or care how scanning
             // is presented, only that tapping it should start.
             onScanClick = onScanQr,
-            // Task 13: the fifth route. Takes the URL directly (rather than
-            // an onSubscriptionUrlChanged + a no-arg click, the paste field's
-            // shape) because the URL field's own text lives in
-            // AddServerSheetContent's local composition state, not
-            // ImportState — see AddSubscriptionSection's KDoc for why.
-            onAddSubscription = viewModel::addSubscription,
+            // The clipboard row: reads the primary clip here, where the Context is, then feeds the
+            // same import(raw) the paste field uses. The text goes into the field too, so what was
+            // imported is visible. Nothing about it is logged (ARCHITECTURE.md §5.6); an empty
+            // clipboard is a no-op.
+            onImportClipboardClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)
+                if (!text.isNullOrBlank()) {
+                    viewModel.onInputChanged(text.toString())
+                    viewModel.submit(text.toString())
+                }
+            },
         ),
         modifier = modifier,
     )
@@ -201,7 +216,7 @@ internal data class ImportActions(
     val onImportClick: () -> Unit,
     val onImportFromFileClick: () -> Unit,
     val onScanClick: () -> Unit,
-    val onAddSubscription: (String) -> Unit,
+    val onImportClipboardClick: () -> Unit,
 )
 
 /**
@@ -223,15 +238,25 @@ internal fun AddServerSheetContent(
         modifier =
         modifier
             .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = CONTENT_HORIZONTAL_PADDING, vertical = CONTENT_BOTTOM_PADDING),
         verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
     ) {
+        Text(
+            text = stringResource(R.string.import_sheet_title),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = FIELD_GAP),
+        )
+
         OutlinedTextField(
             value = state.input,
             onValueChange = actions.onInputChanged,
-            label = { Text(stringResource(R.string.import_paste_label)) },
+            placeholder = { Text(stringResource(R.string.import_paste_placeholder)) },
             minLines = PASTE_FIELD_MIN_LINES,
             enabled = !state.busy,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = RobotoMonoFontFamily),
+            shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth().testTag(IMPORT_PASTE_FIELD_TEST_TAG),
         )
 
@@ -242,81 +267,132 @@ internal fun AddServerSheetContent(
             Text(stringResource(R.string.import_button))
         }
 
-        TextButton(
-            onClick = actions.onImportFromFileClick,
-            enabled = !state.busy,
-        ) {
-            Text(stringResource(R.string.import_from_file_button))
-        }
+        SourceActions(state, actions)
 
-        TextButton(
-            onClick = actions.onScanClick,
-            enabled = !state.busy,
-        ) {
-            Text(stringResource(R.string.import_scan_qr_button))
-        }
+        if (state.busy) BusyRow()
 
-        AddSubscriptionSection(busy = state.busy, onAddSubscription = actions.onAddSubscription)
+        ResultCard(state)
+    }
+}
 
-        if (state.busy) {
-            CircularProgressIndicator(modifier = Modifier.testTag(IMPORT_BUSY_TEST_TAG))
-        }
+@Composable
+private fun SourceActions(
+    state: ImportState,
+    actions: ImportActions,
+) {
+    ActionRow(
+        icon = SubspaceIcons.ContentPaste,
+        label = stringResource(R.string.import_from_clipboard_button),
+        supportingText = stringResource(R.string.import_from_clipboard_supporting),
+        enabled = !state.busy,
+        onClick = actions.onImportClipboardClick,
+    )
+    ActionRow(
+        icon = SubspaceIcons.FolderOpen,
+        label = stringResource(R.string.import_from_file_button),
+        supportingText = stringResource(R.string.import_from_file_supporting),
+        enabled = !state.busy,
+        onClick = actions.onImportFromFileClick,
+    )
+    ActionRow(
+        icon = SubspaceIcons.QrCodeScanner,
+        label = stringResource(R.string.import_scan_qr_button),
+        supportingText = stringResource(R.string.import_scan_qr_supporting),
+        enabled = !state.busy,
+        onClick = actions.onScanClick,
+    )
+}
 
-        if (state.fileReadFailed) {
-            Text(
-                text = stringResource(R.string.import_file_read_failed),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
+@Composable
+private fun BusyRow() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(18.dp).testTag(IMPORT_BUSY_TEST_TAG),
+            strokeWidth = 2.dp,
+        )
+        Text(
+            text = stringResource(R.string.import_working),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
 
-        state.subscriptionResult?.let { message ->
-            SubscriptionResultText(message)
-        }
-
-        if (state.completed) {
-            ImportResult(state = state)
+@Composable
+private fun ResultCard(state: ImportState) {
+    if (!(state.fileReadFailed || state.subscriptionResult != null || state.completed)) return
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
+            if (state.fileReadFailed) {
+                Text(
+                    text = stringResource(R.string.import_file_read_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            state.subscriptionResult?.let { message -> SubscriptionResultText(message) }
+            if (state.completed) ImportResult(state = state)
         }
     }
 }
 
 /**
- * The fifth [AddServerSheetContent] route — M3's plan Part 2 line 715
- * deferred "From subscription URL" to M4; this is that entry.
- *
- * The URL field's own text is local composition state, not [ImportState]:
- * [ImportActions.onAddSubscription] takes the URL directly (unlike the paste
- * field's `onInputChanged` + no-arg `onImportClick` pair) precisely so this
- * section needs no ViewModel round trip just to know what the user is
- * typing — see [ImportActions]'s own KDoc. `remember`, not
- * `rememberSaveable`: same reasoning [ImportState.input]'s KDoc gives for
- * keeping pasted config text out of the Activity's saved-instance-state
- * `Bundle` (ARCHITECTURE.md §5.6) applies to a subscription URL too.
+ * A tappable action: an icon tile, a [label] and [supportingText]. Disabled rows are dimmed and
+ * report `enabled = false` to semantics (the same gating the old text buttons had while busy).
  */
+@Suppress("LongParameterList")
 @Composable
-private fun AddSubscriptionSection(
-    busy: Boolean,
-    onAddSubscription: (String) -> Unit,
+private fun ActionRow(
+    @DrawableRes icon: Int,
+    label: String,
+    supportingText: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var url by remember { mutableStateOf("") }
+    Row(
+        modifier =
+        modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = FIELD_GAP),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        IconTile(icon)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                supportingText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FIELD_GAP)) {
-        Text(stringResource(R.string.add_subscription_title), style = MaterialTheme.typography.titleSmall)
-
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text(stringResource(R.string.add_subscription_hint)) },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().testTag(ADD_SUBSCRIPTION_FIELD_TEST_TAG),
-        )
-
-        Button(
-            onClick = { onAddSubscription(url) },
-            enabled = !busy && url.isNotBlank(),
-        ) {
-            Text(stringResource(R.string.add_subscription_action))
+@Composable
+private fun IconTile(
+    @DrawableRes icon: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = SubspaceShapeTokens.tile,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = modifier.size(44.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painterResource(icon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

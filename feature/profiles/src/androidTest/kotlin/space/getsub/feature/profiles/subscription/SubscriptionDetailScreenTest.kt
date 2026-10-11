@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
@@ -51,7 +52,7 @@ class SubscriptionDetailScreenTest {
         var deleteCalls = 0
         setContent(actions = noOpActions(onDeleteConfirmed = { deleteCalls++ }))
 
-        composeRule.onNodeWithText("Delete subscription").performClick()
+        composeRule.onNodeWithText("Delete subscription").performScrollTo().performClick()
         composeRule.onNodeWithText("Delete “Provider”?").assertExists()
         deleteCalls shouldBe 0
 
@@ -64,7 +65,7 @@ class SubscriptionDetailScreenTest {
         var unpinnedKey: String? = null
         setContent(actions = noOpActions(onUnpinRow = { unpinnedKey = it }))
 
-        composeRule.onNodeWithContentDescription("Use provider value").performClick()
+        composeRule.onNodeWithContentDescription("Use provider value").performScrollTo().performClick()
 
         unpinnedKey shouldBe "profile-update-interval"
     }

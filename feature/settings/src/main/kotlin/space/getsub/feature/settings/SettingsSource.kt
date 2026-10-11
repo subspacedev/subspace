@@ -8,11 +8,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
+import space.getsub.core.data.PerAppRepository
 import space.getsub.core.data.RoutingRepository
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsResolver
+import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.ProfileDns
 import javax.inject.Inject
@@ -131,6 +134,17 @@ internal interface SettingsSource {
 
     suspend fun setLightweightMode(enabled: Boolean)
 
+    /** The active rule set's name, or null when none is active. Displayed, never logged. */
+    val activeRuleSetName: Flow<String?>
+
+    /** The **effective** per-app selection (M8.5 spec §6 #13). See [PerAppRepository.selection]. */
+    val perApp: Flow<PerAppSelection>
+
+    /** Wallpaper-derived colour (Android 12+). See [SettingsRepository.dynamicColor]. */
+    val dynamicColor: Flow<Boolean>
+
+    suspend fun setDynamicColor(enabled: Boolean)
+
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
@@ -154,6 +168,7 @@ internal class BoundSettingsSource
 constructor(
     private val settingsRepository: SettingsRepository,
     private val routingRepository: RoutingRepository,
+    perAppRepository: PerAppRepository,
     @param:ApplicationContext private val context: Context,
 ) : SettingsSource {
     override val theme: Flow<ThemePreference> = settingsRepository.theme
@@ -193,6 +208,15 @@ constructor(
             dnsOverriddenByProfile(ruleSets.firstOrNull { it.ruleSet.id == activeId }?.dns)
         }
 
+    // Same derivation as :feature:home's BoundTrafficPolicySource (M8.6 plan ruling R2): feature
+    // modules cannot depend on each other, so it is repeated here.
+    override val activeRuleSetName: Flow<String?> =
+        combine(settingsRepository.activeRoutingRuleSetId, routingRepository.observeAll()) { id, sets ->
+            sets.firstOrNull { it.id == id }?.name
+        }.distinctUntilChanged()
+
+    override val perApp: Flow<PerAppSelection> = perAppRepository.selection.distinctUntilChanged()
+
     override val geoRefreshOnMetered: Flow<Boolean> = settingsRepository.geoRefreshOnMetered
 
     override suspend fun setGeoRefreshOnMetered(enabled: Boolean) =
@@ -222,6 +246,10 @@ constructor(
     override val lightweightMode: Flow<Boolean> = settingsRepository.lightweightMode
 
     override suspend fun setLightweightMode(enabled: Boolean) = settingsRepository.setLightweightMode(enabled)
+
+    override val dynamicColor: Flow<Boolean> = settingsRepository.dynamicColor
+
+    override suspend fun setDynamicColor(enabled: Boolean) = settingsRepository.setDynamicColor(enabled)
 
     override suspend fun isIgnoringBatteryOptimizations(): Boolean =
         withContext(Dispatchers.IO) {

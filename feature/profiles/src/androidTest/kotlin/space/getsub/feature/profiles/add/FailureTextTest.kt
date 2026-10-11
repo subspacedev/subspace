@@ -29,7 +29,7 @@ import space.getsub.core.parser.parseFailure
  * JVM one — which only makes sense if this file is meant to run through D8,
  * i.e. as an `androidTest`. Same `v2 createComposeRule` and camelCase-only
  * naming as [space.getsub.core.ui.component.GroupCardTest] and
- * [space.getsub.core.ui.component.ConnectControlTest] — there is no
+ * [space.getsub.core.ui.component.GroupCardTest] — there is no
  * `@Suppress("DEPRECATION")` here or anywhere else in this codebase.
  *
  * `setContent` may run only once per test (the compose test rule throws on a

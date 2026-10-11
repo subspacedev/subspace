@@ -10,9 +10,6 @@
     <string name="home_no_servers_yet">No servers yet</string>
     <string name="home_add_first_server">Add your first server</string>
     <string name="home_add_server">Add server</string>
-    <!-- %1$s is a device-clock-derived elapsed-time string (DateUtils.formatElapsedTime),
-         e.g. "3:12" or "1:04:20" — not a server address, uuid, or key (ARCHITECTURE.md §5.6). -->
-    <string name="home_connected_uptime">Connected for %1$s</string>
     <!-- Shown when the active server decoded fine but StoredProfile.connectable is false
          (fix round 2, Important finding 4) — e.g. VLESS over ws/grpc, which :core:xray
          cannot yet emit a working config for. Deliberately doesn't say "protocol": the
@@ -20,15 +17,17 @@
     <string name="home_active_server_unsupported">This server isn\'t supported by this build yet — open Servers for details</string>
 
     <string name="state_disconnected">Disconnected</string>
-    <string name="state_disconnecting">Disconnecting…</string>
+    <string name="state_disconnecting">Disconnecting</string>
     <string name="state_connected">Connected</string>
     <!-- M8.5 spec §4.2 (amended): Reconnecting is its own state, mirrored from the service,
          never Connected or Failed. Whether traffic is blocked comes from the published
-         Reconnecting.blocked, the same fact the notification reads (M8.5 spec §4.4). -->
-    <string name="home_state_reconnecting_blocked">Reconnecting… traffic is blocked</string>
-    <string name="home_state_reconnecting_open">Reconnecting… traffic is not protected</string>
-    <!-- M8.5 spec §4.3: connected, uplink moving, nothing coming back. -->
-    <string name="home_state_stalled">Connected — nothing coming back</string>
+         Reconnecting.blocked, the same fact the notification reads (M8.5 spec §4.4). M8.6: one-word labels; the
+         detail lines carry the rest (home_detail_*). -->
+    <string name="home_state_reconnecting_blocked">Blocked</string>
+    <string name="home_state_reconnecting_open">Reconnecting</string>
+    <!-- M8.5 spec §4.3: connected, uplink moving, nothing coming back. M8.6: the label is
+         short; the detail line says "Nothing coming back". -->
+    <string name="home_state_stalled">Not responding</string>
 
     <string name="stage_allocating_port">Allocating port…</string>
     <string name="stage_generating_config">Generating config…</string>
@@ -68,16 +67,16 @@
          split. Rendered only for a live session (ConnectionState.Connected); "0 B" is
          a real measurement, never a placeholder, so unlike latency there is no
          em-dash variant (M8.5 spec §10.1). -->
-    <string name="home_traffic_down">Downloaded</string>
-    <string name="home_traffic_up">Uploaded</string>
+    <string name="home_traffic_down">Down</string>
+    <string name="home_traffic_up">Up</string>
 
-    <!-- M8.5 spec §2: the opt-in per-tag breakdown, beneath the tiles above. Nothing
+    <!-- M8.5 spec §2: the opt-in per-tag breakdown, beneath the throughput card. Nothing
          under this header renders at all while the developer setting is off — see
-         BreakdownSection's own KDoc for the three states an empty row list can mean. -->
+         ByServerCard's own KDoc for the three states an empty row list can mean. -->
     <string name="home_breakdown_header">By server</string>
     <!-- %1$s and %2$s are already-formatted byte counts (formatByteCount), same as the
          DOWN/UP tiles above — never raw numbers (M8.5 spec §10.1). -->
-    <string name="home_breakdown_row_traffic">%1$s down · %2$s up</string>
+    <string name="home_breakdown_row_traffic">%1$s ↓ · %2$s ↑</string>
     <!-- Shown in place of rows when the setting is on, the active server is a
          pasted (RAW_JSON) config, and no rows have arrived this connection.
          Deliberately names NO reason (ruling R51, finding N4): Home cannot see which
@@ -91,4 +90,43 @@
          briefly false there; "right now" is true in every case. The resource name
          reflects when it is shown, not what it claims. -->
     <string name="home_breakdown_unavailable_passthrough">Per-server traffic isn\'t available for this connection right now</string>
+
+    <!-- M8.6 spec §3.3 detail lines, shown after the state label on one line. Sentence case (fix A3). -->
+    <!-- Between the state label and its detail: "Connected · Up 12:04". -->
+    <string name="home_status_separator" translatable="false">" · "</string>
+    <string name="home_detail_choose_server">Choose a server first</string>
+    <!-- %1$d is the stage's position, %2$d the number of stages. -->
+    <string name="home_detail_step">Step %1$d of %2$d</string>
+    <!-- %1$s is DateUtils.formatElapsedTime output, device-clock derived. -->
+    <string name="home_detail_uptime">Up %1$s</string>
+    <string name="home_detail_uptime_idle">Up %1$s · no recent traffic</string>
+    <string name="home_detail_stalled">Nothing coming back</string>
+    <!-- M8.6 Part 2 ruling R2: the M8.5 spec §4.2 disclosure stays. -->
+    <string name="home_detail_reconnecting_open">Traffic is not protected</string>
+    <string name="home_detail_blocked">Kill switch holding traffic</string>
+    <string name="home_detail_disconnecting">Tearing down tun</string>
+    <!-- M8.6 spec §5.5 -->
+    <string name="home_blocked_banner">Kill switch is holding traffic until the tunnel is back.</string>
+    <string name="home_action_connect">Connect</string>
+    <string name="home_action_disconnect">Disconnect</string>
+    <string name="home_open_session_log">Session log</string>
+    <!-- M8.6 spec §4.1 chips (fix A9). -->
+    <string name="home_chip_routing_off">Routing off</string>
+    <string name="home_chip_apps_all">All apps tunnelled</string>
+    <plurals name="home_chip_apps_allow">
+        <item quantity="one">Allow-list · %d app</item>
+        <item quantity="other">Allow-list · %d apps</item>
+    </plurals>
+    <plurals name="home_chip_apps_deny">
+        <item quantity="one">Deny-list · %d app</item>
+        <item quantity="other">Deny-list · %d apps</item>
+    </plurals>
+    <string name="home_throughput_title">Throughput</string>
+    <string name="home_throughput_window">Last 60 min</string>
+    <!-- %1$s is a formatByteCount() value. -->
+    <string name="home_throughput_peak">%1$s/s</string>
+    <!-- No session: no peak was measured (M8.5 spec §10.1). -->
+    <string name="home_throughput_peak_none">—</string>
+    <!-- %1$s protocol, %2$s transport, upper-cased words such as VLESS, TCP. Not config content. -->
+    <string name="home_active_server_meta">%1$s · %2$s</string>
 </resources>

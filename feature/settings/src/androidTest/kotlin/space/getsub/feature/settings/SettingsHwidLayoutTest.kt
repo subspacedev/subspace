@@ -11,10 +11,11 @@ import org.junit.Test
 import space.getsub.core.ui.theme.SubspaceTheme
 
 /**
- * M4's device run: the HWID was passed to `SettingRow`'s `trailing` slot, which is measured at its
- * intrinsic width before the label column's `weight(1f)` is resolved. Forty-three unbreakable
- * monospace characters therefore claimed the whole row and squeezed the label to roughly one
- * character wide, so "Your device ID" rendered as a vertical stack of single letters.
+ * M4's device run: the HWID was passed to the old `SettingRow`'s `trailing` slot (since replaced
+ * by the hub rows), which is measured at its intrinsic width before the label column's
+ * `weight(1f)` is resolved. Forty-three unbreakable monospace characters therefore claimed
+ * the whole row and squeezed the label to roughly one character wide, so "Your device ID"
+ * rendered as a vertical stack of single letters.
  *
  * No JVM test could catch this — [SettingsHwidTest] asserts the state carries the value, and it
  * did. The defect was purely in layout, which is why it took a screenshot to find.
@@ -30,7 +31,10 @@ class SettingsHwidLayoutTest {
     private fun setContent() {
         composeRule.setContent {
             SubspaceTheme {
-                SettingsScreenContent(
+                // M8.6 Part 4 Tasks 3-4: the HWID lives on the Device ID page. The checks are
+                // unchanged by the restyle.
+                SettingsPageContent(
+                    page = SettingsPageId.DeviceId,
                     state = SettingsState(hwid = hwid, hwidEnabled = true),
                     actions =
                     SettingsActions(
@@ -50,12 +54,7 @@ class SettingsHwidLayoutTest {
                         onGeoRefreshOnMeteredChanged = {},
                         onRemoveCustomGeoSource = {},
                     ),
-                    navigation =
-                    SettingsNavigation(
-                        onNavigateToRouting = {},
-                        onNavigateToPerApp = {},
-                        onNavigateToLogViewer = {},
-                    ),
+                    onBack = {},
                 )
             }
         }

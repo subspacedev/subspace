@@ -38,9 +38,9 @@
 
     <!-- GroupCard (Task 18). A group's name is not a secret the way a server
          address is (ARCHITECTURE.md §5.6) — it never interpolates one. -->
-    <!-- %1$s = the group's name, %2$d = its real (unfiltered) profile count. -->
-    <string name="group_card_expand_description">Expand %1$s, %2$d servers</string>
-    <string name="group_card_collapse_description">Collapse %1$s, %2$d servers</string>
+    <!-- %1$s = the group's title, %2$s = its subtitle (e.g. "3 servers"). -->
+    <string name="group_card_expand_description">Expand %1$s, %2$s</string>
+    <string name="group_card_collapse_description">Collapse %1$s, %2$s</string>
     <string name="group_card_overflow_description">More options for %1$s</string>
     <string name="group_card_rename">Rename</string>
     <string name="group_card_delete">Delete</string>
@@ -63,6 +63,16 @@
          SUBSCRIPTION groups only, same gating as onUpdate/group_card_update_description above. -->
     <string name="group_card_open_detail">Subscription details</string>
 
+    <!-- ThroughputCard (M8.6 Task 9). %1$s = the busiest bucket as a rate, formatted by the caller. -->
+    <string name="throughput_axis">-60m · %1$s peak · now</string>
+
+    <!-- ServerRow (M8.6 Task 9). %1$s = the server's name. -->
+    <string name="server_edit">Edit %1$s</string>
+    <!-- The latency pill: %1$s = its text ("42 ms", "—"). The second form is used while
+         the pill is disabled (nothing to re-test). -->
+    <string name="server_latency_retest">Latency %1$s, tap to re-test</string>
+    <string name="server_latency">Latency %1$s</string>
+
     <!-- QuotaBar (Task 14). %1$s/%2$s are already-formatted byte strings
          (e.g. "1.2 GB"), not raw numbers — see QuotaBar.kt's own
          toHumanReadableBytes(). -->
@@ -80,4 +90,13 @@
         <item>TB</item>
         <item>PB</item>
     </string-array>
+
+    <!-- OutcomeTag (M8.6 Part 1, Task 7): what happens to an app's traffic. -->
+    <string name="outcome_tunnelled">Tunnelled</string>
+    <string name="outcome_direct">Direct</string>
+    <string name="outcome_proxy">Proxy</string>
+    <string name="outcome_block">Block</string>
+
+    <!-- SearchField (M8.6 Part 1, Task 8). -->
+    <string name="search_clear">Clear search</string>
 </resources>

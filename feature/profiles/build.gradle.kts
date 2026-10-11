@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.compose")
     id("subspace.android.hilt")
+    // M8.6 spec §7.1: screenshot tests for the Servers screen in all four themes.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -43,10 +45,6 @@ dependencies {
     // Activity/Compose plumbing, not a new capability the way e.g. Compose UI
     // Testing was when it first unlocked instrumented Compose tests.
     implementation(libs.androidx.activity.compose)
-    // The overflow menu's rename/delete icons and the group caret — same
-    // artifact :feature:home and :app already carry, same -core-only choice.
-    // See THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // ServersViewModel and ImportViewModel drive their state through
     // viewModelScope, which needs a Main dispatcher — same gap
     // :feature:home's build.gradle.kts documents.
@@ -65,4 +63,10 @@ dependencies {
     // Same espresso-core pin core/ui/build.gradle.kts explains in full —
     // 3.5.0's reflective InputManager lookup is gone on API 37.
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`, so an alpha BOM bump
+// cannot silently restyle a component.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }

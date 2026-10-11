@@ -205,4 +205,54 @@ class SettingsGeoTest {
 
         ids.toSet() shouldHaveSize knownFailures.size
     }
+
+    private fun row(
+        installedAt: Long? = null,
+        lastFailure: String? = null,
+    ) = geoRowFor(
+        source = GeoSourceCatalogue.source("v2fly-geoip")!!,
+        installed =
+        if (installedAt == null && lastFailure == null) {
+            null
+        } else {
+            InstalledGeoAsset("geoip.dat", "u", GeoDataKind.IP, 1L, installedAt, null, lastFailure)
+        },
+    )
+
+    private fun status(
+        row: GeoRow,
+        updating: Boolean = false,
+        result: GeoInstallResult? = null,
+    ) = geoStatusFor(row, updating, result)
+
+    @Test
+    fun `a fresh in-session failure is coloured as an error even with no persisted marker`() {
+        val status = status(row(installedAt = 1L), result = GeoInstallResult.DownloadFailed)
+
+        status.isError shouldBe true
+        status.messageRes shouldBe GeoInstallResult.DownloadFailed.messageRes()
+    }
+
+    @Test
+    fun `an in-session success over a persisted failure still shows the failure as an error`() {
+        val failed = row(installedAt = 1L, lastFailure = "DownloadFailed")
+        val status = status(failed, result = GeoInstallResult.Installed)
+
+        status.isError shouldBe true
+        status.messageRes shouldBe lastFailureMessageRes("DownloadFailed")
+    }
+
+    @Test
+    fun `updating and plain installed are not errors even over a persisted failure`() {
+        val failed = row(installedAt = 1L, lastFailure = "DownloadFailed")
+        status(failed, updating = true).isError shouldBe false
+        status(row(installedAt = 1L), result = GeoInstallResult.Installed).isError shouldBe false
+        status(row(installedAt = 1L)).isError shouldBe false
+        status(row()).isError shouldBe false
+    }
+
+    @Test
+    fun `a persisted failure with no session result is an error`() {
+        status(row(installedAt = 1L, lastFailure = "NotGeoData")).isError shouldBe true
+    }
 }

@@ -4,11 +4,13 @@ package space.getsub
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.net.VpnService
 import android.os.Bundle
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,8 +28,9 @@ import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import space.getsub.core.data.PendingRoutingImport
-import space.getsub.core.data.ThemePreference
 import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.core.ui.theme.reducedMotion
+import space.getsub.core.ui.theme.rememberAnimatorDurationScale
 import space.getsub.navigation.SubspaceNavHost
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
@@ -50,7 +53,7 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var pendingRoutingImport: PendingRoutingImport
 
-    // Flips true once themeSource.theme has emitted for the first time. Read
+    // Flips true once themeSource.appearance has emitted for the first time. Read
     // by the OnPreDrawListener below — this, not the value itself, is what
     // actually holds the first frame back. See onCreate's comment.
     private var themeReady = false
@@ -64,7 +67,7 @@ class MainActivity : ComponentActivity() {
         // ever read it back: SubspaceTheme was called with no darkTheme
         // argument and fell through to isSystemInDarkTheme() regardless of
         // what the user picked. Fixed below via resolveDarkTheme, fed by
-        // themeSource.theme.
+        // themeSource.appearance.
         //
         // That value arrives asynchronously from Room, so there is a real
         // window on every cold start before the stored preference is known.
@@ -74,7 +77,7 @@ class MainActivity : ComponentActivity() {
         // holds the very first frame instead of guessing: the content
         // view's OnPreDrawListener returns false (deferring the draw) until
         // themeReady flips true, which the LaunchedEffect below does,
-        // explicitly, the first time themePreference stops being null. A
+        // explicitly, the first time appearance stops being null. A
         // plain ViewTreeObserver technique — not
         // androidx.core:core-splashscreen (a new dependency this fix does
         // not need) and not runBlocking (banned outside tests by this
@@ -91,15 +94,11 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            // Flow<ThemePreference> is assignable to Flow<ThemePreference?>
-            // by declaration-site variance; this local val gives
-            // collectAsState an explicitly nullable T so `initial = null`
-            // type-checks without widening ThemeSource's own contract.
-            val themeFlow: Flow<ThemePreference?> = themeSource.theme
-            val themePreference by themeFlow.collectAsState(initial = null)
+            val appearanceFlow: Flow<Appearance?> = themeSource.appearance
+            val appearance by appearanceFlow.collectAsState(initial = null)
 
-            LaunchedEffect(themePreference) {
-                if (themePreference != null && !themeReady) {
+            LaunchedEffect(appearance) {
+                if (appearance != null && !themeReady) {
                     themeReady = true
                     // Snapshot-state changes alone do not guarantee another
                     // traversal reaches this specific view once one draw has
@@ -109,7 +108,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            SubspaceTheme(darkTheme = resolveDarkTheme(themePreference, isSystemInDarkTheme())) {
+            val reduced =
+                reducedMotion(
+                    lightweight = appearance?.lightweight ?: false,
+                    animatorDurationScale = rememberAnimatorDurationScale(),
+                )
+            val resolvedDark = resolveDarkTheme(appearance?.theme, isSystemInDarkTheme())
+
+            // In-app theme can differ from the system's (M8.6 spec §6), so
+            // re-apply bar icon contrast from the resolved value.
+            LaunchedEffect(resolvedDark) { applySystemBarIcons(resolvedDark) }
+
+            SubspaceTheme(
+                darkTheme = resolvedDark,
+                dynamicColor = appearance?.dynamicColor ?: true,
+                reducedMotion = reduced,
+            ) {
                 // The action to run once consent comes back. Held across the
                 // activity-result round trip, which is why it cannot just be a
                 // local in the click handler.
@@ -147,6 +161,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Icon contrast follows [dark] (the in-app theme), not the system mode.
+     *
+     * The status bar is transparent. The navigation bar keeps androidx.activity's
+     * own default scrims: below API 29 the scrim is the only thing giving the
+     * 3-button navigation icons contrast, and API 26 cannot draw light-background
+     * (dark) navigation icons at all — a transparent bar under the in-app Light
+     * theme would leave white icons on a white surface on API 26–28. From API 29
+     * androidx.activity draws an `auto` style's bar transparent anyway and turns
+     * on the system's own navigation-bar contrast enforcement, so the scrims only
+     * take effect below 29.
+     */
+    private fun applySystemBarIcons(dark: Boolean) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+            navigationBarStyle = SystemBarStyle.auto(NAV_BAR_LIGHT_SCRIM, NAV_BAR_DARK_SCRIM) { dark },
+        )
     }
 
     /**
@@ -191,3 +224,13 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 }
+
+/*
+ * androidx.activity's own defaults for SystemBarStyle.auto's navigation bar
+ * (EdgeToEdge.kt, DefaultLightScrim / DefaultDarkScrim). Checked against the
+ * bytecode of activity 1.13.0 on 2026-10-04: Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
+ * and Color.argb(0x80, 0x1B, 0x1B, 0x1B). The defaults are internal, so they are
+ * restated here rather than referenced.
+ */
+private const val NAV_BAR_LIGHT_SCRIM: Int = 0xE6FFFFFF.toInt()
+private const val NAV_BAR_DARK_SCRIM: Int = 0x801B1B1B.toInt()

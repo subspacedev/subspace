@@ -254,4 +254,37 @@ class ReconcileTest {
 
         reconcile(unwanted, connected, ReconcileTrigger.NetworkChanged) shouldBe ReconcileAction.Stop
     }
+
+    /** M8.6 Part 3 D1: a server picked while connected is restarted onto at once, TUN retained. */
+    @Test
+    fun aSwitchWhileConnectedRestartsOntoTheActiveProfile() {
+        val connected = ConnectionState.Connected(sinceEpochMillis = 1L, socksPort = 1080)
+        reconcile(wanted, connected, ReconcileTrigger.ProfileSwitched) shouldBe ReconcileAction.Restart(7L)
+    }
+
+    /** Review focus 2: a start in flight is never stacked; the settle re-check covers it (Step 4). */
+    @Test
+    fun aSwitchDuringAStartOrTeardownDoesNothing() {
+        val connecting = ConnectionState.Connecting(StartupStage.StartingCore)
+
+        reconcile(wanted, connecting, ReconcileTrigger.ProfileSwitched) shouldBe ReconcileAction.Nothing
+        reconcile(wanted, ConnectionState.Disconnecting, ReconcileTrigger.ProfileSwitched) shouldBe
+            ReconcileAction.Nothing
+    }
+
+    /**
+     * Pure arm only: the service never reaches it, as `liveSession` is null while
+     * Reconnecting and the next backoff attempt reads the active row instead.
+     */
+    @Test
+    fun aSwitchWhileReconnectingStartsTheNextAttemptOnTheNewServer() {
+        val reconnecting = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = true)
+        reconcile(wanted, reconnecting, ReconcileTrigger.ProfileSwitched) shouldBe ReconcileAction.Start(7L)
+    }
+
+    @Test
+    fun aSwitchWithNothingWantedStartsNothing() {
+        reconcile(unwanted, ConnectionState.Disconnected, ReconcileTrigger.ProfileSwitched) shouldBe
+            ReconcileAction.Stop
+    }
 }

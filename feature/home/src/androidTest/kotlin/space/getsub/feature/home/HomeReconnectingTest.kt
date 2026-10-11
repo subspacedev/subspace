@@ -2,6 +2,11 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.home
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -12,7 +17,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
-import space.getsub.core.ui.theme.SubspaceTheme
+import space.getsub.core.ui.preview.SubspacePreviewTheme
+import space.getsub.core.ui.preview.ThemeVariant
 
 /**
  * M8 spec §7.3 / ARCHITECTURE.md §5.5: [ConnectionState.Reconnecting] is neither [ConnectionState.Connected]
@@ -30,7 +36,8 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("Reconnecting…", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnecting · Traffic is not protected").assertIsDisplayed()
+        composeRule.onNodeWithText("Connected", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -46,19 +53,19 @@ class HomeReconnectingTest {
         // "The core failed to start". That is the text a Reconnecting-rendered-as-Failed
         // regression would actually put on screen, so that is what must be absent.
         composeRule.onNodeWithText("The core failed to start", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Reconnecting…", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnecting", substring = true).assertIsDisplayed()
     }
 
     /**
      * M8 spec §7.3, and ruling R23. A `Retryable` reason retries for as long as a network
      * exists, so this state has no bound; with the kill switch on (the default) the user has
-     * no connectivity while it retries. Home is therefore the exit, and this asserts the tap
-     * actually reaches [HomeActions.onDisconnect].
+     * no connectivity while it retries. Home is therefore the exit, and this asserts both taps
+     * actually reach [HomeActions.onDisconnect].
      *
-     * Three independent refusals had to be lifted together for this to pass — [HomeState
-     * .canDisconnect] excluded `Reconnecting`, `toVisualState` mapped it to
-     * `ConnectVisualState.Connecting`, and `ConnectControl` refuses every tap in that visual
-     * state — so a regression restoring any one of them fails here.
+     * Several independent refusals had to be lifted together for this to pass — [HomeState
+     * .canDisconnect] excluded `Reconnecting`, and the primary action and the blob's enabled
+     * state each had to offer it — so a regression restoring any one of them fails here. The
+     * exit is the blob itself: "Disconnect" is drawn inside it and is its click label.
      */
     @Test
     fun reconnectingOffersAWorkingDisconnect() {
@@ -68,17 +75,31 @@ class HomeReconnectingTest {
                 connection = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = false),
             )
         composeRule.setContent {
-            SubspaceTheme {
+            TestTheme {
                 HomeScreenContent(state = state, actions = actions.copy(onDisconnect = { disconnects++ }))
             }
         }
 
-        // By content description, not by the visible label: ConnectControl reports the
-        // *action* a tap performs, and "Disconnect" being announced at all is half of what
-        // this test is for — a screen-reader user who is told "Reconnecting" has no way to
-        // discover the exit.
-        composeRule.onNodeWithContentDescription("Disconnect").performClick()
+        // The blob's content description is the state label; its click label is the action.
+        composeRule.onNodeWithContentDescription("Reconnecting").assert(clickLabel("Disconnect")).performClick()
+        disconnects shouldBe 1
+    }
 
+    /** Blocked's Disconnect is the same exit, on the Square blob. */
+    @Test
+    fun blockedReconnectingOffersAWorkingDisconnect() {
+        var disconnects = 0
+        val state =
+            homeState(
+                connection = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = true),
+            )
+        composeRule.setContent {
+            TestTheme {
+                HomeScreenContent(state = state, actions = actions.copy(onDisconnect = { disconnects++ }))
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Blocked").assert(clickLabel("Disconnect")).performClick()
         disconnects shouldBe 1
     }
 
@@ -94,7 +115,9 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("traffic is blocked", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Blocked · Kill switch holding traffic").assertIsDisplayed()
+        // The ARCHITECTURE.md §5.5 banner.
+        composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -109,12 +132,18 @@ class HomeReconnectingTest {
             ),
         )
 
-        composeRule.onNodeWithText("traffic is not protected", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Traffic is not protected", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Kill switch is holding traffic", substring = true).assertDoesNotExist()
     }
+
+    private fun clickLabel(expected: String) =
+        SemanticsMatcher("OnClick label is $expected") {
+            it.config.getOrNull(SemanticsActions.OnClick)?.label == expected
+        }
 
     private fun setContent(state: HomeState) {
         composeRule.setContent {
-            SubspaceTheme {
+            TestTheme {
                 HomeScreenContent(state = state, actions = actions)
             }
         }
@@ -129,5 +158,17 @@ class HomeReconnectingTest {
             onNavigateToServers = {},
             onAddServer = {},
             onTestLatency = {},
+            onOpenRouting = {},
+            onOpenPerApp = {},
+            onOpenSessionLog = {},
         )
+
+    /**
+     * Reduced motion: ConnectBlob's drift and shape-cycle loops never finish, so under
+     * normal motion Compose never reaches idle and `setContent` times out. The loops are
+     * correct production behaviour (M8.6 spec §2.6); the tests only need a settled frame.
+     */
+    @Composable
+    private fun TestTheme(content: @Composable () -> Unit) =
+        SubspacePreviewTheme(ThemeVariant.FriendlyLight, reducedMotion = true, content = content)
 }

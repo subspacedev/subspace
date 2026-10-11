@@ -109,6 +109,32 @@ class PerAppViewModelTest {
         model.state.value.isDirty shouldBe true
     }
 
+    // Clear is a draft change like any other: the discard guard must see it.
+    @Test
+    fun clearEmptiesTheSelectionAndMakesTheDraftDirty() = runTest(dispatcher) {
+        val source = FakeSource(apps, PerAppSelection(PerAppMode.DenyList, setOf("com.example.bank")))
+        val model = PerAppViewModel(source)
+        dispatcher.scheduler.advanceUntilIdle()
+        model.state.value.picked.map { it.packageName } shouldBe listOf("com.example.bank")
+
+        model.clear()
+
+        model.state.value.picked.shouldBeEmpty()
+        model.state.value.selectedCount shouldBe 0
+        model.state.value.isDirty shouldBe true
+        source.applyCount shouldBe 0
+    }
+
+    @Test
+    fun clearOnAnEmptySelectionIsNotDirty() = runTest(dispatcher) {
+        val model = PerAppViewModel(FakeSource(apps))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.clear()
+
+        model.state.value.isDirty shouldBe false
+    }
+
     // Nothing is written until save(): a half-finished edit must not reach the
     // tunnel, and on this screen reaching the tunnel means a reconnect.
     @Test
@@ -171,6 +197,33 @@ class PerAppViewModelTest {
 
         model.save()
         dispatcher.scheduler.advanceUntilIdle()
+        model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe true
+    }
+
+    // A package that is gone and no longer selected has nothing left to show: the row was only
+    // there to be unticked.
+    @Test
+    fun clearingDropsRowsForPackagesThatAreNoLongerInstalled() = runTest(dispatcher) {
+        val stored = PerAppSelection(PerAppMode.DenyList, setOf("com.example.deleted"))
+        val model = PerAppViewModel(FakeSource(apps, stored))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.clear()
+
+        model.state.value.rows.map { it.packageName } shouldBe apps.map { it.packageName }
+        model.state.value.picked.shouldBeEmpty()
+    }
+
+    @Test
+    fun deselectingAGhostDropsItsRowAndDiscardBringsItBack() = runTest(dispatcher) {
+        val stored = PerAppSelection(PerAppMode.DenyList, setOf("com.example.deleted"))
+        val model = PerAppViewModel(FakeSource(apps, stored))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.toggle("com.example.deleted")
+        model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe false
+
+        model.discard()
         model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe true
     }
 

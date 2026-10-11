@@ -7,15 +7,16 @@
     <string name="settings_title">Settings</string>
 
     <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_dynamic_color_title">Dynamic colour</string>
+    <string name="settings_dynamic_color_summary">Use colours from your wallpaper</string>
     <string name="settings_section_device_id">Device ID</string>
     <!-- The three choices Appearance's segmented control offers. Each
          doubles as its own accessible label — "System", "Light", "Dark" —
          and %1$s below names which one is currently selected. -->
+    <string name="settings_theme_system_hint">System follows Android\'s dark theme setting.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
-    <string name="settings_theme_option_description">%1$s theme</string>
-    <string name="settings_theme_option_selected_description">%1$s theme, selected</string>
 
     <string name="settings_hwid_title">Send device ID</string>
     <string name="settings_hwid_summary">Some providers limit how many devices can use one subscription. Turning this off will stop those subscriptions from loading.</string>
@@ -43,8 +44,6 @@
     <string name="settings_ping_check_url_summary">Fetched through the proxy when testing. A 204 endpoint returns no content.</string>
     <string name="settings_ping_timeout">Timeout</string>
     <string name="settings_ping_timeout_value">%1$d s</string>
-    <string name="settings_ping_timeout_decrease">Shorter timeout</string>
-    <string name="settings_ping_timeout_increase">Longer timeout</string>
     <string name="settings_ping_on_launch">Test servers at launch</string>
     <string name="settings_ping_on_launch_summary">Measures each group once when you open the server list.</string>
     <string name="settings_ping_on_launch_metered">Also on mobile data</string>
@@ -61,29 +60,31 @@
 
     <string name="settings_tunnel_title">Tunnel</string>
     <string name="settings_always_on_title">Always-on VPN</string>
-    <string name="settings_always_on_summary">Open system settings to keep the tunnel running and to block connections when it is not.</string>
+    <!-- M8.6 spec §5.1: the Tunnel card's one-line subtitles are the design's (fix A6). -->
+    <string name="settings_always_on_summary">Managed in Android\'s VPN settings</string>
     <string name="settings_boot_autostart_title">Connect at startup</string>
-    <string name="settings_boot_autostart_summary">Connect every time the device starts. Not needed if always-on VPN is enabled.</string>
-    <string name="settings_fail_closed_title">Block traffic when disconnected</string>
-    <!-- Names the per-app exception on purpose (M8 spec §6.2): it is correct behaviour that looks like a leak. -->
-    <string name="settings_fail_closed_summary">While reconnecting, block all traffic instead of letting it leave unprotected. Apps excluded from the tunnel are unaffected.</string>
+    <string name="settings_boot_autostart_summary">Start the tunnel when the phone boots</string>
+    <string name="settings_fail_closed_title">Kill switch</string>
+    <string name="settings_fail_closed_summary">Block traffic while reconnecting</string>
+    <!-- M8.6 spec §5.1: shown as a second line while per-app mode is not Off. Names the per-app
+         exception on purpose (M8 spec §6.2): it is correct behaviour that looks like a leak. -->
+    <string name="settings_fail_closed_per_app_note">Apps excluded from the tunnel are unaffected.</string>
     <string name="settings_lightweight_title">Lightweight mode</string>
-    <!-- Lightweight mode: what it turns off, what keeps working, and when each applies. -->
-    <string name="settings_lightweight_summary">Uses less CPU on slower phones. Hides traffic numbers now, and stops recording the session log from the next connection. Connection status, including \"nothing coming back\", keeps working.</string>
+    <string name="settings_lightweight_summary">Less CPU on slower phones</string>
+    <!-- M8.6 spec §5.1: shown as a second line while connected — the session log only changes
+         when the next session starts. -->
+    <string name="settings_lightweight_connected_note">The session log changes from your next connection.</string>
     <string name="settings_battery_title">Battery optimisation</string>
-    <string name="settings_battery_summary">Android may stop the tunnel while the screen is off. Exempt Subspace to keep it running.</string>
+    <string name="settings_battery_summary">Stop Android pausing the tunnel</string>
     <!-- M8 spec §7.2, ARCHITECTURE.md §9: shown once, the moment the user turns on a setting that
          says they want the tunnel to survive (boot autostart or fail-closed) — never at launch. -->
-    <string name="settings_battery_prompt_title">Keep the tunnel running?</string>
-    <string name="settings_battery_prompt_body">Android may stop the tunnel while the screen is off. Exempt Subspace from battery optimisation to keep it running.</string>
-    <string name="settings_battery_prompt_confirm">Open battery settings</string>
+    <string name="settings_battery_prompt_title">Keep the tunnel alive?</string>
+    <string name="settings_battery_prompt_body">Android may stop Subspace to save battery, which drops the tunnel. Exempting it keeps startup connect and the kill switch dependable. We\'ll only ask once.</string>
+    <string name="settings_battery_prompt_confirm">Open settings</string>
     <string name="settings_battery_prompt_dismiss">Not now</string>
 
     <string name="settings_section_routing">Routing</string>
-    <string name="settings_routing_row_label">Rule sets</string>
-    <string name="settings_routing_row_summary">Block, proxy or route traffic directly by domain or address</string>
     <string name="settings_per_app_row_label">Per-app proxy</string>
-    <string name="settings_per_app_row_summary">Choose which apps use the tunnel</string>
 
     <string name="settings_section_geo">Geo databases</string>
     <!-- %1$s is the size (e.g. "23.1 MB"), %2$s the install status. -->
@@ -117,6 +118,8 @@
     <string name="settings_geo_custom_source_label">Custom (%1$s)</string>
     <!-- %1$s is a formatted date, e.g. "2026-08-11". -->
     <string name="settings_geo_installed_at">Installed %1$s</string>
+    <string name="settings_geo_update_action">Update</string>
+    <string name="settings_geo_custom_source_short">Custom source</string>
     <string name="settings_geo_update_now">Update %1$s now</string>
     <!-- %1$s is the row's display name — a custom source only, so this button never appears on a
          catalogue row (branch review, Finding 3). -->
@@ -132,7 +135,8 @@
 
     <string name="log_viewer_title">Session log</string>
     <string name="log_viewer_empty">Nothing logged yet. Connect, and the session\'s log appears here.</string>
-    <string name="log_viewer_clear">Clear</string>
+    <string name="log_viewer_clear">Delete</string>
+    <string name="log_viewer_jump_latest">Latest</string>
     <string name="log_viewer_share">Share</string>
     <string name="log_viewer_redaction_notice">Server addresses, IDs, keys and subscription links are removed before anything is written to this log.</string>
     <string name="log_viewer_lightweight_notice">Lightweight mode is on: no new log lines are recorded. Turn it off in Settings and reconnect to start recording again.</string>
@@ -142,8 +146,7 @@
     <string name="log_viewer_share_truncated">Only the most recent part of this log is included below — it was too large to share in full.</string>
     <string name="settings_section_diagnostics">Diagnostics</string>
     <string name="settings_logs_title">Session log</string>
-    <string name="settings_logs_summary">Read or share what the tunnel recorded</string>
-    <string name="settings_breakdown_title">Per-server traffic breakdown</string>
+    <string name="settings_breakdown_title">Traffic by server</string>
     <string name="settings_breakdown_summary">Show how much traffic went through the proxy versus direct. While connected, this opens a diagnostics port that other apps on your device can also read — leave it off unless you need it.</string>
     <!-- I-2 / ruling R43 (revises F2 / ruling R39): TunnelService.startCore reads this setting
          once, at connect, and is deliberately not restarted just to apply a change
@@ -153,5 +156,36 @@
          toggle produced a false statement once the switch was changed back (it kept describing
          the earlier change, not the running session), and was lost entirely on a screen
          navigation. This single, direction-independent statement is true in every case. -->
-    <string name="settings_breakdown_session_notice">Applies to your next connection — this session keeps the setting it started with.</string>
+    <string name="settings_breakdown_session_notice">⚠ Applies to your next connection</string>
+
+    <!-- M8.6 spec §4.4: the hub's sections, and each row's current value (design copy). -->
+    <string name="settings_section_traffic">Traffic</string>
+    <string name="settings_section_you">You</string>
+    <string name="settings_section_connection">Connection</string>
+    <string name="settings_back">Back</string>
+    <!-- Joins the parts of one hub value, e.g. "TCP · 5 s timeout". -->
+    <string name="settings_hub_separator">" · "</string>
+    <!-- %1$s is the active rule set's name. -->
+    <string name="settings_hub_routing_active">%1$s active</string>
+    <string name="settings_hub_off">Off</string>
+    <string name="settings_hub_per_app_off">Off · every app tunnelled</string>
+    <plurals name="settings_hub_per_app_allow">
+        <item quantity="one">Allow-list · %d app</item>
+        <item quantity="other">Allow-list · %d apps</item>
+    </plurals>
+    <plurals name="settings_hub_per_app_deny">
+        <item quantity="one">Deny-list · %d app</item>
+        <item quantity="other">Deny-list · %d apps</item>
+    </plurals>
+    <string name="settings_hub_device_id_sent">Sent to your panel</string>
+    <string name="settings_hub_device_id_not_sent">Not sent</string>
+    <!-- %1$s is the test mode ("TCP" or "Proxy (HEAD)"), %2$d the timeout in seconds. -->
+    <string name="settings_hub_latency">%1$s · %2$d s timeout</string>
+    <!-- %1$s is the app version, %2$s the Xray-core version. -->
+    <string name="settings_hub_about">Subspace %1$s · Xray %2$s</string>
+    <!-- While the Xray-core version is loading or unavailable. %1$s is the app version. -->
+    <string name="settings_hub_about_app_only">Subspace %1$s</string>
+    <!-- M8.6 plan ruling R3: no line count, so the hub never reads the log. -->
+    <string name="settings_hub_log_recording">Recording</string>
+    <string name="settings_hub_log_lightweight">Not recording · lightweight mode</string>
 </resources>

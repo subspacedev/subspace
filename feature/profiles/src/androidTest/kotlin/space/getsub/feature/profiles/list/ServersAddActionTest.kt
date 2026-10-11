@@ -20,8 +20,8 @@ import space.getsub.core.ui.theme.SubspaceTheme
 // second entry point that is present whenever the screen is.
 //
 // Fix round 1 (review): the header's own button and the empty state's
-// (`EmptyServersState`, private to ServersGroupList.kt) render the same
-// literal "Add server" text, and the empty state renders exactly when
+// (`EmptyServersState`, private to ServersGroupList.kt) are both add actions,
+// and the empty state renders exactly when
 // ServersState.groups is empty. Rendering the header's button
 // unconditionally would put both on screen at once for an empty list —
 // this pins the invariant that exactly one "Add server" node exists in
@@ -65,12 +65,18 @@ class ServersAddActionTest {
         }
     }
 
+    // The header's button reads "Add" (M8.6 design); the empty state's reads "Add server".
+    // Either way the screen carries exactly one add affordance at a time.
+    private fun addAffordances() =
+        composeRule.onAllNodesWithText("Add").fetchSemanticsNodes().size +
+            composeRule.onAllNodesWithText("Add server").fetchSemanticsNodes().size
+
     @Test
     fun exactlyOneHeaderAddActionExistsAndIsClickableWhenGroupsArePresent() {
         setContent(groups = listOf(group))
 
-        composeRule.onAllNodesWithText("Add server").fetchSemanticsNodes().size shouldBe 1
-        composeRule.onNodeWithText("Add server").assertHasClickAction()
+        addAffordances() shouldBe 1
+        composeRule.onNodeWithText("Add").assertHasClickAction()
     }
 
     @Test
@@ -78,17 +84,28 @@ class ServersAddActionTest {
         var invoked = false
         setContent(groups = listOf(group), onAddProfile = { invoked = true })
 
-        composeRule.onNodeWithText("Add server").performClick()
+        composeRule.onNodeWithText("Add").performClick()
 
         invoked shouldBe true
     }
 
     @Test
     fun exactlyOneAddActionExistsWhenGroupsAreEmpty() {
-        // The header must not add a second "Add server" node alongside the
-        // empty state's own button — this is the sole CTA in this state.
+        // The header must not add a second add node alongside the empty state's own
+        // button — this is the sole CTA in this state.
         setContent(groups = emptyList())
 
+        addAffordances() shouldBe 1
         composeRule.onAllNodesWithText("Add server").fetchSemanticsNodes().size shouldBe 1
+    }
+
+    @Test
+    fun tappingTheEmptyStateAddActionInvokesOnAddProfile() {
+        var invoked = false
+        setContent(groups = emptyList(), onAddProfile = { invoked = true })
+
+        composeRule.onNodeWithText("Add server").performClick()
+
+        invoked shouldBe true
     }
 }

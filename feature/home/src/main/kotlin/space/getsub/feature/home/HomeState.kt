@@ -5,6 +5,7 @@ package space.getsub.feature.home
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TrafficSample
 
 /**
@@ -65,6 +66,10 @@ internal data class HomeState(
     val perTagBreakdownEnabled: Boolean = false,
     /** Lightweight mode is on: no down/up tiles. Mirrors [TunnelConnection.lightweightMode]. */
     val trafficHidden: Boolean = false,
+    /** The active routing rule set's name for the Routing chip, or null when none is active. */
+    val activeRuleSetName: String? = null,
+    /** The effective per-app selection for the Apps chip. */
+    val perApp: PerAppSelection = PerAppSelection.OFF,
 ) {
     /**
      * Whether tapping the connect control should attempt a connection.
@@ -84,7 +89,7 @@ internal data class HomeState(
      * True from [ConnectionState.Failed] as well as [ConnectionState.Disconnected]. Both are
      * terminal states with no tunnel up, and a failure is exactly what a user retries.
      * `TunnelService.startTunnel` already accepts a connect from `Failed` and [HomeScreen]
-     * already renders it as `ConnectVisualState.Disconnected`, so accepting only
+     * already offers Connect for it, so accepting only
      * `Disconnected` here left a control that looked retryable and silently ignored taps
      * until some unrelated lifecycle event happened to reset the state (PR #4 review, P1
      * finding B).
@@ -115,7 +120,7 @@ internal data class HomeState(
      * user is looking straight at.
      *
      * Being true here is necessary but not sufficient: [HomeScreen]'s tap handler and
-     * `ConnectControl`'s own guard each independently refused the tap, and all three had to
+     * the blob's own enabled state each independently refused the tap, and all three had to
      * agree before the control actually did anything.
      */
     val canDisconnect: Boolean

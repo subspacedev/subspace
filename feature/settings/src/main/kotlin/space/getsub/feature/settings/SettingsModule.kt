@@ -30,4 +30,8 @@ internal object SettingsModule {
     @Provides
     @Singleton
     fun tunnelSessionSource(impl: BoundTunnelSessionSource): TunnelSessionSource = impl
+
+    @Provides
+    @Singleton
+    fun platformSdk(impl: BoundPlatformSdk): PlatformSdk = impl
 }

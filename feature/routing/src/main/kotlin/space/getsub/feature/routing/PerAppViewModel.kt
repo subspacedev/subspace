@@ -103,6 +103,9 @@ constructor(
 
     private fun visibleRows(query: String): List<AppRow> =
         allRows
+            // A package that is gone and no longer selected has nothing left to show; derived here
+            // rather than removed from allRows so Discard can bring a deselected ghost back.
+            .filter { row -> row.isInstalled || row.packageName in selected }
             .map { row -> row.copy(isSelected = row.packageName in selected) }
             .filter { row -> query.isBlank() || row.label.contains(query, ignoreCase = true) }
 
@@ -110,6 +113,7 @@ constructor(
         _state.update { current ->
             current.copy(
                 rows = visibleRows(current.query),
+                picked = allRows.filter { it.packageName in selected }.map { it.copy(isSelected = true) },
                 // The whole draft, not the visible part of it — see
                 // [PerAppState.selectedCount].
                 selectedCount = selected.size,
@@ -125,6 +129,12 @@ constructor(
 
     fun toggle(packageName: String) {
         selected = if (packageName in selected) selected - packageName else selected + packageName
+        refresh()
+    }
+
+    /** Empties the draft selection. A change like any other: it makes the draft dirty. */
+    fun clear() {
+        selected = emptySet()
         refresh()
     }
 

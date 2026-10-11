@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -32,7 +34,10 @@ import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
+import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
+import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.VlessOutbound
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.add.UserMessage
@@ -60,6 +65,8 @@ import space.getsub.feature.profiles.add.UserMessage
  * database here — the fixtures below stand in for what a real query would
  * return.
  */
+// One fixture-heavy suite for one ViewModel; splitting would duplicate the FakeProfileSource.
+@Suppress("LargeClass")
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServersViewModelTest {
     // Every field below is exercised by at least one test (search matches
@@ -76,6 +83,7 @@ class ServersViewModelTest {
         kind: ProfileKind = ProfileKind.TYPED,
         lastConnectedAt: Long? = null,
         droppedFromSubscriptionAt: Long? = null,
+        outbound: Outbound? = null,
     ): StoredProfile =
         StoredProfile(
             id = id,
@@ -86,7 +94,7 @@ class ServersViewModelTest {
             address = address,
             port = 443,
             transport = transport,
-            outbound = null,
+            outbound = outbound,
             rawJson = null,
             lastConnectedAt = lastConnectedAt,
             lastError = null,
@@ -129,6 +137,16 @@ class ServersViewModelTest {
 
     // Amsterdam: VLESS, connected more recently than never but less recently
     // than Frankfurt — the middle rung of the LastUsed ordering.
+    // The one outbound :core:xray can run, so a pick of its row is a switch worth an Undo.
+    private val connectableOutbound =
+        VlessOutbound(
+            address = "ams.example.net",
+            port = 443,
+            uuid = "00000000-0000-0000-0000-000000000000",
+            flow = null,
+            stream = StreamSettings(network = "tcp", security = Security.None),
+        )
+
     private val amsterdam =
         storedProfile(
             id = 4L,
@@ -137,6 +155,7 @@ class ServersViewModelTest {
             address = "ams.example.net",
             transport = "tcp · tls · 443",
             lastConnectedAt = 500L,
+            outbound = connectableOutbound,
         )
 
     private val group =
@@ -156,6 +175,8 @@ class ServersViewModelTest {
         private val _activeProfileId = MutableStateFlow<Long?>(null)
         override val activeProfileId: StateFlow<Long?> = _activeProfileId.asStateFlow()
         override val globalHwidEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+        val tunnelActiveState = MutableStateFlow(false)
+        override val tunnelActive: Flow<Boolean> = tunnelActiveState
 
         var lastActiveSet: Long? = null
             private set
@@ -393,6 +414,139 @@ class ServersViewModelTest {
 
             source.lastActiveSet shouldBe berlin.id
             viewModel.state.value.groups.flatMap { it.profiles }.single { it.id == berlin.id }.isActive shouldBe true
+        }
+
+    private fun TestScope.collectSwitched(): List<SwitchedEvent> {
+        val events = mutableListOf<SwitchedEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.switched.collect { events += it } }
+        return events
+    }
+
+    @Test
+    fun `picking another server while the tunnel is up offers an undo`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val events = collectSwitched()
+
+            viewModel.onProfileSelected(amsterdam.id)
+            advanceUntilIdle()
+
+            source.lastActiveSet shouldBe amsterdam.id
+            events shouldBe listOf(SwitchedEvent(newName = "Amsterdam", previousId = frankfurt.id))
+        }
+
+    @Test
+    fun `picking the already active server offers nothing`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val events = collectSwitched()
+
+            viewModel.onProfileSelected(frankfurt.id)
+            advanceUntilIdle()
+
+            events shouldBe emptyList()
+        }
+
+    @Test
+    fun `picking while the tunnel is down offers nothing`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            val events = collectSwitched()
+
+            viewModel.onProfileSelected(amsterdam.id)
+            advanceUntilIdle()
+
+            source.lastActiveSet shouldBe amsterdam.id
+            events shouldBe emptyList()
+        }
+
+    @Test
+    fun `picking with no previous active server offers nothing`() =
+        runTest {
+            source.tunnelActiveState.value = true
+            val events = collectSwitched()
+
+            viewModel.onProfileSelected(amsterdam.id)
+            advanceUntilIdle()
+
+            source.lastActiveSet shouldBe amsterdam.id
+            events shouldBe emptyList()
+        }
+
+    @Test
+    fun `picking a server this build cannot run sets it but offers nothing`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val events = collectSwitched()
+
+            viewModel.onProfileSelected(tokyo.id)
+            advanceUntilIdle()
+
+            source.lastActiveSet shouldBe tokyo.id
+            events shouldBe emptyList()
+        }
+
+    private fun TestScope.collectDeclined(): List<SwitchDeclinedEvent> {
+        val events = mutableListOf<SwitchDeclinedEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.switchDeclined.collect { events += it }
+        }
+        return events
+    }
+
+    @Test
+    fun `picking a server this build cannot run says the tunnel stays on the old one`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(tokyo.id)
+            advanceUntilIdle()
+
+            declined shouldBe listOf(SwitchDeclinedEvent(keptName = "Frankfurt"))
+        }
+
+    @Test
+    fun `an unrunnable pick with the tunnel down is not a declined switch`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(tokyo.id)
+            advanceUntilIdle()
+
+            declined shouldBe emptyList()
+        }
+
+    @Test
+    fun `a runnable pick is never reported as declined`() =
+        runTest {
+            source.setActiveProfile(frankfurt.id)
+            source.tunnelActiveState.value = true
+            val declined = collectDeclined()
+
+            viewModel.onProfileSelected(amsterdam.id)
+            advanceUntilIdle()
+
+            declined shouldBe emptyList()
+        }
+
+    @Test
+    fun `undo sets the previous server back, even after the tunnel went down`() =
+        runTest {
+            source.setActiveProfile(amsterdam.id)
+            source.tunnelActiveState.value = false
+            val events = collectSwitched()
+
+            viewModel.onUndoSwitch(frankfurt.id)
+            advanceUntilIdle()
+
+            source.lastActiveSet shouldBe frankfurt.id
+            events shouldBe emptyList()
         }
 
     @Test

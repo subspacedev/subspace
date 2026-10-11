@@ -40,6 +40,7 @@ private const val KEY_BOOT_AUTOSTART = "boot_autostart"
 private const val KEY_FAIL_CLOSED = "fail_closed"
 private const val KEY_PER_TAG_BREAKDOWN = "per_tag_breakdown"
 private const val KEY_LIGHTWEIGHT_MODE = "lightweight_mode"
+private const val KEY_DYNAMIC_COLOR = "dynamic_color"
 private const val KEY_BATTERY_PROMPT_SHOWN = "battery_prompt_shown"
 
 /**
@@ -440,6 +441,19 @@ internal constructor(
      */
     public val lightweightMode: Flow<Boolean> =
         dao.observe(KEY_LIGHTWEIGHT_MODE).map { stored -> stored?.toBooleanStrictOrNull() ?: false }
+
+    /**
+     * Material You colour from the wallpaper (API 31+). On by default: the owner
+     * chose full dynamic colour (M8.6 spec §1.4). Anything but a stored "false"
+     * reads as on, so a malformed row can never switch dynamic colour off (never
+     * forces the brand palette on).
+     */
+    public val dynamicColor: Flow<Boolean> =
+        dao.observe(KEY_DYNAMIC_COLOR).map { stored -> stored?.toBooleanStrictOrNull() ?: true }
+
+    public suspend fun setDynamicColor(enabled: Boolean) {
+        dao.put(SettingEntity(key = KEY_DYNAMIC_COLOR, value = enabled.toString()))
+    }
 
     /** The one-shot counterpart to [lightweightMode], for a session start. */
     public suspend fun lightweightModeNow(): Boolean =

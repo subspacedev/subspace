@@ -9,6 +9,7 @@ import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.GeoSource
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 
 /**
@@ -84,14 +85,18 @@ internal data class SettingsState(
     val vpnSettingsAfterPrompt: Boolean = false,
     /**
      * Whether xray's `stats`/`policy`/`metrics` blocks are emitted so the per-server traffic
-     * breakdown (Task 7's [SettingsDiagnosticsSection]) can be shown on Home. Defaults to off —
-     * matches [space.getsub.core.data.SettingsRepository.perTagBreakdown]'s own default, which
-     * that property's KDoc documents as a security decision, not a taste one: see
-     * [SettingsDiagnosticsSection]'s summary text for what turning it on exposes.
+     * breakdown (the hub's [space.getsub.feature.settings.hub.DiagnosticsGroup]) can be shown on
+     * Home. Defaults to off — matches [space.getsub.core.data.SettingsRepository.perTagBreakdown]'s
+     * own default, which that property's KDoc documents as a security decision, not a taste one:
+     * see that group's summary text for what turning it on exposes.
      */
     val perTagBreakdown: Boolean = false,
     /** No traffic numbers and no session log, for slower phones. See [SettingsSource.lightweightMode]. */
     val lightweightMode: Boolean = false,
+    /** Use wallpaper colours. See [SettingsSource.dynamicColor]. */
+    val dynamicColor: Boolean = true,
+    /** True on Android 12+, where dynamic colour exists; the switch is hidden otherwise. */
+    val dynamicColorAvailable: Boolean = false,
     /**
      * True while a tunnel session is up, mirrored from [TunnelSessionSource] (ARCHITECTURE.md
      * ARCHITECTURE.md §5.5: never inferred locally — the same discipline
@@ -103,13 +108,21 @@ internal data class SettingsState(
      * connect, and is deliberately not restarted just to apply a diagnostic.
      */
     val sessionConnected: Boolean = false,
+    /** The active routing rule set's name, for the hub row. Displayed, never logged. Null when none. */
+    val activeRuleSetName: String? = null,
+    /** The **effective** per-app selection (the one `:service` applies), for the hub row. */
+    val perApp: PerAppSelection = PerAppSelection.OFF,
 ) {
     /** One row per install filename. See [geoRowsFor]'s KDoc for exactly how ground truth is chosen. */
     val geoRows: List<GeoRow>
         get() = geoRowsFor(geoSources, selectedGeoSourceIds, geoInstalledAssets)
 
+    /** The source in effect per install filename (stored choice, else installed, else default). */
+    val effectiveGeoSourceIds: Set<String>
+        get() = effectiveGeoSourceIds(geoSources, selectedGeoSourceIds, geoInstalledAssets)
+
     /**
-     * Whether [SettingsDiagnosticsSection] shows the "applies to your next connection" notice
+     * Whether [space.getsub.feature.settings.hub.DiagnosticsGroup] shows the "applies to your next connection" notice
      * beneath the per-server breakdown switch (ruling R43, replacing review finding I-2's one-way
      * `perTagBreakdownPendingReconnect` latch).
      *

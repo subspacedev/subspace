@@ -11,8 +11,12 @@
 
     <string name="routing_create_description">Create rule set</string>
     <string name="routing_back_description">Back</string>
-    <string name="routing_edit_description">Edit %1$s</string>
-    <string name="routing_delete_description">Delete %1$s</string>
+    <string name="routing_more_description">More actions for %1$s</string>
+    <string name="routing_edit_label">Edit</string>
+    <string name="routing_delete_label">Delete</string>
+    <string name="routing_delete_title">Delete “%1$s”?</string>
+    <string name="routing_delete_body">This rule set is removed for good. If it is the one in use, routing turns off.</string>
+    <string name="routing_delete_cancel">Cancel</string>
     <string name="routing_activate_description">Activate %1$s</string>
 
     <plurals name="routing_entry_count">
@@ -62,7 +66,6 @@
 
     <!-- Imported profiles are read-only; editing means editing a copy (M6 spec §4.2). -->
     <string name="routing_duplicate_label">Duplicate</string>
-    <string name="routing_duplicate_description">Duplicate and edit %1$s</string>
 
     <string name="routing_import_menu_description">Import a routing profile</string>
     <string name="routing_import_clipboard">Import from clipboard</string>
@@ -75,37 +78,63 @@
          screen echoes back — every entry field below only ever displays what the user themself
          typed into it, never logs it, and EntryProblem's own mapping below carries no entry
          text either. -->
-    <string name="rule_set_editor_title">Rule set</string>
+    <!-- M8.6 spec §4.6: the design's copy (Phone.dc.html, rule set editor). -->
+    <string name="rule_set_editor_title_new">New rule set</string>
+    <string name="rule_set_editor_title_edit">Edit rule set</string>
     <string name="rule_set_editor_back_description">Back</string>
     <string name="rule_set_editor_save_button">Save</string>
+    <string name="rule_set_editor_saving">Saving…</string>
     <string name="rule_set_editor_name_label">Name</string>
+    <string name="rule_set_editor_name_placeholder">e.g. Streaming abroad</string>
 
-    <string name="rule_set_editor_order_label">Rule order</string>
+    <string name="rule_set_editor_order_label">Order</string>
+    <string name="rule_set_editor_order_note">First match wins</string>
     <string name="rule_set_editor_move_earlier_description">Move %1$s earlier</string>
     <string name="rule_set_editor_move_later_description">Move %1$s later</string>
 
     <string name="rule_set_editor_domain_strategy_label">Domain strategy</string>
     <string name="rule_set_editor_domain_strategy_as_is">As is</string>
-    <string name="rule_set_editor_domain_strategy_ip_if_non_match">IP if no domain match</string>
+    <string name="rule_set_editor_domain_strategy_ip_if_non_match">IP if no match</string>
     <string name="rule_set_editor_domain_strategy_ip_on_demand">IP on demand</string>
+    <string name="rule_set_editor_domain_strategy_as_is_help">Match on domain names only. Fastest; IP rules only catch traffic that already uses an IP.</string>
+    <string name="rule_set_editor_domain_strategy_ip_if_non_match_help">When no domain rule matches, resolve the name and try the IP rules.</string>
+    <string name="rule_set_editor_domain_strategy_ip_on_demand_help">Resolve every name first so IP rules always apply. Slowest.</string>
 
     <string name="rule_set_editor_outcome_block">Block</string>
     <string name="rule_set_editor_outcome_proxy">Proxy</string>
     <string name="rule_set_editor_outcome_direct">Direct</string>
+    <string name="rule_set_editor_outcome_block_description">Dropped on the phone</string>
+    <string name="rule_set_editor_outcome_proxy_description">Sent through the tunnel</string>
+    <string name="rule_set_editor_outcome_direct_description">Skips the tunnel</string>
+    <string name="rule_set_editor_bucket_empty">Empty</string>
     <string name="rule_set_editor_field_sites">Sites</string>
     <string name="rule_set_editor_field_ips">IPs</string>
-    <!-- "%1$s → %2$s", e.g. "Block → Sites" -->
-    <string name="rule_set_editor_section_title">%1$s → %2$s</string>
+    <!-- Fix S5: an empty field collapses to this button. -->
+    <string name="rule_set_editor_add_sites">Add sites</string>
+    <string name="rule_set_editor_add_ips">Add IPs</string>
 
-    <string name="rule_set_editor_entry_hint">Domain, address or geosite:/geoip: code</string>
+    <string name="rule_set_editor_entry_hint_sites">example.com or geosite:…</string>
+    <string name="rule_set_editor_entry_hint_ips">10.0.0.0/8 or geoip:…</string>
     <string name="rule_set_editor_add_description">Add entry</string>
-    <!-- ARCHITECTURE.md §5.6: deliberately does not interpolate the entry itself, unlike routing_edit_description's
+    <!-- ARCHITECTURE.md §5.6: deliberately does not interpolate the entry itself, unlike routing_activate_description's
          rule-set name (a label the user chose, not a value it routes) — this row's own visible Text
          already carries the entry for a screen reader to reach. -->
     <string name="rule_set_editor_remove_entry_description">Remove entry</string>
-    <string name="rule_set_editor_browse_categories_description">Browse categories</string>
-    <!-- "%1$s (%2$d rules)", e.g. "category-ads-all (42 rules)" -->
-    <string name="rule_set_editor_category_row">%1$s (%2$d rules)</string>
+    <string name="rule_set_editor_browse">Browse</string>
+    <!-- %1$s is the rule count, already formatted with digit grouping. -->
+    <plurals name="rule_set_editor_category_rules">
+        <item quantity="one">%1$s rule</item>
+        <item quantity="other">%1$s rules</item>
+    </plurals>
+
+    <!-- The design's inline checks (EntryHint), shown before any EntryProblem below. -->
+    <string name="rule_set_editor_hint_spaces_or_commas">Spaces and commas aren\'t allowed</string>
+    <string name="rule_set_editor_hint_missing_category">Add a category after the colon</string>
+    <string name="rule_set_editor_hint_use_geosite">Use geosite: for sites</string>
+    <string name="rule_set_editor_hint_use_geoip">Use geoip: for IPs</string>
+    <string name="rule_set_editor_hint_malformed_ext">Use ext:file.dat:category</string>
+    <string name="rule_set_editor_hint_not_a_domain">Not a domain — try example.com or geosite:google</string>
+    <string name="rule_set_editor_hint_not_an_ip">Not an IP or range — try 10.0.0.0/8 or geoip:private</string>
 
     <string name="rule_set_editor_problem_blank">Entry cannot be blank</string>
     <string name="rule_set_editor_problem_missing_geo_code">Add a code after the colon, e.g. geosite:cn</string>
@@ -121,24 +150,47 @@
     <!-- %1$s is the conflicting rule set's own name — exempt from ARCHITECTURE.md §5.6, see SaveProblem.NameConflict's own KDoc. -->
     <string name="rule_set_editor_save_problem_name_conflict">A rule set named \"%1$s\" already exists. Choose a different name.</string>
 
+    <!-- DiscardChangesDialog, shared by the rule set editor and Per-app (M8.6 spec §4.8). -->
+    <string name="discard_changes_title">Discard changes?</string>
+    <string name="discard_changes_confirm">Discard</string>
+    <string name="discard_changes_cancel">Keep editing</string>
+    <string name="rule_set_editor_discard_body">Your rule set changes haven\'t been saved.</string>
+
     <!-- Per-app proxy picker (Task 8). ARCHITECTURE.md §5.6: a package name and an app's own label are the only
          user-visible values this screen shows — never logged, see AppRow's own KDoc. -->
     <string name="per_app_title">Per-app proxy</string>
     <string name="per_app_mode_off">Off</string>
-    <string name="per_app_mode_off_summary">Every app uses the tunnel.</string>
-    <string name="per_app_mode_allow">Only selected apps</string>
-    <string name="per_app_mode_allow_summary">Selected apps use the tunnel; everything else connects directly.</string>
-    <string name="per_app_mode_deny">All except selected</string>
-    <string name="per_app_mode_deny_summary">Selected apps connect directly; everything else uses the tunnel.</string>
+    <string name="per_app_mode_off_sub">Every app</string>
+    <string name="per_app_mode_allow">Allow-list</string>
+    <string name="per_app_mode_allow_sub">Only these</string>
+    <string name="per_app_mode_deny">Deny-list</string>
+    <string name="per_app_mode_deny_sub">All but these</string>
     <string name="per_app_search_hint">Search apps</string>
     <string name="per_app_not_installed">Not installed</string>
     <string name="per_app_empty_allow_list">Select at least one app, or switch the mode off. A tunnel no app can use looks connected but carries nothing.</string>
-    <string name="per_app_reconnect_notice">Saving will reconnect the tunnel.</string>
+    <string name="per_app_reconnect_notice">Saving reconnects the tunnel</string>
     <string name="per_app_save">Save</string>
-    <string name="per_app_discard_title">Discard changes?</string>
-    <string name="per_app_discard_confirm">Discard</string>
-    <string name="per_app_discard_cancel">Keep editing</string>
+    <string name="per_app_discard_body">Your app selection hasn\'t been saved.</string>
     <string name="per_app_back">Back</string>
+    <string name="per_app_summary_off">Every app on this phone uses the tunnel.</string>
+    <string name="per_app_summary_allow_empty">Tap the apps that should use the tunnel.</string>
+    <string name="per_app_summary_deny_empty">Tap apps below that should skip the tunnel.</string>
+    <plurals name="per_app_summary_allow">
+        <item quantity="one">Only %d app uses the tunnel. Everything else goes direct.</item>
+        <item quantity="other">Only %d apps use the tunnel. Everything else goes direct.</item>
+    </plurals>
+    <plurals name="per_app_summary_deny">
+        <item quantity="one">%d app skips the tunnel. Everything else stays protected.</item>
+        <item quantity="other">%d apps skip the tunnel. Everything else stays protected.</item>
+    </plurals>
+    <plurals name="per_app_off_kept">
+        <item quantity="one">Your %d picked app is kept for when you switch back.</item>
+        <item quantity="other">Your %d picked apps are kept for when you switch back.</item>
+    </plurals>
+    <string name="per_app_tray_allow">Using the tunnel · %d</string>
+    <string name="per_app_tray_deny">Skipping the tunnel · %d</string>
+    <string name="per_app_clear">Clear</string>
+    <string name="per_app_tray_remove">Remove %1$s</string>
     <plurals name="per_app_selected_count">
         <item quantity="one">%d app selected</item>
         <item quantity="other">%d apps selected</item>
@@ -147,7 +199,7 @@
     <!-- Import review sheet (Task 12). M6 spec §6: every channel confirms here.
          Geo rows interpolate host and filename only — never a URL (§5.6).
          Profile name is the provider-supplied label, same exemption as
-         routing_edit_description. -->
+         routing_activate_description. -->
     <string name="import_review_title">Review routing profile</string>
     <string name="import_review_rejected_title">Could not import</string>
     <string name="import_review_confirm">Import</string>

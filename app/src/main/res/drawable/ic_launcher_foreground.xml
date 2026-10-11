@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Additional permission: see Stores Exception in LICENSE. -->
+<!-- The 5b bun, from the design snapshot (Subspace Mobile.dc.html, variant 5b). Scaled to sit inside the 66 dp adaptive-icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Placeholder mark: a simple ring within the adaptive-icon safe zone.
-         Real branding is an M9 concern (docs/agent/roadmap.md, M9). -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,30 A24,24 0 1 1 53.99,30"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="6" />
+    <group
+        android:scaleX="0.165"
+        android:scaleY="0.165"
+        android:translateX="27.60"
+        android:translateY="29.91">
+        <path
+            android:fillColor="#0F2E2E"
+            android:pathData="M232.4 59.9C223.2 45.3 213.8 30.5 201.4 18.9C188.9 7.2 172.8 -1 156.3 0.1C141.7 1 128.3 9.1 117.7 19.6C107 30.1 98.8 43 90.7 55.9C68.7 90.5 46.7 125.1 24.8 159.7C14.3 176.1 3.6 193.3 0.7 212.9C-2.8 236.6 6.6 260.7 23.3 276.4C40.7 292.9 69 291.5 90.2 287C113.5 282.1 136.2 272.8 160 272.8C180.3 272.8 199.9 279.7 219.7 284.7C239.5 289.7 260.7 292.7 279.8 285.3C303.5 276.2 320.5 250.1 320 223.3C319.6 198.9 293.5 156.8 293.5 156.8C293.5 156.8 252.8 92.2 232.4 59.9Z" />
+    </group>
 </vector>

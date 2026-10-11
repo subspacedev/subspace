@@ -13,7 +13,9 @@ plugins {
 android {
     namespace = "space.getsub"
     // See the note in subspace.android.library: compileSdk leads targetSdk on purpose.
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         applicationId = "space.getsub"
@@ -84,11 +86,6 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
-    // FloatingNavigationBar's NavItem needs an ImageVector per top-level
-    // destination. -core (not -extended) only: Home/List/Settings cover the
-    // three top-level destinations without pulling in the several-thousand-icon
-    // extended set. THIRD_PARTY.md records this.
-    implementation(libs.compose.material.icons.core)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.androidx.core.ktx)

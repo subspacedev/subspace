@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.compose")
     id("subspace.android.hilt")
+    // M8.6 spec §7.1: screenshot tests for the log viewer.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -33,11 +35,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)
-    // Appearance's system/light/dark segmented control needs no icon (Material3
-    // SegmentedButton draws its own selection check); About's three rows use
-    // SettingRow's icon tile — same -core-only choice as every other module,
-    // see THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // SettingsViewModel drives its state through viewModelScope, which needs a
     // Main dispatcher — same gap :feature:home's and :feature:profiles' own
     // build.gradle.kts document.
@@ -50,4 +47,9 @@ dependencies {
     androidTestImplementation(libs.kotest.assertions)
     debugImplementation(libs.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }

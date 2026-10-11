@@ -20,7 +20,8 @@ import space.getsub.core.model.TrafficSample
  * never logged (see [TagTraffic]'s own KDoc). `:core:model` cannot implement
  * [Parcelable] itself (ARCHITECTURE.md §4: zero Android imports), so [perTag]
  * is marshalled here as three parallel arrays rather than a list of a second,
- * Parcelable-wrapped tag type.
+ * Parcelable-wrapped tag type. [throughput] is the session's 28-`Long` history, written after
+ * the tag arrays; it is byte counts, not config content.
  */
 public data class TrafficSampleParcel(
     val uplinkBytes: Long,
@@ -28,6 +29,7 @@ public data class TrafficSampleParcel(
     val uplinkPackets: Long,
     val downlinkPackets: Long,
     val perTag: List<TagTraffic> = emptyList(),
+    val throughput: List<Long> = emptyList(),
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         uplinkBytes = parcel.readLong(),
@@ -35,6 +37,7 @@ public data class TrafficSampleParcel(
         uplinkPackets = parcel.readLong(),
         downlinkPackets = parcel.readLong(),
         perTag = parcel.readTagTraffic(),
+        throughput = parcel.createLongArray()?.toList().orEmpty(),
     )
 
     override fun writeToParcel(
@@ -46,6 +49,7 @@ public data class TrafficSampleParcel(
         dest.writeLong(uplinkPackets)
         dest.writeLong(downlinkPackets)
         dest.writeTagTraffic(perTag)
+        dest.writeLongArray(throughput.toLongArray())
     }
 
     override fun describeContents(): Int = 0
@@ -57,6 +61,7 @@ public data class TrafficSampleParcel(
             uplinkPackets = uplinkPackets,
             downlinkPackets = downlinkPackets,
             perTag = perTag,
+            throughput = throughput,
         )
 
     companion object {
@@ -75,6 +80,7 @@ public data class TrafficSampleParcel(
                 uplinkPackets = sample.uplinkPackets,
                 downlinkPackets = sample.downlinkPackets,
                 perTag = sample.perTag,
+                throughput = sample.throughput,
             )
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import io.kotest.matchers.shouldBe
@@ -220,7 +221,8 @@ class EditorScreenTest {
         var saveCalled = false
         setContent(state = typedState, actions = noOpActions(onSave = { saveCalled = true }))
 
-        composeRule.onNodeWithText("Save").performClick()
+        // The restyled cards push Save below the fold on a phone; the form scrolls.
+        composeRule.onNodeWithText("Save").performScrollTo().performClick()
 
         saveCalled shouldBe true
     }
@@ -485,5 +487,49 @@ class EditorScreenTest {
         composeRule.onNodeWithText(context.getString(R.string.editor_raw_json_convert_routing)).performClick()
 
         convertCalled shouldBe true
+    }
+
+    // Part 3 Task 6: the security kind is three ModeTiles, not a dropdown — each is a radio
+    // button, and tapping one reports its EditorSecurityKind.
+    @Test
+    fun tappingASecurityTileReportsItsKind() {
+        var picked: EditorSecurityKind? = null
+        setContent(
+            state = typedState.copy(securityKind = EditorSecurityKind.None),
+            actions = noOpActions().copy(onSecurityKindChanged = { picked = it }),
+        )
+
+        composeRule.onNodeWithText("Reality").performScrollTo().performClick()
+
+        picked shouldBe EditorSecurityKind.Reality
+    }
+
+    @Test
+    fun theAllowInsecureSwitchRowTogglesFromItsLabel() {
+        var checked: Boolean? = null
+        setContent(
+            state = typedState.copy(securityKind = EditorSecurityKind.Tls),
+            actions = noOpActions().copy(onTlsAllowInsecureChanged = { checked = it }),
+        )
+
+        composeRule.onNodeWithText("Allow insecure").performScrollTo().performClick()
+
+        checked shouldBe true
+    }
+
+    @Test
+    fun aRejectionAndAnAdvisoryEachRenderTheirOwnBanner() {
+        setContent(
+            state = rawJsonState.copy(
+                runsAsWritten = false,
+                passthroughRejection = PassthroughRejection.NoOutbounds,
+                advisories = listOf(PassthroughAdvisory.DanglingRoutingReference),
+            ),
+        )
+
+        composeRule.onNodeWithText(context.getString(R.string.editor_raw_json_rejected_no_outbounds)).assertExists()
+        composeRule.onNodeWithText(
+            context.getString(R.string.editor_raw_json_advisory_dangling_reference),
+        ).assertExists()
     }
 }

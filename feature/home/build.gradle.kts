@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.compose")
     id("subspace.android.hilt")
+    // M8.6 spec §7.1: screenshot tests for every :core:ui component and Home state.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -18,9 +20,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)
-    // The "Add server" chip's leading icon. -core only, same choice and
-    // reasoning as :app's NavItem icons — see THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // subspace.android.library already wires junit + kotest-assertions for unit
     // tests, but not this: HomeViewModel drives its state through
     // viewModelScope, which needs a Main dispatcher. Without it, exercising
@@ -33,4 +32,10 @@ dependencies {
     androidTestImplementation(libs.kotest.assertions)
     debugImplementation(libs.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`, so an alpha BOM bump
+// cannot silently restyle a component.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }

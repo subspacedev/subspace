@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.DnsState
@@ -145,8 +146,11 @@ class RoutingListScreenContentTest {
         setContent(RoutingState(ruleSets = listOf(providerRow)))
 
         composeRule.onNodeWithText("From \"NameVPN\"").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Duplicate and edit vpn").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Edit vpn").assertDoesNotExist()
+        // Duplicate and Edit now live in the card's overflow menu, so it is opened first; the
+        // assertion is unchanged in meaning: Duplicate is offered, Edit is not.
+        composeRule.onNodeWithContentDescription("More actions for vpn").performClick()
+        composeRule.onNodeWithText("Duplicate").assertIsDisplayed()
+        composeRule.onNodeWithText("Edit").assertDoesNotExist()
     }
 
     @Test
@@ -154,7 +158,9 @@ class RoutingListScreenContentTest {
         setContent(RoutingState(ruleSets = listOf(failedButActivatableRow)))
 
         composeRule.onNodeWithText("Made here").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Edit lan").assertIsDisplayed()
+        // Edit moved into the overflow menu (see the imported-profile test above).
+        composeRule.onNodeWithContentDescription("More actions for lan").performClick()
+        composeRule.onNodeWithText("Edit").assertIsDisplayed()
     }
 
     @Test
@@ -250,5 +256,50 @@ class RoutingListScreenContentTest {
         setContent(RoutingState(ruleSets = listOf(blockedRow)))
 
         composeRule.onNodeWithText("Off").assertIsDisplayed()
+    }
+
+    private fun contentRecordingDeletes(deleted: MutableList<Long>) {
+        composeRule.setContent {
+            SubspaceTheme {
+                RoutingListScreenContent(
+                    state = RoutingState(ruleSets = listOf(blockedRow, failedButActivatableRow)),
+                    actions =
+                    RoutingListActions(
+                        onActivate = {},
+                        onDelete = { deleted += it },
+                        onCreateRuleSet = {},
+                        onEditRuleSet = {},
+                        onBack = {},
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun cancellingTheDeleteDialogDeletesNothing() {
+        val deleted = mutableListOf<Long>()
+        contentRecordingDeletes(deleted)
+
+        composeRule.onNodeWithContentDescription("More actions for lan").performClick()
+        composeRule.onNodeWithText("Delete").performClick()
+        composeRule.onNodeWithText("Cancel").performClick()
+
+        composeRule.onNodeWithText("Delete \u201clan\u201d?").assertDoesNotExist()
+        deleted shouldBe emptyList()
+    }
+
+    @Test
+    fun confirmingTheDeleteDialogDeletesTheChosenRow() {
+        val deleted = mutableListOf<Long>()
+        contentRecordingDeletes(deleted)
+
+        composeRule.onNodeWithContentDescription("More actions for lan").performClick()
+        composeRule.onNodeWithText("Delete").performClick()
+        composeRule.onNodeWithText("Delete \u201clan\u201d?").assertIsDisplayed()
+        // The dialog's confirm button is the only "Delete" left once the menu has closed.
+        composeRule.onNodeWithText("Delete").performClick()
+
+        deleted shouldBe listOf(2L)
     }
 }

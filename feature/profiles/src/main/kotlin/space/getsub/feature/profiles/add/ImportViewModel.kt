@@ -115,6 +115,34 @@ internal fun SubscriptionSyncFailure.toUserMessage(): UserMessage =
 /** True for an absolute `http`/`https` URL with a host — [DirectiveKind.Url]'s own rule. */
 private fun isSubscriptionUrl(url: String): Boolean = DirectiveKind.Url.canonicalise(url) is KindResult.Canonical
 
+/** Where the sheet's one input box sends what it was given. */
+internal sealed interface ImportRoute {
+    /** The whole input is one http(s) subscription URL (already trimmed). */
+    data class Subscription(
+        val url: String,
+    ) : ImportRoute
+
+    /** Everything else: share links, base64, Xray JSON, Clash YAML, mixed text. Never trimmed or altered. */
+    data class Parse(
+        val raw: String,
+    ) : ImportRoute
+}
+
+/**
+ * Routes the single add-server input (M8.6 Part 3 Task 7b). Blank is `null`. The *whole* trimmed
+ * input being exactly one absolute http(s) URL with a host is a [ImportRoute.Subscription]; nothing
+ * else is guessed at, so a URL line among share links stays a [ImportRoute.Parse] input. Pure, and
+ * never logs [input] (ARCHITECTURE.md §5.6).
+ */
+internal fun routeImport(input: String): ImportRoute? {
+    val trimmed = input.trim()
+    return when {
+        trimmed.isEmpty() -> null
+        isSubscriptionUrl(trimmed) -> ImportRoute.Subscription(trimmed)
+        else -> ImportRoute.Parse(input)
+    }
+}
+
 /**
  * What [AddServerSheet] renders.
  *
@@ -235,6 +263,31 @@ constructor(
     }
 
     /**
+     * The single entry point for the sheet's one input box, the clipboard row, a picked file and a
+     * scanned QR code: routes [raw] with [routeImport] to [addSubscription] (the whole input is one
+     * URL) or [import] (anything else). A blank [raw] still goes to [import], which reports it the
+     * way it always has.
+     *
+     * @return false only when [fileReadOwner] no longer owns the read; see [import].
+     */
+    fun submit(
+        raw: String,
+        fileReadOwner: Long? = null,
+    ): Boolean =
+        when (val route = routeImport(raw)) {
+            is ImportRoute.Subscription -> {
+                if (fileReadOwner != null && activeFileReadOwner != fileReadOwner) {
+                    false
+                } else {
+                    activeFileReadOwner = null
+                    addSubscription(route.url)
+                    true
+                }
+            }
+            is ImportRoute.Parse, null -> import(raw, fileReadOwner)
+        }
+
+    /**
      * Parses [raw] and persists whatever [SubscriptionParser] could make of it.
      *
      * ARCHITECTURE.md §5.6/§10.4: never throws and never logs [raw] — a clipboard paste or an
@@ -337,7 +390,16 @@ constructor(
                 profileSource.deleteSubscription(added.id)
             }
 
-            _state.update { it.copy(busy = false, subscriptionResult = result.toUserMessage()) }
+            // Mirrors the parse leg: clear the box once the subscription has landed (a URL can carry
+            // a token, and a second tap would silently re-sync); keep it on any failure. Only when
+            // the box holds this URL: a QR or clipboard URL must not wipe unrelated typed text.
+            _state.update {
+                it.copy(
+                    input = if (result is SyncResult.Synced && it.input.trim() == url.trim()) "" else it.input,
+                    busy = false,
+                    subscriptionResult = result.toUserMessage(),
+                )
+            }
         }
     }
 }

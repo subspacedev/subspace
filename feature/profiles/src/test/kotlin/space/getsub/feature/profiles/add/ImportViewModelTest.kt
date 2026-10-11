@@ -616,6 +616,32 @@ class ImportViewModelTest {
         }
 
     @Test
+    fun `a subscription that lands clears the box when the box held that URL`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("  https://example.com/sub ")
+
+            viewModel.submit("  https://example.com/sub ")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe ""
+        }
+
+    @Test
+    fun `a subscription from a scan keeps unrelated typed text`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("something I was typing")
+
+            viewModel.submit("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe "something I was typing"
+        }
+
+    @Test
     fun addSubscriptionWithAnInvalidUrlIsANoOp() =
         runTest {
             val repository = FakeProfileSource()
@@ -658,5 +684,108 @@ class ImportViewModelTest {
             viewModel.state.first { it.subscriptionResult != null }
 
             viewModel.state.value.busy shouldBe false
+        }
+
+    // Task 7b: submit() is the one entry point; it routes to addSubscription or import.
+
+    @Test
+    fun `submit of a lone url adds a subscription and does not parse`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("  https://example.com/sub\n")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            repository.lastAddSubscriptionUrl shouldBe "https://example.com/sub"
+            viewModel.state.value.completed shouldBe false
+        }
+
+    @Test
+    fun `submit of share links imports and does not add a subscription`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit(validRawJson)
+            advanceUntilIdle()
+            viewModel.state.first { it.completed }
+
+            repository.addSubscriptionCallCount shouldBe 0
+            viewModel.state.value.imported shouldBe 1
+        }
+
+    @Test
+    fun `submit of mixed links and a url line imports`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("https://example.com/sub\nvless://x")
+            advanceUntilIdle()
+            viewModel.state.first { it.completed }
+
+            repository.addSubscriptionCallCount shouldBe 0
+        }
+
+    @Test
+    fun `submit of a url from a file read that lost ownership does nothing`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+            val stale = viewModel.beginFileRead()
+            viewModel.beginFileRead()
+
+            viewModel.submit("https://example.com/sub", stale) shouldBe false
+            advanceUntilIdle()
+
+            repository.addSubscriptionCallCount shouldBe 0
+        }
+
+    @Test
+    fun `submit of a url from the owning file read adds a subscription and releases ownership`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+            val owner = viewModel.beginFileRead()
+
+            viewModel.submit("https://example.com/sub", owner) shouldBe true
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            // ownership released: a late cancel must not flip busy for a later operation
+            viewModel.cancelFileRead(owner)
+            viewModel.state.value.busy shouldBe false
+        }
+
+    @Test
+    fun `a synced subscription clears the input box`() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+            viewModel.onInputChanged("https://example.com/sub?token=abc")
+
+            viewModel.submit("https://example.com/sub?token=abc")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe ""
+        }
+
+    @Test
+    fun `a failed subscription keeps the input box unchanged`() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+            viewModel.onInputChanged("https://example.com/sub")
+
+            viewModel.submit("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe "https://example.com/sub"
         }
 }

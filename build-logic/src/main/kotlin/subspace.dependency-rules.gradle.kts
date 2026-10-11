@@ -153,6 +153,44 @@ val moduleBoundaries = tasks.register("checkModuleBoundaries") {
     }
 }
 
+// M8.6 spec §1.2 item 2: the experimental Material 3 Expressive APIs are alpha
+// and change between releases. Confining their opt-in to :core:ui means an
+// alpha bump breaks one module, and moving to 1.5.0 stable later touches one
+// module. Screens use :core:ui's components instead.
+val expressiveOptIn = tasks.register("checkExpressiveOptIn") {
+    group = "verification"
+    description = "Fails if ExperimentalMaterial3ExpressiveApi is used outside :core:ui (M8.6 spec §1.2)."
+
+    val path = project.path
+    val rootDir = project.rootDir
+    // The module's own build scripts too: a compiler flag such as
+    // `freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")`
+    // opts the whole module in without the name appearing in any .kt file.
+    // Only the module directory's top level, so a parent project (":feature")
+    // does not scan its children's scripts on their behalf.
+    val sources = fileTree(project.projectDir) {
+        include("src/**/*.kt")
+        include("*.gradle.kts")
+    }
+    inputs.files(sources)
+
+    doLast {
+        if (path == ":core:ui") return@doLast
+        val offenders = sources.files
+            .filter { it.readText().contains("ExperimentalMaterial3ExpressiveApi") }
+            .map { it.relativeTo(rootDir).path }
+            .sorted()
+        if (offenders.isNotEmpty()) {
+            error(
+                "ExperimentalMaterial3ExpressiveApi outside :core:ui (M8.6 spec §1.2). " +
+                    "Wrap the API in a :core:ui component instead (no module-wide -opt-in flag either):\n" +
+                    offenders.joinToString("\n") { "  - $it" },
+            )
+        }
+    }
+}
+
 tasks.matching { it.name == "check" }.configureEach {
     dependsOn(moduleBoundaries)
+    dependsOn(expressiveOptIn)
 }

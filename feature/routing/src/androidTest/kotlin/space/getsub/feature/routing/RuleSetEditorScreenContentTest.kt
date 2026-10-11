@@ -2,22 +2,35 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.routing
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.model.BucketField
 import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RuleBucket
 import space.getsub.core.ui.theme.SubspaceTheme
@@ -44,6 +57,7 @@ class RuleSetEditorScreenContentTest {
         RuleSetEditorActions(
             onBack = {},
             onNameChanged = {},
+            onDraftChanged = { _, _, _ -> },
             onAddEntry = { _, _, _ -> },
             onRemoveEntry = { _, _, _ -> },
             onMoveEarlier = {},
@@ -98,45 +112,135 @@ class RuleSetEditorScreenContentTest {
         )
 
         // Six sections exist (BLOCK/PROXY/DIRECT × SITES/IPS); only the three SITES ones offer
-        // "Browse categories" — the three IPS ones must not, since ipCategories is empty.
-        composeRule.onAllNodesWithText("Browse categories").assertCountEquals(3)
+        // Browse — the three IPS ones must not, since ipCategories is empty.
+        //
+        // M8.6 Part 4 Task 6: the button reads "Browse" (the design's copy), not "Browse
+        // categories". An empty field now collapses to its Add button (fix S5), and Browse stays
+        // beside that button, so all three SITES fields still offer it without being opened.
+        composeRule.onAllNodesWithText("Browse").assertCountEquals(3)
     }
 
     @Test
     fun noCategoriesMeansTheBrowseAffordanceNeverAppears() {
         setContent(RuleSetEditorState(loading = false, name = "ads"))
 
-        composeRule.onNodeWithText("Browse categories").assertDoesNotExist()
+        composeRule.onNodeWithText("Browse").assertDoesNotExist()
     }
 
     // Finding 4: a rejected entry must keep its text and show its reason on the field it belongs
     // to, not clear silently and report off-screen.
     //
-    // Fix round 3 (device run): this test originally typed into index [0] — the very first
-    // entry field, BLOCK×SITES (six sections render in `state.order` × `BucketField.entries`
-    // order, and `BucketField.entries` is [SITES, IPS], so index 0 is always a SITES field).
-    // "999.1.1.1" is *not* malformed for SITES — RoutingEntries.siteProblem only rejects
-    // whitespace/'/'/':' , and this string has none, so it round-trips as a plain (if unusual)
-    // domain-shaped literal. `liveProblem` was therefore always null and nothing was ever
-    // composed — confirmed on-device with `onRoot().printToLog(...)`: a full merged-tree dump
-    // taken right after `performTextInput`, from the top bar down through the Save button (all
-    // six sections present), contained zero occurrences of "Not a valid address or CIDR range"
-    // anywhere. Not an off-screen/finder problem — the string was never in the tree to find.
-    // Index [1] is the first IPS field (BLOCK×IPS), where the same string *is* malformed
-    // (999 is not a valid IPv4 octet) and is well within the default viewport, no scroll needed.
+    // Fix round 3 (device run): typing into a SITES field instead proved nothing — "999.1.1.1" is
+    // not malformed for SITES under RoutingEntries.siteProblem, so no reason was ever composed.
+    // This types into the first IPS field (BLOCK×IPS), where 999 is not a valid IPv4 octet.
+    //
+    // M8.6 Part 4 Task 6, three changes of selector, same assertion:
+    // - The draft now lives in RuleSetEditorState (so isDirty can count it, fix A11) rather than
+    //   in the field, so a static state would never show what was typed. The harness below feeds
+    //   onDraftChanged back into the state, as RuleSetEditorViewModel.setDraft does.
+    // - An empty field is collapsed to "Add IPs" (fix S5); BLOCK is first in the default order, so
+    //   [0] opens BLOCK×IPS, and the field is then found by its tag rather than its old label.
+    // - The design's IP check accepts "999.1.1.1" (it only counts digits), so the message shown is
+    //   still EntryProblem's — R4 runs it second and it rejects the octet.
     @Test
     fun typingAMalformedAddressKeepsTheTextAndShowsTheReasonInline() {
         var added: String? = null
-        setContent(
-            state = RuleSetEditorState(loading = false, name = "ads"),
-            actions = noOpActions.copy(onAddEntry = { _, _, entry -> added = entry }),
-        )
+        composeRule.setContent {
+            var state by remember { mutableStateOf(RuleSetEditorState(loading = false, name = "ads")) }
+            SubspaceTheme {
+                RuleSetEditorContent(
+                    state = state,
+                    actions =
+                    noOpActions.copy(
+                        onDraftChanged = { outcome, field, text ->
+                            state = state.copy(drafts = state.drafts + ((outcome to field) to text))
+                        },
+                        onAddEntry = { _, _, entry -> added = entry },
+                    ),
+                )
+            }
+        }
 
-        composeRule.onAllNodesWithText("Domain, address or geosite:/geoip: code")[1].performTextInput("999.1.1.1")
+        // Same as above: the editor now clears the navigation bar, so Save floats higher and the
+        // first Add IPs is under it at scroll 0. Scroll it clear first, as a user would.
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp(startY = centerY, endY = centerY - 600f) }
+        composeRule.onAllNodesWithText("Add IPs")[0].performScrollTo().performClick()
+        composeRule
+            .onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS))
+            .performTextInput("999.1.1.1")
 
         composeRule.onNodeWithText("999.1.1.1").assertIsDisplayed()
-        composeRule.onNodeWithText("Not a valid address or CIDR range").assertIsDisplayed()
+        composeRule.onNodeWithText("Not a valid address or CIDR range").performScrollTo().assertIsDisplayed()
         added.shouldBeNull()
+    }
+
+    // M8.6 spec §4.6 and plan ruling R4, rendered: an entry the design's checks reject shows the
+    // design's message on its field. Read from state, so no typing is needed.
+    @Test
+    fun aDraftTheDesignRejectsShowsTheDesignsMessage() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                drafts = mapOf((RouteOutcome.BLOCK to BucketField.SITES) to "geoip:cn"),
+            ),
+        )
+
+        composeRule.onNodeWithText("Use geosite: for sites").performScrollTo().assertIsDisplayed()
+        // Fix round 1, minor 8: the reason is on the field itself too, for TalkBack.
+        composeRule
+            .onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.SITES), useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Use geosite: for sites"))
+    }
+
+    // Fix round 1, minor 7: while the write is in flight nothing can be edited, so nothing typed
+    // then is lost when the screen leaves on `saved`.
+    @Test
+    fun whileSavingNothingCanBeEdited() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                saving = true,
+                buckets = mapOf(RouteOutcome.BLOCK to RuleBucket(sites = listOf("example.com"))),
+            ),
+        )
+
+        composeRule.onNodeWithText("Saving…").assertIsNotEnabled()
+        composeRule.onNodeWithText("ads").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Remove entry").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Move Proxy earlier").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Move Proxy later").assertIsNotEnabled()
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.SITES)).assertIsNotEnabled()
+        composeRule.onAllNodesWithText("Add IPs")[0].assertIsNotEnabled()
+        composeRule.onNodeWithText("As is").assertIsNotEnabled()
+    }
+
+    // Fix S5: an empty field is one Add button until opened; one with entries shows its input.
+    @Test
+    fun emptyFieldsCollapseToAnAddButtonThatOpensTheInput() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                buckets = mapOf(RouteOutcome.BLOCK to RuleBucket(sites = listOf("example.com"))),
+            ),
+        )
+
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.SITES)).assertExists()
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS)).assertDoesNotExist()
+        composeRule.onAllNodesWithText("Add sites").assertCountEquals(2)
+        composeRule.onAllNodesWithText("Add IPs").assertCountEquals(3)
+
+        // BLOCK x IPS sits at the bottom of the first screenful, under the floating Save button:
+        // inside the viewport, so performScrollTo has nothing to do, yet a click there lands on
+        // Save (device run, Pixel 8: Save 2200-2347px over Add IPs 2211-2316px, scroll value 0).
+        // Scroll it clear first, as a user would.
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp(startY = centerY, endY = centerY - 600f) }
+        composeRule.onAllNodesWithText("Add IPs")[0].performScrollTo().performClick()
+
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS)).assertExists()
+        composeRule.onAllNodesWithText("Add IPs").assertCountEquals(2)
     }
 
     @Test
@@ -173,11 +277,13 @@ class RuleSetEditorScreenContentTest {
         composeRule.onNodeWithText(message).performScrollTo().assertIsDisplayed()
     }
 
-    // Fix round 3 (device run): same off-screen cause as aNameConflictProblemIsShownNearSave —
-    // confirmed on-device the Save button composes at y ≈ 3308–3413px against a 2400px-tall
-    // visible root. `performClick()` does not auto-scroll; it dispatched a gesture at the node's
-    // real (off-screen) coordinates, which landed nowhere and never reached the button's actual
-    // `onClick`, so `saved` stayed false with no thrown error — a silent no-op, not a real tap.
+    // Fix round 3 (device run): the Save button used to compose at the end of the scrolling form,
+    // off-screen, where `performClick()` landed nowhere — so this scrolled to it first.
+    //
+    // M8.6 Part 4 Task 6: Save now floats over the bottom of the screen, outside the scrolling
+    // form (the design's sticky save bar), so it is always on screen. `performScrollTo()` is
+    // dropped because the button has no scrollable parent to scroll; the tap still has to reach
+    // onSave, which is what this asserts.
     @Test
     fun tappingSaveInvokesTheCallback() {
         var saved = false
@@ -186,8 +292,29 @@ class RuleSetEditorScreenContentTest {
             actions = noOpActions.copy(onSave = { saved = true }),
         )
 
-        composeRule.onNodeWithText("Save").performScrollTo().performClick()
+        composeRule.onNodeWithText("Save").assertIsDisplayed().performClick()
 
         saved shouldBe true
+    }
+
+    // A Save refused over an unaddable draft asks the screen to show that field: it takes focus
+    // (which also scrolls it into view) and the request is reported handled.
+    @Test
+    fun aRevealRequestFocusesTheNamedFieldAndIsHandled() {
+        var handled = 0
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                drafts = mapOf((RouteOutcome.BLOCK to BucketField.IPS) to "999.1.1.1"),
+                revealRequest = RevealRequest(RouteOutcome.BLOCK, BucketField.IPS, token = 1),
+            ),
+            noOpActions.copy(onRevealHandled = { handled++ }),
+        )
+
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS)).assertIsFocused()
+        handled shouldBe 1
     }
 }

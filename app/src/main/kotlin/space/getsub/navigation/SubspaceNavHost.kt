@@ -3,34 +3,27 @@
 package space.getsub.navigation
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import space.getsub.core.data.PendingRoutingImport
-import space.getsub.core.ui.component.FloatingNavigationBar
-import space.getsub.core.ui.component.NavItem
+import space.getsub.core.ui.component.FloatingNavBar
+import space.getsub.core.ui.component.NavPillItem
+import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.home.HomeScreen
 import space.getsub.feature.profiles.editor.EditorScreen
 import space.getsub.feature.profiles.list.ServersScreen
@@ -40,7 +33,8 @@ import space.getsub.feature.routing.PerAppScreen
 import space.getsub.feature.routing.RoutingListScreen
 import space.getsub.feature.routing.RoutingQrScanRoute
 import space.getsub.feature.routing.RuleSetEditorScreen
-import space.getsub.feature.settings.SettingsScreen
+import space.getsub.feature.settings.SettingsPageScreen
+import space.getsub.feature.settings.hub.SettingsScreen
 import space.getsub.feature.settings.log.LogViewerScreen
 import space.getsub.core.ui.R as CoreUiR
 
@@ -50,8 +44,8 @@ private const val SETTINGS_VALUE = "settings"
 
 /**
  * Wires [Home], [Servers], [Settings], [Editor], [QrScan], [SubscriptionDetail],
- * [RoutingList], [RuleSetEditor], [PerApp] and [LogViewer] into a [NavHost] behind
- * [FloatingNavigationBar].
+ * [RoutingList], [RuleSetEditor], [PerApp] and [LogViewer] into a [NavHost][androidx.navigation.compose.NavHost] behind
+ * [FloatingNavBar].
  *
  * [Home], [Servers] and [Settings] are top-level: selecting one navigates
  * with `launchSingleTop` plus `popUpTo(startDestination) { saveState = true }`
@@ -71,7 +65,8 @@ private const val SETTINGS_VALUE = "settings"
  * from `:feature:profiles`, wired in Task 20's fix round 1 for the identical
  * reason), `Editor` ([EditorScreen], from `:feature:profiles`, wired in
  * Task 21 — the same "no later task owns this" treatment), `Settings`
- * ([SettingsScreen], from `:feature:settings`, Task 22), `RoutingList`
+ * ([SettingsScreen], from `:feature:settings`, Task 22; the hub since M8.6 Part 4, with
+ * its sub-pages at `SettingsPage`), `RoutingList`
  * ([RoutingListScreen], from `:feature:routing`, Task 15) and, as of Task 16,
  * `RuleSetEditor` ([RuleSetEditorScreen], from `:feature:routing` — Task 15's
  * own brief had declared both routes ahead of this one existing, wired to a
@@ -88,7 +83,7 @@ private const val SETTINGS_VALUE = "settings"
  * coverage.
  *
  * Root layout is a plain [Box], not a [androidx.compose.material3.Scaffold].
- * [FloatingNavigationBar] already applies its own `navigationBars`
+ * [FloatingNavBar] already applies its own `navigationBars`
  * [androidx.compose.foundation.layout.WindowInsets] padding internally — a
  * `Scaffold` that also consumes that inset and forwards it as `innerPadding`
  * would apply it a second time and float the pill above its intended
@@ -99,10 +94,16 @@ private const val SETTINGS_VALUE = "settings"
  * the device's own `navigationBars` inset height (63px / ~24dp, read from
  * `WindowInsets changed: ... navigationBars:[0,0,0,63]` in logcat for this
  * device/orientation), i.e. that inset counted twice. This `Box` arrangement
- * does not double-count it. The top is different: the [NavHost] pads for
- * `statusBars` itself, once, for every destination. Individual screens reserve
+ * does not double-count it. The top is different: every destination's [NavCard] pads for
+ * `statusBars` itself, once. Individual screens reserve
  * [space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING]
  * themselves for exactly the same reason — that constant's own KDoc says so.
+ *
+ * Every destination is declared with [cardComposable], never plain `composable`, so navigation
+ * moves like Android's own activities: the default activity open and close animations, and the
+ * system's predictive back (the screen shrinks over the one beneath, then slides away) for a back
+ * gesture. A pill tap between [Home], [Servers] and [Settings] crossfades instead. [NavMotion]
+ * and [NavCard] hold the details.
  *
  * @param onRequestConsent forwarded to [HomeScreen] verbatim; see its own
  *   KDoc for why a `ViewModel` cannot own this.
@@ -134,18 +135,17 @@ fun SubspaceNavHost(
         navController = navController,
     )
 
+    val motion = rememberNavMotion(navController, currentBackStackEntry)
     Box(modifier = modifier.fillMaxSize()) {
         // The activity draws edge to edge, and nothing else pads for the status bar: every
         // screen's header used to start at the top of the display, under it (Servers'
-        // "Add server" and the Session log's Back button could not be tapped). Top only;
-        // the bottom inset stays with FloatingNavigationBar, as above.
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
-            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-        ) {
+        // "Add server" and the Session log's Back button could not be tapped). Top only, and
+        // inside each NavCard rather than around the NavHost, so a screen shrinking under the
+        // back gesture carries its status bar strip like a window does; the bottom inset stays
+        // with FloatingNavBar, as above.
+        CardNavHost(navController, startDestination, motion) {
             topLevelDestinations(navController, onRequestConsent)
-            composable<Servers> {
+            cardComposable<Servers> {
                 // Task 19: ServersScreen now owns its own add-server flow
                 // (AddServerSheet) rather than forwarding to the Editor
                 // placeholder — no onAddProfile hook to wire here any more.
@@ -165,7 +165,7 @@ fun SubspaceNavHost(
                     },
                 )
             }
-            composable<Settings> {
+            cardComposable<Settings> {
                 // Task 22: SettingsScreen replaces the placeholder outright — the same
                 // "no later task owns this" treatment ServersScreen (Task 18 fix round 1),
                 // QrScanScreen (Task 20 fix round 1) and EditorScreen (Task 21) already got.
@@ -179,10 +179,12 @@ fun SubspaceNavHost(
                     onNavigateToRouting = { navController.navigate(RoutingList) },
                     onNavigateToPerApp = { navController.navigate(PerApp) },
                     onNavigateToLogViewer = { navController.navigate(LogViewer) },
+                    // M8.6 plan ruling R1: every other hub row opens a sub-page route.
+                    onOpenPage = { page -> navController.navigate(SettingsPage(page)) },
                 )
             }
             editorDestination(navController)
-            composable<QrScan> { entry ->
+            cardComposable<QrScan> { entry ->
                 // Task 20 fix round 1: QrScanScreen was built, tested and
                 // left unreachable — this closes that gap. QrScanRoute
                 // resolves ImportViewModel scoped to the Servers entry
@@ -204,7 +206,7 @@ fun SubspaceNavHost(
                     onDone = { navController.popBackStack() },
                 )
             }
-            composable<SubscriptionDetail> { entry ->
+            cardComposable<SubscriptionDetail> { entry ->
                 // Task 15: SubscriptionDetailScreen replaces the previously-undeclared route —
                 // the same "no later task owns this" treatment ServersScreen, QrScanScreen,
                 // EditorScreen and SettingsScreen already got.
@@ -218,10 +220,10 @@ fun SubspaceNavHost(
         }
 
         if (selected != null) {
-            FloatingNavigationBar(
+            FloatingNavBar(
                 items = topLevelNavItems(),
                 selected = selected,
-                onSelect = { value -> navController.navigateToTopLevel(value) },
+                onSelect = { value -> motion.switchTab(navController, value) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -229,13 +231,14 @@ fun SubspaceNavHost(
 }
 
 /**
- * `null` for [Editor], [QrScan], [SubscriptionDetail], [RoutingList], [RuleSetEditor], [PerApp]
- * and [LogViewer] (and for no current destination yet) — the pill's cue to hide. The
- * `else -> null` branch is what covers the last five: only [Home], [Servers] and [Settings] get
+ * `null` for [Editor], [QrScan], [SubscriptionDetail], [RoutingList], [RuleSetEditor], [PerApp],
+ * [LogViewer] and [SettingsPage] (and for no current destination yet) — the pill's cue to hide.
+ * The `else -> null` branch is what covers all of them: only [Home], [Servers] and [Settings] get
  * an explicit branch, since those are the only three destinations this graph ever wants the pill
  * visible for — Task 15 (M5) confirms [RoutingList] and [RuleSetEditor] fall into that same
  * default bucket alongside [Editor] and [QrScan], Task 9 (M5.5) confirms [PerApp] falls into it
- * too, and M8.5 Task 7 confirms [LogViewer] does as well, rather than adding branches for any of
+ * too, M8.5 Task 7 confirms [LogViewer] does as well, and M8.6 Part 4 Task 3 confirms
+ * [SettingsPage] does too (a sub-page hides the pill, as Routing does), rather than adding branches for any of
  * them that would need to (incorrectly) return one of
  * [HOME_VALUE]/[SERVERS_VALUE]/[SETTINGS_VALUE].
  *
@@ -256,19 +259,30 @@ internal fun NavDestination?.selectedTopLevelValue(): String? =
 /**
  * `internal`, not `private`, for the same reason [selectedTopLevelValue] is:
  * [SubspaceNavHostTest] builds a small local graph with real
- * [FloatingNavigationBar] wiring (this list, [navigateToTopLevel] and
+ * [FloatingNavBar] wiring (this list, [navigateToTopLevel] and
  * [selectedTopLevelValue] together) rather than the real, now entirely
  * Hilt-backed, [SubspaceNavHost] — see that file's own KDoc.
  */
-internal fun topLevelNavItems(): List<NavItem> =
+internal fun topLevelNavItems(): List<NavPillItem> =
     listOf(
-        NavItem(value = HOME_VALUE, labelRes = CoreUiR.string.nav_item_connect, icon = Icons.Default.Home),
-        NavItem(
+        NavPillItem(
+            value = HOME_VALUE,
+            labelRes = CoreUiR.string.nav_item_connect,
+            icon = SubspaceIcons.Home,
+            selectedIcon = SubspaceIcons.HomeFilled,
+        ),
+        NavPillItem(
             value = SERVERS_VALUE,
             labelRes = CoreUiR.string.nav_item_servers,
-            icon = Icons.AutoMirrored.Filled.List,
+            icon = SubspaceIcons.Dns,
+            selectedIcon = SubspaceIcons.DnsFilled,
         ),
-        NavItem(value = SETTINGS_VALUE, labelRes = CoreUiR.string.nav_item_settings, icon = Icons.Default.Settings),
+        NavPillItem(
+            value = SETTINGS_VALUE,
+            labelRes = CoreUiR.string.nav_item_settings,
+            icon = SubspaceIcons.Settings,
+            selectedIcon = SubspaceIcons.SettingsFilled,
+        ),
     )
 
 /**
@@ -338,7 +352,7 @@ internal fun NavHostController.navigateToTopLevel(value: String) {
  * `LongMethod` budget again.
  */
 private fun NavGraphBuilder.editorDestination(navController: NavHostController) {
-    composable<Editor> { entry ->
+    cardComposable<Editor> { entry ->
         // Task 21: EditorScreen replaces the placeholder outright — the same "no later task
         // owns this" treatment ServersScreen (Task 18 fix round 1) and QrScanScreen (Task 20
         // fix round 1) already got.
@@ -358,11 +372,14 @@ private fun NavGraphBuilder.topLevelDestinations(
     navController: NavHostController,
     onRequestConsent: (onGranted: () -> Unit) -> Unit,
 ) {
-    composable<Home> {
+    cardComposable<Home> {
         HomeScreen(
             onRequestConsent = onRequestConsent,
             onNavigateToServers = { navController.navigateToTopLevel(SERVERS_VALUE) },
             onAddServer = { navController.navigateToAddFirstServer() },
+            onOpenRouting = { navController.navigate(RoutingList) },
+            onOpenPerApp = { navController.navigate(PerApp) },
+            onOpenSessionLog = { navController.navigate(LogViewer) },
         )
     }
 }
@@ -405,7 +422,7 @@ private fun NavigateToRoutingOnDeeplink(
 private fun RoutingList.routeName(): String = this::class.qualifiedName.orEmpty()
 
 private fun NavGraphBuilder.routingDestinations(navController: NavHostController) {
-    composable<RoutingList> {
+    cardComposable<RoutingList> {
         // Task 15 (M5): the rule set list — the activation gate screen.
         RoutingListScreen(
             onCreateRuleSet = { navController.navigate(RuleSetEditor(ruleSetId = NEW_RULE_SET)) },
@@ -414,7 +431,7 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
             onBack = { navController.popBackStack() },
         )
     }
-    composable<RoutingQrScan> { entry ->
+    cardComposable<RoutingQrScan> { entry ->
         // M6 Task 13. Scoped to RoutingList's entry, not this one, so the
         // scanned payload raises the sheet the list is already showing —
         // RoutingQrScanRoute's own KDoc has the full reasoning, and it is the
@@ -428,7 +445,7 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
             onDone = { navController.popBackStack() },
         )
     }
-    composable<RuleSetEditor> { entry ->
+    cardComposable<RuleSetEditor> { entry ->
         // Task 16: RuleSetEditorScreen replaces the placeholder outright — the same
         // "no later task owns this" treatment ServersScreen (Task 18 fix round 1),
         // QrScanScreen (Task 20 fix round 1), EditorScreen (Task 21) and SettingsScreen/
@@ -436,12 +453,12 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
         val route: RuleSetEditor = entry.toRoute()
         RuleSetEditorScreen(ruleSetId = route.ruleSetId, onDone = { navController.popBackStack() })
     }
-    composable<PerApp> {
+    cardComposable<PerApp> {
         // Task 9 (M5.5): the per-app proxy picker, reached from Settings' new
         // "Per-app proxy" row.
         PerAppScreen(onBack = { navController.popBackStack() })
     }
-    composable<LogViewer> {
+    cardComposable<LogViewer> {
         // M8.5 Task 7: the session log viewer, reached from Settings'
         // Diagnostics section — folded into this grouping rather than given
         // its own function, the same `TooManyFunctions` budget reason
@@ -451,5 +468,23 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
         // the way [RoutingList] and [PerApp] are, which is the grouping this
         // function is actually keyed on.
         LogViewerScreen(onBack = { navController.popBackStack() })
+    }
+    cardComposable<SettingsPage> { entry ->
+        // M8.6 plan ruling R1: one of the Settings hub's sub-pages, pushed from its rows.
+        val route: SettingsPage = entry.toRoute()
+        // The hub and every page share the Settings entry's SettingsViewModel, so Back does not
+        // clear it and cancel a geo download running in its viewModelScope (Task 3 fix round 1).
+        // A page is only ever pushed from the hub, so Settings is below it, and a restored or
+        // saved-and-restored stack brings both back together. Should a page ever be reached
+        // without it (a future deep link), it falls back to its own entry rather than crash.
+        val owner: ViewModelStoreOwner =
+            remember(entry) {
+                try {
+                    navController.getBackStackEntry<Settings>()
+                } catch (_: IllegalArgumentException) {
+                    entry
+                }
+            }
+        SettingsPageScreen(page = route.page, viewModelStoreOwner = owner, onBack = { navController.popBackStack() })
     }
 }

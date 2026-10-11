@@ -3,6 +3,8 @@
 plugins {
     id("subspace.android.library")
     id("subspace.android.compose")
+    // M8.6 spec §7.1: screenshot tests for every :core:ui component and Home state.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
@@ -21,10 +23,9 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    // GroupCard's (Task 18) expand caret, overflow and search glyphs. Same
-    // -core-only artifact :feature:home and :app already carry — see
-    // THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
+    // M8.6 spec §1.1: ConnectBlob uses Morph directly. material3 already brings
+    // 1.0.1 transitively; declaring it pins what we compile against.
+    implementation(libs.graphics.shapes)
 
     // First Compose UI instrumented tests in the repo (ConnectControlTest).
     // subspace.android.library already wires testInstrumentationRunner and the
@@ -49,4 +50,10 @@ dependencies {
     // replaced that reflection with getSystemService and is the fix per its
     // own release notes.
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// M8.6 spec §1.2 item 3: a changed golden fails `check`, so an alpha BOM bump
+// cannot silently restyle a component.
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn("verifyPaparazziDebug")
 }

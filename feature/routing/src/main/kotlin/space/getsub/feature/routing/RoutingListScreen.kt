@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 // detekt's MagicNumber rule fires on the padding/size tokens below — all are
 // tokens/spacing.css's --space-* scale, already named by the val each
-// initializes. See core/ui's GroupCard.kt and SettingRow.kt for the same
+// initializes. See core/ui's GroupCard.kt and HubRow.kt for the same
 // pattern.
 @file:Suppress("MagicNumber")
 
@@ -20,12 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,11 +32,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +48,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import space.getsub.core.model.RoutingSourceKind
+import space.getsub.core.ui.component.MenuItem
+import space.getsub.core.ui.component.SubspaceDialog
+import space.getsub.core.ui.component.SubspaceMenu
+import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.theme.SubspaceShapeTokens
 
 private val CONTENT_HORIZONTAL_PADDING = 24.dp
 private val CARD_PADDING = 16.dp
@@ -222,6 +223,9 @@ internal fun RoutingListScreenContent(
     actions: RoutingListActions,
     modifier: Modifier = Modifier,
 ) {
+    // The row awaiting delete confirmation. Held by id so a list refresh that drops the row
+    // (or renames it) cannot leave the dialog confirming a stale object.
+    var deleting by rememberSaveable { mutableStateOf<Long?>(null) }
     Column(
         modifier =
         modifier
@@ -256,13 +260,29 @@ internal fun RoutingListScreenContent(
                         onSelect = { actions.onActivate(row.id) },
                         onEdit = { actions.onEditRuleSet(row.id) },
                         onDuplicate = { actions.onDuplicate(row.id) },
-                        onDelete = { actions.onDelete(row.id) },
+                        onDelete = { deleting = row.id },
                         onCancelDownload = { actions.onCancelDownload(row.id) },
                     ),
                     modifier = Modifier.padding(top = CARD_GAP),
                 )
             }
         }
+    }
+
+    state.ruleSets.firstOrNull { it.id == deleting }?.let { row ->
+        SubspaceDialog(
+            title = stringResource(R.string.routing_delete_title, row.name),
+            body = stringResource(R.string.routing_delete_body),
+            confirmLabel = stringResource(R.string.routing_delete_label),
+            onConfirm = {
+                deleting = null
+                actions.onDelete(row.id)
+            },
+            dismissLabel = stringResource(R.string.routing_delete_cancel),
+            onDismiss = { deleting = null },
+            icon = SubspaceIcons.Delete,
+            destructive = true,
+        )
     }
 }
 
@@ -283,26 +303,27 @@ private fun ImportMenu(
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                imageVector = Icons.Default.MoreVert,
+                painter = painterResource(SubspaceIcons.MoreVert),
                 contentDescription = stringResource(R.string.routing_import_menu_description),
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.routing_import_clipboard)) },
-                onClick = {
-                    expanded = false
-                    onImportFromClipboard()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.routing_import_qr)) },
-                onClick = {
-                    expanded = false
-                    onScanQr()
-                },
-            )
-        }
+        SubspaceMenu(
+            expanded = expanded,
+            onDismiss = { expanded = false },
+            items =
+            listOf(
+                MenuItem(
+                    icon = SubspaceIcons.ContentPaste,
+                    label = stringResource(R.string.routing_import_clipboard),
+                    onClick = onImportFromClipboard,
+                ),
+                MenuItem(
+                    icon = SubspaceIcons.QrCodeScanner,
+                    label = stringResource(R.string.routing_import_qr),
+                    onClick = onScanQr,
+                ),
+            ),
+        )
     }
 }
 
@@ -314,10 +335,13 @@ private fun ScreenHeader(actions: RoutingListActions) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+        ) {
             IconButton(onClick = actions.onBack) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    painter = painterResource(SubspaceIcons.ArrowBack),
                     contentDescription = stringResource(R.string.routing_back_description),
                 )
             }
@@ -330,7 +354,7 @@ private fun ScreenHeader(actions: RoutingListActions) {
             )
             IconButton(onClick = actions.onCreateRuleSet) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    painter = painterResource(SubspaceIcons.Add),
                     contentDescription = stringResource(R.string.routing_create_description),
                 )
             }
@@ -351,8 +375,8 @@ private fun OffRow(
 ) {
     val description = stringResource(R.string.routing_off_description)
     Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = SubspaceShapeTokens.card,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth().clickable(onClick = onSelect).semantics { contentDescription = description },
     ) {
         Row(

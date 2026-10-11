@@ -46,19 +46,21 @@ import space.getsub.core.ui.theme.SubspaceTheme
  *
  * v2 `createComposeRule` and camelCase names throughout — same DEX-040
  * constraint [space.getsub.core.ui.component.GroupCardTest] and
- * [space.getsub.core.ui.component.ConnectControlTest] document; no
+ * [space.getsub.core.ui.component.GroupCardTest] document; no
  * `@Suppress("DEPRECATION")` here or anywhere else in this codebase.
  */
 class AddServerSheetTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @Suppress("LongParameterList")
     private fun setContent(
         state: ImportState = ImportState(),
         onInputChanged: (String) -> Unit = {},
         onImportClick: () -> Unit = {},
         onImportFromFileClick: () -> Unit = {},
         onScanClick: () -> Unit = {},
+        onImportClipboardClick: () -> Unit = {},
     ) {
         composeRule.setContent {
             SubspaceTheme {
@@ -70,9 +72,7 @@ class AddServerSheetTest {
                         onImportClick = onImportClick,
                         onImportFromFileClick = onImportFromFileClick,
                         onScanClick = onScanClick,
-                        // Not this file's concern — AddServerSheetSubscriptionTest
-                        // (Task 13) owns the "From subscription URL" route.
-                        onAddSubscription = {},
+                        onImportClipboardClick = onImportClipboardClick,
                     ),
                 )
             }
@@ -96,31 +96,31 @@ class AddServerSheetTest {
     }
 
     @Test
-    fun importButtonIsDisabledWhenInputIsBlank() {
+    fun addButtonIsDisabledWhenInputIsBlank() {
         setContent(state = ImportState(input = ""))
-        composeRule.onNodeWithText("Import").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
-    fun importButtonIsEnabledWithNonBlankInputWhileNotBusy() {
+    fun addButtonIsEnabledWithNonBlankInputWhileNotBusy() {
         setContent(state = ImportState(input = "vless://x", busy = false))
-        composeRule.onNodeWithText("Import").assertIsEnabled()
+        composeRule.onNodeWithText("Add").assertIsEnabled()
     }
 
     @Test
-    fun importButtonIsDisabledWhileBusyEvenWithInput() {
-        // AddServerSheet.kt:122's gate is `!state.busy && state.input.isNotBlank()`
+    fun addButtonIsDisabledWhileBusyEvenWithInput() {
+        // The Add button's gate is `!state.busy && state.input.isNotBlank()`
         // — both halves matter independently; this pins the busy half.
         setContent(state = ImportState(input = "vless://x", busy = true))
-        composeRule.onNodeWithText("Import").assertIsNotEnabled()
+        composeRule.onNodeWithText("Add").assertIsNotEnabled()
     }
 
     @Test
-    fun tappingImportInvokesOnImportClick() {
+    fun tappingAddInvokesOnImportClick() {
         var clicked = false
         setContent(state = ImportState(input = "vless://x"), onImportClick = { clicked = true })
 
-        composeRule.onNodeWithText("Import").performClick()
+        composeRule.onNodeWithText("Add").performClick()
 
         clicked shouldBe true
     }
@@ -230,5 +230,21 @@ class AddServerSheetTest {
         composeRule.onNodeWithText("Hide failures").performClick()
 
         composeRule.onNodeWithText("Entry 1 could not be read").assertDoesNotExist()
+    }
+
+    @Test
+    fun tappingImportFromClipboardInvokesItsCallback() {
+        var clicked = false
+        setContent(onImportClipboardClick = { clicked = true })
+
+        composeRule.onNodeWithText("Import from clipboard").performClick()
+
+        clicked shouldBe true
+    }
+
+    @Test
+    fun importFromClipboardIsDisabledWhileBusy() {
+        setContent(state = ImportState(busy = true))
+        composeRule.onNodeWithText("Import from clipboard").assertIsNotEnabled()
     }
 }
