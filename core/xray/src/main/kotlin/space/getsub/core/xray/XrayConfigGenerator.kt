@@ -4,6 +4,7 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
+import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Profile
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.Security
@@ -61,6 +62,13 @@ public data class TunnelSettings(
      * allocates a port gets the exact M1 shape it always has, byte for byte.
      */
     val metricsPort: Int? = null,
+    /**
+     * Fragment and noise masks, already resolved by the caller (M9-A spec §3.1), or null.
+     *
+     * Null and an empty [Obfuscation] both emit nothing, so the output is byte-identical to a build
+     * from before M9-A. Defaulted so call sites that do not resolve obfuscation keep compiling.
+     */
+    val obfuscation: Obfuscation? = null,
 )
 
 /**
@@ -338,7 +346,7 @@ public object XrayConfigGenerator {
         sb.appendLine("""          }""")
         sb.appendLine("""        ]""")
         sb.appendLine("""      },""")
-        appendStreamSettings(sb, out)
+        appendStreamSettings(sb, out, settings.obfuscation)
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
         val needsDnsOutbound = settings.dns != null
@@ -357,6 +365,7 @@ public object XrayConfigGenerator {
     private fun appendStreamSettings(
         sb: StringBuilder,
         out: VlessOutbound,
+        obfuscation: Obfuscation?,
     ) {
         val stream = out.stream
         // The security block is last in the object unless a transport block
@@ -365,6 +374,11 @@ public object XrayConfigGenerator {
         val tail = if (stream.transport is TransportOptions.None) "" else ","
         sb.appendLine("""      "streamSettings": {""")
         sb.appendLine("""        "network": ${jsonString(stream.network)},""")
+        // M9-A spec §3.3. Placed straight after `network` because `security` always follows,
+        // so its trailing comma never depends on which transport block, if any, closes the object.
+        obfuscation?.let(FinalmaskJson::block)?.let { block ->
+            sb.appendLine("""        "finalmask": $block,""")
+        }
         when (val security = stream.security) {
             is Security.Reality -> {
                 sb.appendLine("""        "security": "reality",""")
