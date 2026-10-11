@@ -23,10 +23,6 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    // GroupCard's (Task 18) expand caret, overflow and search glyphs. Same
-    // -core-only artifact :feature:home and :app already carry — see
-    // THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // M8.6 spec §1.1: ConnectBlob uses Morph directly. material3 already brings
     // 1.0.1 transitively; declaring it pins what we compile against.
     implementation(libs.graphics.shapes)

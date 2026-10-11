@@ -35,11 +35,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)
-    // Appearance's system/light/dark segmented control needs no icon (Material3
-    // SegmentedButton draws its own selection check); About's three rows use
-    // SettingRow's icon tile — same -core-only choice as every other module,
-    // see THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // SettingsViewModel drives its state through viewModelScope, which needs a
     // Main dispatcher — same gap :feature:home's and :feature:profiles' own
     // build.gradle.kts document.

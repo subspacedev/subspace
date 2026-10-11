@@ -32,10 +32,6 @@ dependencies {
     // second one. :feature:profiles' QrScanRoute takes the same dependency for
     // the same reason.
     implementation(libs.androidx.navigation.compose)
-    // The active-selector radio's check/delete/create/warning glyphs and the
-    // "Routing" settings row's own icon — same -core-only choice as every
-    // other module. See THIRD_PARTY.md.
-    implementation(libs.compose.material.icons.core)
     // GeoCategories parses the geosite.json/geoip.json sidecar with this rather than
     // org.json.JSONObject: fix round 1 review found this module's first draft added a
     // testImplementation(libs.org.json) purely to work around org.json being a stub on the
