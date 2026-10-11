@@ -45,8 +45,9 @@ import space.getsub.feature.settings.openBatterySettings
 import space.getsub.feature.settings.settingsActionsOf
 
 /**
- * The Settings hub (M8.6 spec §4.4): Traffic, You, Connection, Diagnostics and About as rows that
- * show their current value and open a sub-page, then the Tunnel card inline (spec §5.1, fix A10).
+ * The Settings hub (M8.6 spec §4.4): You, Traffic, the Tunnel card inline (spec §5.1, fix A10), then
+ * Connection, Diagnostics and About. The order is the owner's (2026-10-11); spec §4.4 put Traffic
+ * first and the Tunnel card last. Rows show their current value and open a sub-page.
  *
  * Settings has no `NavController` of its own; every callback is forwarded verbatim to
  * `SubspaceNavHost`.
@@ -112,7 +113,14 @@ internal fun SettingsHubContent(
             modifier = Modifier.padding(horizontal = 4.dp),
         )
 
-        HubSection(R.string.settings_section_traffic, SubspaceShapeTokens.card) {
+        // Owner's order (2026-10-11): You, Traffic, Tunnel, then the rest as the M8.6 spec §4.4 had them.
+        HubSection(R.string.settings_section_you, SubspaceShapeTokens.card) {
+            val theme = stringResource(state.appearanceValue().labelRes())
+            PageRow(SubspaceIcons.Palette, SettingsPageId.Appearance, theme, open)
+            PageRow(SubspaceIcons.Fingerprint, SettingsPageId.DeviceId, deviceIdText(state), open)
+        }
+
+        HubSection(R.string.settings_section_traffic, SubspaceShapeTokens.cardLead) {
             HubRow(
                 icon = SubspaceIcons.AltRoute,
                 label = stringResource(R.string.settings_section_routing),
@@ -128,11 +136,7 @@ internal fun SettingsHubContent(
             PageRow(SubspaceIcons.Public, SettingsPageId.Geo, joined(state.geoValue()), open)
         }
 
-        HubSection(R.string.settings_section_you, SubspaceShapeTokens.cardLead) {
-            val theme = stringResource(state.appearanceValue().labelRes())
-            PageRow(SubspaceIcons.Palette, SettingsPageId.Appearance, theme, open)
-            PageRow(SubspaceIcons.Fingerprint, SettingsPageId.DeviceId, deviceIdText(state), open)
-        }
+        HubTunnelCard(state, actions, context)
 
         HubSection(R.string.settings_section_connection, SubspaceShapeTokens.card) {
             PageRow(SubspaceIcons.Speed, SettingsPageId.Latency, latencyText(state), open)
@@ -149,8 +153,6 @@ internal fun SettingsHubContent(
         HubSection(R.string.settings_section_about, SubspaceShapeTokens.cardTail) {
             PageRow(SubspaceIcons.Info, SettingsPageId.About, aboutText(state), open)
         }
-
-        HubTunnelCard(state, actions, context)
     }
 
     TunnelSystemEffects(state = state, actions = actions, context = context)

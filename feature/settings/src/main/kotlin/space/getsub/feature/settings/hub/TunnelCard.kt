@@ -34,9 +34,9 @@ import space.getsub.feature.settings.R
 import space.getsub.feature.settings.SettingsState
 
 /**
- * The settings that keep the tunnel running under the platform, inline at the bottom of the hub
- * (M8.6 spec §5.1, fix A10). A `tertiaryContainer` card whose switches use that container's own
- * roles (fix A12). The kill switch and lightweight mode each gain a second line only while it
+ * The settings that keep the tunnel running under the platform, inline in the hub, third after
+ * You and Traffic (M8.6 spec §5.1, fix A10; owner's order 2026-10-11). A `tertiaryContainer`
+ * card whose switches use that container's own roles (fix A12). The kill switch and lightweight mode each gain a second line only while it
  * applies ([killSwitchExtraLine], [lightweightExtraLine]).
  *
  * Its rows are drawn here rather than with the kit's `SwitchRow`, for fix A6: every subtitle fits
