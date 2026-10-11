@@ -162,4 +162,11 @@ class BackGeometryTest {
         backGestureInterpolation(1f) shouldBe (1f plusOrMinus tolerance)
         backGestureInterpolation(0.5f) shouldBeGreaterThan 0.6f
     }
+
+    @Test
+    fun `a sliding screen extends its background 96 dp past both sides, full height`() {
+        val (left, right) = slideExtensionRects(size, extensionPx = offset)
+        left.shouldBeRect(Rect(-offset, 0f, 0f, size.height))
+        right.shouldBeRect(Rect(size.width, 0f, size.width + offset, size.height))
+    }
 }

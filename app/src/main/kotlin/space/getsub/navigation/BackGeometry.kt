@@ -87,3 +87,14 @@ internal fun verticalShift(
     val limit = maxOf(0f, (size.height - closingHeight) / 2f - marginPx)
     return limit * eased * sign(rawDy)
 }
+
+/**
+ * The `<extend>` of activity_open_enter and its siblings: a screen sliding by up to
+ * [extensionPx] paints its background that far past its left and right edges, so the gap it
+ * vacates, or has not reached yet, never shows the screen behind it.
+ */
+internal fun slideExtensionRects(
+    size: Size,
+    extensionPx: Float,
+): Pair<Rect, Rect> =
+    Rect(-extensionPx, 0f, 0f, size.height) to Rect(size.width, 0f, size.width + extensionPx, size.height)

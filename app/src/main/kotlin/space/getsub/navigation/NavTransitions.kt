@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -504,6 +505,14 @@ internal fun AnimatedVisibilityScope.NavCard(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { motion?.applyLayer(this, entry.id, visibility, view.windowCornerRadiusPx()) }
+                .drawBehind {
+                    // activity_open_enter's <extend> and its siblings: paint the background 96 dp
+                    // past both sides, so a screen sliding in or out never leaves a strip of the
+                    // one behind showing. Off screen at rest; predictive back clips it away.
+                    val (left, right) = slideExtensionRects(size, BACK_ENTERING_OFFSET_DP.dp.toPx())
+                    drawRect(surface, topLeft = left.topLeft, size = left.size)
+                    drawRect(surface, topLeft = right.topLeft, size = right.size)
+                }
                 .background(surface)
                 .windowInsetsPadding(WindowInsets.statusBars),
         ) {
