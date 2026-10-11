@@ -77,6 +77,9 @@ internal sealed interface SaveProblem {
  *   rather than in the screen so [isDirty] can count it (M8.6 spec §4.9, fix A11).
  * @param baseline the editable fields as last loaded or saved — what [isDirty] compares against.
  *   A new rule set's baseline is the defaults, so it is dirty once any field is non-default.
+ * @param revealRequest set when [RuleSetEditorViewModel.save] refused because a field holds text
+ *   it cannot add; the screen focuses and scrolls to that field, then calls
+ *   [RuleSetEditorViewModel.revealHandled]. Transient, so it never counts toward [isDirty].
  */
 internal data class RuleSetEditorState(
     val loading: Boolean = true,
@@ -93,6 +96,7 @@ internal data class RuleSetEditorState(
     val saved: Boolean = false,
     val drafts: Map<Pair<RouteOutcome, BucketField>, String> = emptyMap(),
     val baseline: RuleSetEdits = RuleSetEdits(),
+    val revealRequest: RevealRequest? = null,
 ) {
     /**
      * The stored entries for [outcome]/[field]. ARCHITECTURE.md §5.6: this is the
@@ -137,6 +141,16 @@ internal data class RuleSetEditorState(
 }
 
 /**
+ * Asks the screen to show [outcome]/[field]'s entry field. [token] differs on every request so a
+ * second refused Save re-triggers the screen even when it names the same field.
+ */
+internal data class RevealRequest(
+    val outcome: RouteOutcome,
+    val field: BucketField,
+    val token: Int,
+)
+
+/**
  * The fields a user edits, compared structurally by [RuleSetEditorState.isDirty]. Normalised so
  * that two drafts which would save the same rule set compare equal: the name is trimmed (save
  * trims it), and a bucket emptied by removing its last entry equals one that was never there.
@@ -173,6 +187,9 @@ internal data class RuleSetEdits private constructor(
  * [RoutingEntries.problemWith] rejects — [addEntry] is the guard that must
  * keep such an entry from ever reaching it (brief's "Interfaces" note).
  */
+// TooManyFunctions: one small setter per editable field, plus save and its helpers; splitting the
+// class would only scatter one state machine.
+@Suppress("TooManyFunctions")
 @HiltViewModel
 internal class RuleSetEditorViewModel
 @Inject
@@ -258,6 +275,9 @@ constructor(
         }
     }
 
+    /** The screen has shown the field [RuleSetEditorState.revealRequest] named. */
+    fun revealHandled() = _state.update { it.copy(revealRequest = null) }
+
     fun setName(value: String) = edit { it.copy(name = value) }
 
     /** Holds what is typed into [outcome]/[field]'s entry field; see [RuleSetEditorState.drafts]. */
@@ -305,10 +325,24 @@ constructor(
     fun save() {
         val current = _state.value
         if (!current.canSave || current.saving) return
+        // Text typed into an entry field and never added is part of what the user means to save:
+        // each non-blank draft is added exactly as the + button would, or, if any is refused, the
+        // save does not happen and the screen is asked to show that field. Nothing is dropped
+        // silently and nothing is saved without it.
+        val withDrafts =
+            when (val outcome = current.withDraftsAdded()) {
+                is DraftsOutcome.Refused -> {
+                    _state.update {
+                        if (it.saving) it else it.copy(revealRequest = outcome.reveal(it.revealRequest))
+                    }
+                    return
+                }
+                is DraftsOutcome.Added -> outcome.state
+            }
         // Set before the launch, not inside it, so no edit can land between taking [current] and
         // [edit] starting to refuse them (fix round 1, minor 7).
-        _state.update { it.copy(saving = true, saveProblem = null) }
-        viewModelScope.launch { saveDraft(current, current.name.trim()) }
+        _state.update { it.copy(saving = true, saveProblem = null, revealRequest = null) }
+        viewModelScope.launch { saveDraft(withDrafts, current.name.trim()) }
     }
 
     // TooGenericExceptionCaught: either RoutingSource call below can fail in ways this ViewModel
@@ -334,13 +368,22 @@ constructor(
                     globalProxy = current.globalProxy,
                 ),
             )
-            // The baseline becomes what was written, and drafts never added are dropped with the
-            // screen, in the same update that sets `saved`. Because [edit] refuses every change
-            // while `saving`, the state here still equals [current] apart from drafts, so the
-            // resulting state is clean: the screen leaves on `saved` without Back or the arrow
-            // being able to raise the discard dialog over a finished save (M8.6 spec §4.9, fix
-            // A11). RuleSetEditorViewModelTest pins this.
-            _state.update { it.copy(saving = false, saved = true, baseline = current.edits, drafts = emptyMap()) }
+            // [current] already holds the drafts added to their buckets, so the buckets, the
+            // baseline and the emptied drafts all become what was written in the same update that
+            // sets `saved`. Because [edit] refuses every change while `saving`, nothing else moved
+            // meanwhile, so the resulting state is clean: the screen leaves on `saved` without Back
+            // or the arrow being able to raise the discard dialog over a finished save (M8.6 spec
+            // §4.9, fix A11). A failed write below leaves the state as it was, drafts included.
+            // RuleSetEditorViewModelTest pins this.
+            _state.update {
+                it.copy(
+                    saving = false,
+                    saved = true,
+                    buckets = current.buckets,
+                    baseline = current.edits,
+                    drafts = emptyMap(),
+                )
+            }
         } catch (_: IllegalArgumentException) {
             _state.update { it.copy(saving = false, saveProblem = SaveProblem.InvalidEntry) }
         } catch (error: CancellationException) {
@@ -358,6 +401,40 @@ constructor(
     private inline fun edit(transform: (RuleSetEditorState) -> RuleSetEditorState) {
         _state.update { if (it.saving) it else transform(it) }
     }
+}
+
+private sealed interface DraftsOutcome {
+    /** Every non-blank draft was acceptable; [state] has them added and its drafts emptied. */
+    data class Added(val state: RuleSetEditorState) : DraftsOutcome
+
+    /** The draft at [outcome]/[field] is not acceptable, the first such one in screen order. */
+    data class Refused(val outcome: RouteOutcome, val field: BucketField) : DraftsOutcome {
+        fun reveal(previous: RevealRequest?): RevealRequest =
+            RevealRequest(outcome, field, token = (previous?.token ?: 0) + 1)
+    }
+}
+
+/**
+ * Adds every non-blank draft the way [RuleSetEditorViewModel.addEntry] would (trimmed, an
+ * existing entry not repeated), judged by the same [rejectionOf]. Blank drafts are ignored.
+ * Walks the cards in [RuleSetEditorState.order], sites before ips, as the screen lays them out.
+ */
+private fun RuleSetEditorState.withDraftsAdded(): DraftsOutcome {
+    var result = this
+    for (outcome in order) {
+        for (field in BucketField.entries) {
+            val draft = draft(outcome, field)
+            if (draft.isBlank()) continue
+            if (rejectionOf(draft, field) != null) return DraftsOutcome.Refused(outcome, field)
+            val trimmed = draft.trim()
+            val existing = result.bucket(outcome, field)
+            if (trimmed !in existing) {
+                val bucket = result.bucketWith(outcome, field, existing + trimmed)
+                result = result.copy(buckets = result.buckets + (outcome to bucket))
+            }
+        }
+    }
+    return DraftsOutcome.Added(result.copy(drafts = emptyMap()))
 }
 
 private fun RuleSetEditorState.bucketWith(

@@ -759,7 +759,7 @@ class RuleSetEditorViewModelTest {
     fun `a successful save clears dirty`() = runTest {
         val viewModel = loaded()
         viewModel.setName("lan2")
-        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "exam")
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "example.com")
 
         viewModel.save()
 
@@ -793,5 +793,124 @@ class RuleSetEditorViewModelTest {
 
         viewModel.state.value.saveProblem shouldBe SaveProblem.WriteFailed
         viewModel.state.value.isDirty shouldBe true
+    }
+
+    // Save keeps text that was typed into an entry field but never added with the + button.
+
+    @Test
+    fun `save keeps a valid draft that was never added`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "  example.com ")
+
+        viewModel.save()
+
+        source.upserted!!.buckets[RouteOutcome.PROXY]!!.sites shouldBe listOf("example.com")
+        val state = viewModel.state.value
+        state.saved shouldBe true
+        state.drafts shouldBe emptyMap()
+        state.bucket(RouteOutcome.PROXY, BucketField.SITES) shouldBe listOf("example.com")
+        state.baseline shouldBe state.edits
+        state.isDirty shouldBe false
+    }
+
+    @Test
+    fun `save keeps drafts across several buckets and fields`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "a.example")
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.IPS, "192.168.0.0/16")
+        viewModel.setDraft(RouteOutcome.BLOCK, BucketField.SITES, "b.example")
+        viewModel.setDraft(RouteOutcome.DIRECT, BucketField.SITES, "   ")
+
+        viewModel.save()
+
+        val saved = source.upserted!!.buckets
+        saved[RouteOutcome.PROXY]!!.sites shouldBe listOf("a.example")
+        saved[RouteOutcome.PROXY]!!.ips shouldBe listOf("192.168.0.0/16")
+        saved[RouteOutcome.BLOCK]!!.sites shouldBe listOf("b.example")
+        saved[RouteOutcome.DIRECT]!!.sites shouldBe emptyList()
+        saved[RouteOutcome.DIRECT]!!.ips shouldBe listOf("10.0.0.0/8")
+        viewModel.state.value.saved shouldBe true
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    @Test
+    fun `an invalid draft blocks save and changes nothing`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "good.example")
+        viewModel.setDraft(RouteOutcome.BLOCK, BucketField.IPS, "999.1.1.1")
+        val before = viewModel.state.value
+
+        viewModel.save()
+
+        source.upserted shouldBe null
+        val after = viewModel.state.value
+        after.copy(revealRequest = null) shouldBe before
+        after.saved shouldBe false
+        after.saving shouldBe false
+        after.draft(RouteOutcome.PROXY, BucketField.SITES) shouldBe "good.example"
+        after.draft(RouteOutcome.BLOCK, BucketField.IPS) shouldBe "999.1.1.1"
+        after.revealRequest?.outcome shouldBe RouteOutcome.BLOCK
+        after.revealRequest?.field shouldBe BucketField.IPS
+    }
+
+    @Test
+    fun `a refused save can be asked again and reveals again`() = runTest {
+        val viewModel = loaded()
+        viewModel.setDraft(RouteOutcome.BLOCK, BucketField.IPS, "999.1.1.1")
+        viewModel.save()
+        val first = viewModel.state.value.revealRequest
+
+        // The screen has not consumed the first request yet: a second tap must still be a new one.
+        viewModel.save()
+
+        (viewModel.state.value.revealRequest != first) shouldBe true
+        viewModel.revealHandled()
+        viewModel.state.value.revealRequest shouldBe null
+    }
+
+    @Test
+    fun `a blank draft is ignored by save`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "   ")
+
+        viewModel.save()
+
+        source.upserted!!.buckets shouldBe storedLan.buckets
+        viewModel.state.value.saved shouldBe true
+    }
+
+    @Test
+    fun `a draft that duplicates an entry is not added twice by save`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.DIRECT, BucketField.IPS, " 10.0.0.0/8 ")
+
+        viewModel.save()
+
+        source.upserted!!.buckets[RouteOutcome.DIRECT]!!.ips shouldBe listOf("10.0.0.0/8")
+        viewModel.state.value.saved shouldBe true
+        viewModel.state.value.drafts shouldBe emptyMap()
+    }
+
+    @Test
+    fun `a failed save keeps the drafts so nothing is lost`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)), failUpsertWith = IOException("disk full"))
+        val viewModel = editor(source)
+        viewModel.load(storedLan.id)
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "a.example")
+
+        viewModel.save()
+
+        viewModel.state.value.saveProblem shouldBe SaveProblem.WriteFailed
+        viewModel.state.value.draft(RouteOutcome.PROXY, BucketField.SITES) shouldBe "a.example"
     }
 }

@@ -160,6 +160,7 @@ fun RuleSetEditorScreen(
                 onMoveLater = { outcome -> viewModel.setOrder(state.order.moved(outcome, 1)) },
                 onDomainStrategyChanged = viewModel::setDomainStrategy,
                 onSave = viewModel::save,
+                onRevealHandled = viewModel::revealHandled,
             ),
             modifier = modifier,
         )
@@ -194,6 +195,7 @@ internal data class RuleSetEditorActions(
     val onMoveLater: (RouteOutcome) -> Unit,
     val onDomainStrategyChanged: (DomainStrategy) -> Unit,
     val onSave: () -> Unit,
+    val onRevealHandled: () -> Unit = {},
 )
 
 /**
@@ -540,6 +542,7 @@ private fun OutcomeCard(
                         field = field,
                         entries = state.bucket(outcome, field),
                         draft = state.draft(outcome, field),
+                        reveal = state.revealRequest?.takeIf { it.outcome == outcome && it.field == field },
                         categories = state.categoriesFor(field),
                         actions = actions,
                         enabled = enabled,
@@ -609,6 +612,7 @@ private fun EntryField(
     field: BucketField,
     entries: List<String>,
     draft: String,
+    reveal: RevealRequest?,
     categories: List<GeoCategory>,
     actions: RuleSetEditorActions,
     enabled: Boolean,
@@ -654,6 +658,7 @@ private fun EntryField(
                 outcome = outcome,
                 field = field,
                 draft = draft,
+                reveal = reveal,
                 categories = categories,
                 focusOnShow = focusOnOpen,
                 onFocused = { focusOnOpen = false },
@@ -700,6 +705,7 @@ private fun EntryInput(
     outcome: RouteOutcome,
     field: BucketField,
     draft: String,
+    reveal: RevealRequest?,
     categories: List<GeoCategory>,
     focusOnShow: Boolean,
     onFocused: () -> Unit,
@@ -719,9 +725,14 @@ private fun EntryInput(
         }
     }
 
+    val bringIntoView = remember { BringIntoViewRequester() }
+    // A Save that was refused because of this field's text: focus it and scroll it, with its
+    // inline problem, into view. The token is what re-fires this on a second refused Save.
+    RevealEffect(reveal, focusRequester, bringIntoView, actions.onRevealHandled)
+
     Column(
         verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.bringProblemIntoView(problem),
+        modifier = Modifier.bringProblemIntoView(problem, bringIntoView),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -762,13 +773,35 @@ private fun EntryInput(
 }
 
 /**
+ * Shows this field when a Save was refused over its text: focus it, scroll it into view, and
+ * report the request handled. [reveal] is non-null only for the field it names.
+ */
+@Composable
+private fun RevealEffect(
+    reveal: RevealRequest?,
+    focusRequester: FocusRequester,
+    bringIntoView: BringIntoViewRequester,
+    onHandled: () -> Unit,
+) {
+    LaunchedEffect(reveal) {
+        if (reveal != null) {
+            focusRequester.requestFocus()
+            bringIntoView.bringIntoView()
+            onHandled()
+        }
+    }
+}
+
+/**
  * Keeps a field and its inline problem on screen together. The message is the last thing in the
  * column and used to sit below the keyboard while the field above it stayed visible, so the whole
  * column is what gets brought into view, when a problem appears for the focused field.
  */
 @Composable
-private fun Modifier.bringProblemIntoView(problem: String?): Modifier {
-    val requester = remember { BringIntoViewRequester() }
+private fun Modifier.bringProblemIntoView(
+    problem: String?,
+    requester: BringIntoViewRequester,
+): Modifier {
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(problem, focused) {
         if (problem != null && focused) requester.bringIntoView()

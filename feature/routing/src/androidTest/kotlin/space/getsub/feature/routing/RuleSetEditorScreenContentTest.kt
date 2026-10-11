@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -294,5 +295,26 @@ class RuleSetEditorScreenContentTest {
         composeRule.onNodeWithText("Save").assertIsDisplayed().performClick()
 
         saved shouldBe true
+    }
+
+    // A Save refused over an unaddable draft asks the screen to show that field: it takes focus
+    // (which also scrolls it into view) and the request is reported handled.
+    @Test
+    fun aRevealRequestFocusesTheNamedFieldAndIsHandled() {
+        var handled = 0
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                drafts = mapOf((RouteOutcome.BLOCK to BucketField.IPS) to "999.1.1.1"),
+                revealRequest = RevealRequest(RouteOutcome.BLOCK, BucketField.IPS, token = 1),
+            ),
+            noOpActions.copy(onRevealHandled = { handled++ }),
+        )
+
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS)).assertIsFocused()
+        handled shouldBe 1
     }
 }
