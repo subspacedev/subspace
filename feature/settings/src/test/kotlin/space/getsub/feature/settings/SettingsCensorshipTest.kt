@@ -4,6 +4,7 @@ package space.getsub.feature.settings
 
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -48,15 +49,48 @@ class SettingsCensorshipTest {
             vm.state.value.fragment shouldBe FragmentSettings.DEFAULT
             vm.state.value.noise shouldBe NoiseSettings.DEFAULT
 
-            vm.onFragmentSettingsChanged(FragmentSettings.DEFAULT.copy(enabled = true))
+            vm.onFragmentSettingsChanged { it.copy(enabled = true) }
             advanceUntilIdle()
             source.fragment.value shouldBe FragmentSettings.DEFAULT.copy(enabled = true)
             vm.state.value.fragment.enabled shouldBe true
 
-            vm.onNoiseSettingsChanged(NoiseSettings.DEFAULT.copy(enabled = true, delay = "5"))
+            vm.onNoiseSettingsChanged { it.copy(enabled = true, delay = "5") }
             advanceUntilIdle()
             source.noise.value.delay shouldBe "5"
             vm.state.value.noise.delay shouldBe "5"
+        }
+
+    @Test
+    fun `two patches issued back to back both survive`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+            val gate = CompletableDeferred<Unit>()
+            source.fragmentWriteGate = gate
+
+            // The first write is held mid-flight; the second must still see its result, not the old value.
+            vm.onFragmentSettingsChanged { it.copy(length = "1-9") }
+            vm.onFragmentSettingsChanged { it.copy(delay = "3-4") }
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            source.fragment.value.length shouldBe "1-9"
+            source.fragment.value.delay shouldBe "3-4"
+        }
+
+    @Test
+    fun `a field patch after switching off keeps it off`() =
+        runTest {
+            val source = FakeSettingsSource()
+            source.fragment.value = FragmentSettings.DEFAULT.copy(enabled = true)
+            val vm = viewModel(source)
+
+            vm.onFragmentSettingsChanged { it.copy(enabled = false) }
+            vm.onFragmentSettingsChanged { it.copy(length = "1-9") }
+            advanceUntilIdle()
+
+            source.fragment.value.enabled shouldBe false
+            source.fragment.value.length shouldBe "1-9"
         }
 
     @Test

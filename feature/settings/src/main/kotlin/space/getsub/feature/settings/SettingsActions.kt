@@ -75,8 +75,9 @@ internal data class SettingsActions(
     val onPerTagBreakdownChanged: (Boolean) -> Unit = {},
     val onLightweightModeChanged: (Boolean) -> Unit = {},
     val onDynamicColorChanged: (Boolean) -> Unit = {},
-    val onFragmentSettingsChanged: (FragmentSettings) -> Unit = {},
-    val onNoiseSettingsChanged: (NoiseSettings) -> Unit = {},
+    // Field-level patches, applied by the ViewModel to the latest stored value (M9-A Task 8 fix 1).
+    val onFragmentSettingsChanged: ((FragmentSettings) -> FragmentSettings) -> Unit = {},
+    val onNoiseSettingsChanged: ((NoiseSettings) -> NoiseSettings) -> Unit = {},
 )
 
 /** Every [SettingsActions] callback bound to [viewModel]; shared by the hub and the sub-pages. */

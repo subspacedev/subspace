@@ -7,10 +7,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -34,6 +37,8 @@ class CensorshipPageTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    /** The hosted state; each action applies its patch to it, as the ViewModel does to the stored value. */
+    private val hosted = mutableStateOf(SettingsState())
     private val fragmentChanges = mutableListOf<FragmentSettings>()
     private val noiseChanges = mutableListOf<NoiseSettings>()
 
@@ -54,8 +59,16 @@ class CensorshipPageTest {
             onAddCustomGeoSource = { _, _, _ -> },
             onGeoRefreshOnMeteredChanged = {},
             onRemoveCustomGeoSource = {},
-            onFragmentSettingsChanged = { fragmentChanges += it },
-            onNoiseSettingsChanged = { noiseChanges += it },
+            onFragmentSettingsChanged = { patch ->
+                val next = patch(hosted.value.fragment)
+                fragmentChanges += next
+                hosted.value = hosted.value.copy(fragment = next)
+            },
+            onNoiseSettingsChanged = { patch ->
+                val next = patch(hosted.value.noise)
+                noiseChanges += next
+                hosted.value = hosted.value.copy(noise = next)
+            },
         )
 
     private val lengthTag = "field-${R.string.settings_fragment_length}"
@@ -63,11 +76,13 @@ class CensorshipPageTest {
 
     /** Hosts the page; returns the switch that removes it from composition, as leaving the page does. */
     private fun setContent(state: SettingsState): MutableState<Boolean> {
+        hosted.value = state
         val show = mutableStateOf(true)
         composeRule.setContent {
             val visible by show
+            val current by hosted
             SubspaceTheme {
-                if (visible) CensorshipPage(state = state, actions = actions, onBack = {})
+                if (visible) CensorshipPage(state = current, actions = actions, onBack = {})
             }
         }
         return show
@@ -101,6 +116,21 @@ class CensorshipPageTest {
         composeRule.runOnIdle { show.value = false }
 
         composeRule.runOnIdle { fragmentChanges.last().length shouldBe "1-9" }
+    }
+
+    /** Task 8 fix 1: the Length field's dispose commit must not switch Fragmentation back On. */
+    @Test
+    fun switchingOffWithAnUncommittedEditKeepsBoth() {
+        setContent(SettingsState(fragment = FragmentSettings.DEFAULT.copy(enabled = true)))
+
+        composeRule.onNodeWithTag(lengthTag).performScrollTo().performTextReplacement("1-9")
+        composeRule.onNode(isToggleable() and hasText("Fragmentation")).performClick()
+
+        composeRule.runOnIdle {
+            hosted.value.fragment.enabled shouldBe false
+            hosted.value.fragment.length shouldBe "1-9"
+        }
+        composeRule.onNodeWithTag(lengthTag).assertDoesNotExist()
     }
 
     @Test

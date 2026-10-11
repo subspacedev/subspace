@@ -12,8 +12,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,11 +60,18 @@ internal fun CensorshipPage(
     }
 }
 
+/** A field-level change: the ViewModel applies it to the latest stored value, not to this snapshot. */
+private typealias Patch<T> = ((T) -> T) -> Unit
+
+/** Bumped by a section's Reset so every draft is discarded, even one already equal to the default. */
+private val LocalDraftResets = compositionLocalOf { 0 }
+
 @Composable
 private fun FragmentSection(
     value: FragmentSettings,
-    onChange: (FragmentSettings) -> Unit,
+    update: Patch<FragmentSettings>,
 ) {
+    var resets by remember { mutableIntStateOf(0) }
     SwitchRow(
         icon = SubspaceIcons.Shield,
         label = stringResource(R.string.settings_fragment_label),
@@ -70,43 +80,71 @@ private fun FragmentSection(
             if (value.enabled) R.string.settings_fragment_summary else R.string.settings_fragment_off_summary,
         ),
         checked = value.enabled,
-        onCheckedChange = { onChange(value.copy(enabled = it)) },
+        onCheckedChange = { on -> update { it.copy(enabled = on) } },
     )
     if (!value.enabled) return
-    ValidatedField(
-        label = R.string.settings_fragment_packets,
-        stored = value.packets,
-        validate = { ObfuscationValidation.packets(it) },
-        hint = R.string.settings_fragment_packets_hint,
-    ) { onChange(value.copy(packets = it)) }
-    ValidatedField(R.string.settings_fragment_length, value.length, { ObfuscationValidation.length(it) }) {
-        onChange(value.copy(length = it))
-    }
-    ValidatedField(R.string.settings_fragment_delay, value.delay, { ObfuscationValidation.delay(it) }) {
-        onChange(value.copy(delay = it))
-    }
-    ValidatedField(R.string.settings_fragment_max_split, value.maxSplit, { ObfuscationValidation.maxSplit(it) }) {
-        onChange(value.copy(maxSplit = it))
-    }
-    TextButton(onClick = { onChange(FragmentSettings.DEFAULT.copy(enabled = true)) }) {
+    CompositionLocalProvider(LocalDraftResets provides resets) { FragmentFields(value, update) }
+    TextButton(onClick = {
+        resets++
+        update { FragmentSettings.DEFAULT.copy(enabled = true) }
+    }) {
         Text(stringResource(R.string.settings_obfuscation_reset))
     }
 }
 
 @Composable
+private fun FragmentFields(
+    value: FragmentSettings,
+    update: Patch<FragmentSettings>,
+) {
+    ValidatedField(
+        label = R.string.settings_fragment_packets,
+        stored = value.packets,
+        validate = { ObfuscationValidation.packets(it) },
+        hint = R.string.settings_fragment_packets_hint,
+    ) { draft -> update { it.copy(packets = draft) } }
+    ValidatedField(R.string.settings_fragment_length, value.length, { ObfuscationValidation.length(it) }) { draft ->
+        update { it.copy(length = draft) }
+    }
+    ValidatedField(R.string.settings_fragment_delay, value.delay, { ObfuscationValidation.delay(it) }) { draft ->
+        update { it.copy(delay = draft) }
+    }
+    ValidatedField(
+        label = R.string.settings_fragment_max_split,
+        stored = value.maxSplit,
+        validate = { ObfuscationValidation.maxSplit(it) },
+    ) { draft -> update { it.copy(maxSplit = draft) } }
+}
+
+@Composable
 private fun NoiseSection(
     value: NoiseSettings,
-    onChange: (NoiseSettings) -> Unit,
+    update: Patch<NoiseSettings>,
 ) {
+    var resets by remember { mutableIntStateOf(0) }
     SwitchRow(
         icon = SubspaceIcons.Shield,
         label = stringResource(R.string.settings_noise_label),
         supporting =
         stringResource(if (value.enabled) R.string.settings_noise_summary else R.string.settings_noise_off_summary),
         checked = value.enabled,
-        onCheckedChange = { onChange(value.copy(enabled = it)) },
+        onCheckedChange = { on -> update { it.copy(enabled = on) } },
     )
     if (!value.enabled) return
+    CompositionLocalProvider(LocalDraftResets provides resets) { NoiseFields(value, update) }
+    TextButton(onClick = {
+        resets++
+        update { NoiseSettings.DEFAULT.copy(enabled = true) }
+    }) {
+        Text(stringResource(R.string.settings_obfuscation_reset))
+    }
+}
+
+@Composable
+private fun NoiseFields(
+    value: NoiseSettings,
+    update: Patch<NoiseSettings>,
+) {
     ModeTiles(
         options =
         listOf(
@@ -114,33 +152,30 @@ private fun NoiseSection(
             ModeTile(icon = SubspaceIcons.Edit, label = stringResource(R.string.settings_noise_mode_fixed)),
         ),
         selected = NoiseMode.entries.indexOf(value.mode),
-        onSelect = { onChange(value.copy(mode = NoiseMode.entries[it])) },
+        onSelect = { index -> update { it.copy(mode = NoiseMode.entries[index]) } },
     )
     when (value.mode) {
         NoiseMode.Random -> {
-            ValidatedField(R.string.settings_noise_rand, value.rand, { ObfuscationValidation.rand(it) }) {
-                onChange(value.copy(rand = it))
+            ValidatedField(R.string.settings_noise_rand, value.rand, { ObfuscationValidation.rand(it) }) { draft ->
+                update { it.copy(rand = draft) }
             }
             ValidatedField(
                 label = R.string.settings_noise_rand_range,
                 stored = value.randRange,
                 validate = { ObfuscationValidation.randRange(it) },
-            ) { onChange(value.copy(randRange = it)) }
+            ) { draft -> update { it.copy(randRange = draft) } }
         }
-        NoiseMode.Fixed -> FixedPacket(value, onChange)
+        NoiseMode.Fixed -> FixedPacket(value, update)
     }
-    ValidatedField(R.string.settings_noise_delay, value.delay, { ObfuscationValidation.delay(it) }) {
-        onChange(value.copy(delay = it))
-    }
-    TextButton(onClick = { onChange(NoiseSettings.DEFAULT.copy(enabled = true)) }) {
-        Text(stringResource(R.string.settings_obfuscation_reset))
+    ValidatedField(R.string.settings_noise_delay, value.delay, { ObfuscationValidation.delay(it) }) { draft ->
+        update { it.copy(delay = draft) }
     }
 }
 
 @Composable
 private fun FixedPacket(
     value: NoiseSettings,
-    onChange: (NoiseSettings) -> Unit,
+    update: Patch<NoiseSettings>,
 ) {
     SectionTitle(stringResource(R.string.settings_noise_packet_type))
     RadioList(
@@ -149,7 +184,7 @@ private fun FixedPacket(
             RadioChoice(
                 label = type.wire,
                 selected = type == value.packetType,
-                onSelect = { onChange(value.copy(packetType = type)) },
+                onSelect = { update { it.copy(packetType = type) } },
             )
         },
     )
@@ -159,7 +194,14 @@ private fun FixedPacket(
             label = R.string.settings_noise_packet,
             stored = value.packet,
             validate = { ObfuscationValidation.packet(value.packetType, it) },
-        ) { onChange(value.copy(packet = it)) }
+        ) { draft ->
+            // Re-checked against the type stored when the patch lands: a dispose commit after a type
+            // change must not save a packet that was only valid for the old type.
+            update { latest ->
+                val valid = ObfuscationValidation.packet(latest.packetType, draft) is Checked.Ok
+                if (valid) latest.copy(packet = draft) else latest
+            }
+        }
     }
 }
 
@@ -167,6 +209,8 @@ private fun FixedPacket(
  * A draft that commits only valid text (M9-A Review Focus 4), on Done, focus loss and leaving the
  * page (M9-A Review Focus 5). The error is shown inline from [validate]'s problem. The tag names the
  * label's resource id so a test can find one field without depending on its rendered text.
+ * [LocalDraftResets] discards the draft when Reset is pressed; keying the composable instead would
+ * dispose it, and disposing commits.
  */
 @Composable
 private fun ValidatedField(
@@ -176,7 +220,7 @@ private fun ValidatedField(
     @StringRes hint: Int? = null,
     commitValue: (String) -> Unit,
 ) {
-    var draft by remember(stored) { mutableStateOf(stored) }
+    var draft by remember(stored, LocalDraftResets.current) { mutableStateOf(stored) }
     val checked = validate(draft)
     val commit = { if (shouldCommitDraft(draft, stored, isValid = checked is Checked.Ok)) commitValue(draft) }
     CommitDraftOnDispose(commit)

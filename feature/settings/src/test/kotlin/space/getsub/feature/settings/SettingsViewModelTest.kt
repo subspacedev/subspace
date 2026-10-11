@@ -222,7 +222,11 @@ class SettingsViewModelTest {
         val fragment = MutableStateFlow(FragmentSettings.DEFAULT)
         override val fragmentSettings: Flow<FragmentSettings> = fragment.asStateFlow()
 
+        /** When set, the next fragment write suspends until it completes, so two writes can overlap. */
+        var fragmentWriteGate: CompletableDeferred<Unit>? = null
+
         override suspend fun setFragmentSettings(settings: FragmentSettings) {
+            fragmentWriteGate?.also { fragmentWriteGate = null }?.await()
             fragment.value = settings
         }
 

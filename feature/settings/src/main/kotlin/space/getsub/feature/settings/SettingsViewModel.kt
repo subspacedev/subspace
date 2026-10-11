@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import space.getsub.core.data.GeoInstallRequest
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.ThemePreference
@@ -66,6 +68,9 @@ constructor(
     private var dnsRevision = 0L
     private var editableDnsRevision: Long? = null
     private var latestPersistedDnsResolver = DnsResolver.DEFAULT
+
+    /** Serialises fragmentation and noise patches (see [onFragmentSettingsChanged]). */
+    private val obfuscationWrites = Mutex()
 
     init {
         settingsSource.theme
@@ -238,14 +243,26 @@ constructor(
         viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
     }
 
-    /** Only valid text reaches here: the page commits a field's draft only when it validates. */
-    fun onFragmentSettingsChanged(settings: FragmentSettings) {
-        viewModelScope.launch { settingsSource.setFragmentSettings(settings) }
+    /**
+     * Applies [patch] to the **latest stored** value, never to the page's snapshot. A field's dispose
+     * commit runs after the switch, mode or type change that removed it; written as a whole object it
+     * would put the old switch back. Writes are serialised so two patches cannot read the same value.
+     */
+    fun onFragmentSettingsChanged(patch: (FragmentSettings) -> FragmentSettings) {
+        viewModelScope.launch {
+            obfuscationWrites.withLock {
+                settingsSource.setFragmentSettings(patch(settingsSource.fragmentSettings.first()))
+            }
+        }
     }
 
-    /** Only valid text reaches here: the page commits a field's draft only when it validates. */
-    fun onNoiseSettingsChanged(settings: NoiseSettings) {
-        viewModelScope.launch { settingsSource.setNoiseSettings(settings) }
+    /** As [onFragmentSettingsChanged]. */
+    fun onNoiseSettingsChanged(patch: (NoiseSettings) -> NoiseSettings) {
+        viewModelScope.launch {
+            obfuscationWrites.withLock {
+                settingsSource.setNoiseSettings(patch(settingsSource.noiseSettings.first()))
+            }
+        }
     }
 
     /**
