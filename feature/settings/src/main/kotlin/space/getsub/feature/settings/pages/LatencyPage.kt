@@ -4,6 +4,8 @@ package space.getsub.feature.settings.pages
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -14,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -103,7 +106,7 @@ private fun MethodTiles(
  * because a provider choosing what this device fetches through the tunnel is the threat model the
  * ping design excludes, and honouring it would need an explicit-confirmation step that was not built.
  *
- * Edited locally and committed on focus loss, rather than written on every keystroke. The
+ * Edited locally and committed on focus loss, IME Done and leaving the page, rather than written on every keystroke. The
  * repository maps a stored blank back to the default, so a per-keystroke write meant
  * select-all-delete instantly repopulated the field and the user could never type a replacement
  * from scratch. It also put a Room write plus a full flow round-trip between every character.
@@ -114,6 +117,13 @@ private fun CheckUrlField(
     actions: SettingsActions,
 ) {
     var draft by remember(state.pingCheckUrl) { mutableStateOf(state.pingCheckUrl) }
+    // No validator: the repository maps a blank or unusable value back to the default.
+    val commit = {
+        if (shouldCommitDraft(draft, state.pingCheckUrl, isValid = true)) {
+            actions.onPingCheckUrlChanged(draft)
+        }
+    }
+    CommitDraftOnDispose(commit)
     OutlinedTextField(
         value = draft,
         onValueChange = { typed -> draft = typed },
@@ -121,6 +131,8 @@ private fun CheckUrlField(
         supportingText = { Text(stringResource(R.string.settings_ping_check_url_summary)) },
         textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { commit() }),
         modifier =
         Modifier
             .fillMaxWidth()

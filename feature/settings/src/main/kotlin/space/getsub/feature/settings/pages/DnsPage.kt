@@ -3,6 +3,8 @@
 package space.getsub.feature.settings.pages
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -11,11 +13,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import space.getsub.core.model.DnsTransport
@@ -67,6 +72,9 @@ internal fun SettingsDnsSection(
         )
 
         val isDoh = state.dnsTransport == DnsTransport.DOH
+        // Read by the bootstrap field when it leaves composition because the transport changed:
+        // that is not a reason to commit what it held.
+        val transportNow = rememberUpdatedState(state.dnsTransport)
         Surface(
             shape = SubspaceShapeTokens.card,
             color = MaterialTheme.colorScheme.surfaceContainer,
@@ -75,7 +83,7 @@ internal fun SettingsDnsSection(
             Column(modifier = Modifier.padding(14.dp)) {
                 DnsAddressField(state = state, actions = actions, isDoh = isDoh)
                 if (isDoh) {
-                    DnsBootstrapField(state = state, actions = actions)
+                    DnsBootstrapField(state = state, actions = actions, transportNow = transportNow)
                 }
             }
         }
@@ -98,6 +106,12 @@ private fun DnsAddressField(
     isDoh: Boolean,
 ) {
     var draft by remember(state.dnsAddress) { mutableStateOf(state.dnsAddress) }
+    val commit = {
+        if (shouldCommitDraft(draft, state.dnsAddress, isDnsAddressValid(draft, state.dnsTransport))) {
+            actions.onDnsAddressChanged(draft)
+        }
+    }
+    CommitDraftOnDispose(commit)
     OutlinedTextField(
         value = draft,
         onValueChange = { typed -> draft = typed },
@@ -112,6 +126,8 @@ private fun DnsAddressField(
         },
         textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { commit() }),
         modifier =
         Modifier
             .fillMaxWidth()
@@ -127,16 +143,25 @@ private fun DnsAddressField(
 private fun DnsBootstrapField(
     state: SettingsState,
     actions: SettingsActions,
+    transportNow: State<DnsTransport>,
 ) {
     var draft by remember(state.dnsBootstrapIp) { mutableStateOf(state.dnsBootstrapIp) }
+    val commit = {
+        if (shouldCommitDraft(draft, state.dnsBootstrapIp, isBootstrapValid(draft))) {
+            actions.onDnsBootstrapIpChanged(draft)
+        }
+    }
+    CommitDraftOnDispose { if (transportNow.value == DnsTransport.DOH) commit() }
     OutlinedTextField(
         value = draft,
         onValueChange = { typed -> draft = typed },
         label = { Text(stringResource(R.string.settings_dns_bootstrap)) },
-        isError = draft.isNotBlank() && !DnsValidation.isAddressLiteral(draft),
+        isError = !isBootstrapValid(draft) && draft.isNotBlank(),
         supportingText = { Text(stringResource(R.string.settings_dns_bootstrap_summary)) },
         textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { commit() }),
         modifier =
         Modifier
             .fillMaxWidth()
@@ -158,3 +183,6 @@ private fun isDnsAddressValid(
         DnsTransport.DOH -> DnsValidation.isHttpsUrl(value)
         DnsTransport.DOU -> DnsValidation.isAddressLiteral(value)
     }
+
+/** Blank clears the bootstrap address; anything else must be an address literal. */
+private fun isBootstrapValid(value: String): Boolean = value.isBlank() || DnsValidation.isAddressLiteral(value)
