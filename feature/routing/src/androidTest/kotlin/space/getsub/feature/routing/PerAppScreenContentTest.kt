@@ -2,10 +2,15 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.routing
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.model.PerAppMode
@@ -27,6 +32,7 @@ class PerAppScreenContentTest {
             onSetMode = {},
             onToggle = {},
             onSearch = {},
+            onClear = {},
             onSave = {},
             onDiscard = {},
             onBack = {},
@@ -92,7 +98,7 @@ class PerAppScreenContentTest {
             )
         }
 
-        rule.onNodeWithText("Saving will reconnect the tunnel.").assertIsDisplayed()
+        rule.onNodeWithText("Saving reconnects the tunnel").assertIsDisplayed()
     }
 
     // The count is the whole selection, not the visible slice of it: a query that
@@ -128,7 +134,59 @@ class PerAppScreenContentTest {
         rule.setContent { PerAppScreenContent(PerAppState(rows = rows), noopActions) }
 
         rule.onNodeWithText("Off").assertIsDisplayed()
-        rule.onNodeWithText("Only selected apps").assertIsDisplayed()
-        rule.onNodeWithText("All except selected").assertIsDisplayed()
+        rule.onNodeWithText("Allow-list").assertIsDisplayed()
+        rule.onNodeWithText("Deny-list").assertIsDisplayed()
+    }
+
+    // Fix A8: the tag follows the mode and the selection, row by row.
+    @Test
+    fun allowListTagsSelectedTunnelledAndOthersDirect() {
+        rule.setContent {
+            PerAppScreenContent(PerAppState(mode = PerAppMode.AllowList, rows = rows, selectedCount = 1), noopActions)
+        }
+
+        rule.onAllNodesWithText("Tunnelled").assertCountEquals(1)
+        rule.onAllNodesWithText("Direct").assertCountEquals(1)
+        rule.onNode(hasText("Bank") and hasText("Tunnelled")).assertIsDisplayed()
+    }
+
+    @Test
+    fun denyListTagsSelectedDirectAndOthersTunnelled() {
+        rule.setContent {
+            PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows, selectedCount = 1), noopActions)
+        }
+
+        rule.onNode(hasText("Bank") and hasText("Direct")).assertIsDisplayed()
+        rule.onNode(hasText("Maps") and hasText("Tunnelled")).assertIsDisplayed()
+    }
+
+    @Test
+    fun offTagsEveryRowTunnelled() {
+        rule.setContent { PerAppScreenContent(PerAppState(rows = rows, selectedCount = 1), noopActions) }
+
+        rule.onAllNodesWithText("Tunnelled").assertCountEquals(2)
+        rule.onAllNodesWithText("Direct").assertCountEquals(0)
+    }
+
+    @Test
+    fun clearEmptiesThePickedTray() {
+        var cleared = false
+        rule.setContent {
+            PerAppScreenContent(
+                PerAppState(mode = PerAppMode.DenyList, rows = rows, picked = rows.take(1), selectedCount = 1),
+                noopActions.copy(onClear = { cleared = true }),
+            )
+        }
+
+        rule.onNodeWithText("Skipping the tunnel · 1").assertIsDisplayed()
+        rule.onNodeWithText("Clear").performClick()
+        assertTrue(cleared)
+    }
+
+    @Test
+    fun noPicksMeansNoTray() {
+        rule.setContent { PerAppScreenContent(PerAppState(mode = PerAppMode.DenyList, rows = rows), noopActions) }
+
+        rule.onAllNodesWithText("Clear").assertCountEquals(0)
     }
 }

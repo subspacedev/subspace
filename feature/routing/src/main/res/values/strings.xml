@@ -160,18 +160,37 @@
          user-visible values this screen shows — never logged, see AppRow's own KDoc. -->
     <string name="per_app_title">Per-app proxy</string>
     <string name="per_app_mode_off">Off</string>
-    <string name="per_app_mode_off_summary">Every app uses the tunnel.</string>
-    <string name="per_app_mode_allow">Only selected apps</string>
-    <string name="per_app_mode_allow_summary">Selected apps use the tunnel; everything else connects directly.</string>
-    <string name="per_app_mode_deny">All except selected</string>
-    <string name="per_app_mode_deny_summary">Selected apps connect directly; everything else uses the tunnel.</string>
+    <string name="per_app_mode_off_sub">Every app</string>
+    <string name="per_app_mode_allow">Allow-list</string>
+    <string name="per_app_mode_allow_sub">Only these</string>
+    <string name="per_app_mode_deny">Deny-list</string>
+    <string name="per_app_mode_deny_sub">All but these</string>
     <string name="per_app_search_hint">Search apps</string>
     <string name="per_app_not_installed">Not installed</string>
     <string name="per_app_empty_allow_list">Select at least one app, or switch the mode off. A tunnel no app can use looks connected but carries nothing.</string>
-    <string name="per_app_reconnect_notice">Saving will reconnect the tunnel.</string>
+    <string name="per_app_reconnect_notice">Saving reconnects the tunnel</string>
     <string name="per_app_save">Save</string>
     <string name="per_app_discard_body">Your app selection hasn\'t been saved.</string>
     <string name="per_app_back">Back</string>
+    <string name="per_app_summary_off">Every app on this phone uses the tunnel.</string>
+    <string name="per_app_summary_allow_empty">Tap the apps that should use the tunnel.</string>
+    <string name="per_app_summary_deny_empty">Tap apps below that should skip the tunnel.</string>
+    <plurals name="per_app_summary_allow">
+        <item quantity="one">Only %d app uses the tunnel. Everything else goes direct.</item>
+        <item quantity="other">Only %d apps use the tunnel. Everything else goes direct.</item>
+    </plurals>
+    <plurals name="per_app_summary_deny">
+        <item quantity="one">%d app skips the tunnel. Everything else stays protected.</item>
+        <item quantity="other">%d apps skip the tunnel. Everything else stays protected.</item>
+    </plurals>
+    <plurals name="per_app_off_kept">
+        <item quantity="one">Your %d picked app is kept for when you switch back.</item>
+        <item quantity="other">Your %d picked apps are kept for when you switch back.</item>
+    </plurals>
+    <string name="per_app_tray_allow">Using the tunnel · %d</string>
+    <string name="per_app_tray_deny">Skipping the tunnel · %d</string>
+    <string name="per_app_clear">Clear</string>
+    <string name="per_app_tray_remove">Remove %1$s</string>
     <plurals name="per_app_selected_count">
         <item quantity="one">%d app selected</item>
         <item quantity="other">%d apps selected</item>

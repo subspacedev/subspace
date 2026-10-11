@@ -109,6 +109,22 @@ class PerAppViewModelTest {
         model.state.value.isDirty shouldBe true
     }
 
+    // Clear is a draft change like any other: the discard guard must see it.
+    @Test
+    fun clearEmptiesTheSelectionAndMakesTheDraftDirty() = runTest(dispatcher) {
+        val source = FakeSource(apps, PerAppSelection(PerAppMode.DenyList, setOf("com.example.bank")))
+        val model = PerAppViewModel(source)
+        dispatcher.scheduler.advanceUntilIdle()
+        model.state.value.picked.map { it.packageName } shouldBe listOf("com.example.bank")
+
+        model.clear()
+
+        model.state.value.picked.shouldBeEmpty()
+        model.state.value.selectedCount shouldBe 0
+        model.state.value.isDirty shouldBe true
+        source.applyCount shouldBe 0
+    }
+
     // Nothing is written until save(): a half-finished edit must not reach the
     // tunnel, and on this screen reaching the tunnel means a reconnect.
     @Test
