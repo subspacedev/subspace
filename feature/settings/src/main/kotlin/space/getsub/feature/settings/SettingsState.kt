@@ -7,8 +7,10 @@ import space.getsub.core.data.InstalledGeoAsset
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoSource
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 
@@ -112,6 +114,10 @@ internal data class SettingsState(
     val activeRuleSetName: String? = null,
     /** The **effective** per-app selection (the one `:service` applies), for the hub row. */
     val perApp: PerAppSelection = PerAppSelection.OFF,
+    /** The user's TLS fragmentation, as stored (M9-A spec §2.1). Off means the provider's applies. */
+    val fragment: FragmentSettings = FragmentSettings.DEFAULT,
+    /** The user's UDP noise, as stored (M9-A spec §2.1). Off means the provider's applies. */
+    val noise: NoiseSettings = NoiseSettings.DEFAULT,
 ) {
     /** One row per install filename. See [geoRowsFor]'s KDoc for exactly how ground truth is chosen. */
     val geoRows: List<GeoRow>

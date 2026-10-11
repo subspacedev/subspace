@@ -15,6 +15,8 @@ import space.getsub.core.data.RoutingRepository
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsResolver
+import space.getsub.core.model.FragmentSettings
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.ProfileDns
@@ -145,6 +147,16 @@ internal interface SettingsSource {
 
     suspend fun setDynamicColor(enabled: Boolean)
 
+    /** The user's TLS fragmentation (M9-A spec §2.1). See [SettingsRepository.fragmentSettings]. */
+    val fragmentSettings: Flow<FragmentSettings>
+
+    suspend fun setFragmentSettings(settings: FragmentSettings)
+
+    /** The user's UDP noise (M9-A spec §2.1). See [SettingsRepository.noiseSettings]. */
+    val noiseSettings: Flow<NoiseSettings>
+
+    suspend fun setNoiseSettings(settings: NoiseSettings)
+
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
@@ -250,6 +262,15 @@ constructor(
     override val dynamicColor: Flow<Boolean> = settingsRepository.dynamicColor
 
     override suspend fun setDynamicColor(enabled: Boolean) = settingsRepository.setDynamicColor(enabled)
+
+    override val fragmentSettings: Flow<FragmentSettings> = settingsRepository.fragmentSettings
+
+    override suspend fun setFragmentSettings(settings: FragmentSettings) =
+        settingsRepository.setFragmentSettings(settings)
+
+    override val noiseSettings: Flow<NoiseSettings> = settingsRepository.noiseSettings
+
+    override suspend fun setNoiseSettings(settings: NoiseSettings) = settingsRepository.setNoiseSettings(settings)
 
     override suspend fun isIgnoringBatteryOptimizations(): Boolean =
         withContext(Dispatchers.IO) {

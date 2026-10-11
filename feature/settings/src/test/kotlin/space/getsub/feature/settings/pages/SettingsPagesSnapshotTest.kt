@@ -8,8 +8,12 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.InstalledGeoAsset
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.NoiseMode
+import space.getsub.core.model.NoisePacketType
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.settings.SettingsActions
@@ -72,6 +76,27 @@ class SettingsPagesSnapshotTest {
 
     @Test
     fun about() = shoot(SettingsPageId.About)
+
+    /** M9-A spec §2.3: fragmentation On shows its fields; noise stays Off and says the provider's apply. */
+    @Test
+    fun censorshipFragmentOn() =
+        shoot(SettingsPageId.Censorship, base.copy(fragment = FragmentSettings.DEFAULT.copy(enabled = true)))
+
+    /** Noise On in Fixed mode: the packet-type list and the packet field. */
+    @Test
+    fun censorshipNoiseFixed() =
+        shoot(
+            SettingsPageId.Censorship,
+            base.copy(
+                noise =
+                NoiseSettings.DEFAULT.copy(
+                    enabled = true,
+                    mode = NoiseMode.Fixed,
+                    packetType = NoisePacketType.Hex,
+                    packet = "0a0b0c0d",
+                ),
+            ),
+        )
 
     @Test
     fun geo() {

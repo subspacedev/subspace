@@ -188,4 +188,30 @@
     <!-- M8.6 plan ruling R3: no line count, so the hub never reads the log. -->
     <string name="settings_hub_log_recording">Recording</string>
     <string name="settings_hub_log_lightweight">Not recording · lightweight mode</string>
+
+    <!-- Censorship resistance page (M9-A spec §2.3). Off always means the provider's settings apply. -->
+    <string name="settings_censorship_title">Censorship resistance</string>
+    <string name="settings_censorship_hub_off">Provider settings</string>
+    <string name="settings_censorship_hub_fragment">Fragmentation</string>
+    <string name="settings_censorship_hub_noise">Noise</string>
+    <string name="settings_censorship_hub_both">Fragmentation, noise</string>
+    <string name="settings_fragment_label">Fragmentation</string>
+    <string name="settings_fragment_summary">Splits the TLS handshake so DPI cannot read it. Overrides what your subscription or config sets.</string>
+    <string name="settings_fragment_off_summary">Off: your subscription\'s settings apply</string>
+    <string name="settings_fragment_packets">Packets</string>
+    <string name="settings_fragment_packets_hint">tlshello, or a range like 1-3</string>
+    <string name="settings_fragment_length">Length, bytes</string>
+    <string name="settings_fragment_delay">Delay, ms</string>
+    <string name="settings_fragment_max_split">Max split (optional)</string>
+    <string name="settings_noise_label">Noise</string>
+    <string name="settings_noise_summary">Sends junk packets before connecting. Only affects UDP-based servers (Hysteria2, QUIC). Overrides your provider.</string>
+    <string name="settings_noise_off_summary">Off: your subscription\'s settings apply</string>
+    <string name="settings_noise_mode_random">Random bytes</string>
+    <string name="settings_noise_mode_fixed">Fixed packet</string>
+    <string name="settings_noise_rand">Length, bytes</string>
+    <string name="settings_noise_rand_range">Byte values</string>
+    <string name="settings_noise_packet_type">Packet type</string>
+    <string name="settings_noise_packet">Packet</string>
+    <string name="settings_noise_delay">Delay, ms</string>
+    <string name="settings_obfuscation_reset">Reset to defaults</string>
 </resources>

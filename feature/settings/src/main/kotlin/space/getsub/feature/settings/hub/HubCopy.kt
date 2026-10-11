@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.settings.hub
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -67,4 +68,14 @@ internal fun aboutText(state: SettingsState): String =
         // Still loading, or the native call failed: the About page says which; the hub just leaves it out.
         XrayVersionState.Loading, XrayVersionState.Unavailable ->
             stringResource(R.string.settings_hub_about_app_only, state.appVersion)
+    }
+
+/** M9-A spec §2.3: what is on. Both Off names the provider's settings, never "off". */
+@StringRes
+internal fun censorshipTextRes(state: SettingsState): Int =
+    when {
+        state.fragment.enabled && state.noise.enabled -> R.string.settings_censorship_hub_both
+        state.fragment.enabled -> R.string.settings_censorship_hub_fragment
+        state.noise.enabled -> R.string.settings_censorship_hub_noise
+        else -> R.string.settings_censorship_hub_off
     }

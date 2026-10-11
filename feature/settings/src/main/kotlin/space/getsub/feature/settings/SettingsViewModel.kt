@@ -23,8 +23,10 @@ import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.DnsValidation
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.isGeoFileName
 import javax.inject.Inject
@@ -154,6 +156,14 @@ constructor(
             .onEach { enabled -> _state.update { it.copy(dynamicColor = enabled) } }
             .launchIn(viewModelScope)
 
+        settingsSource.fragmentSettings
+            .onEach { value -> _state.update { it.copy(fragment = value) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.noiseSettings
+            .onEach { value -> _state.update { it.copy(noise = value) } }
+            .launchIn(viewModelScope)
+
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)
         // purely so SettingsState.perTagBreakdownSessionNoticeVisible has something to derive
         // from — see that property's own KDoc for why this plain mirror, with no latch of what
@@ -226,6 +236,16 @@ constructor(
     /** Applied at once: MainActivity reads the same setting through the theme source. */
     fun onDynamicColorChanged(enabled: Boolean) {
         viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
+    }
+
+    /** Only valid text reaches here: the page commits a field's draft only when it validates. */
+    fun onFragmentSettingsChanged(settings: FragmentSettings) {
+        viewModelScope.launch { settingsSource.setFragmentSettings(settings) }
+    }
+
+    /** Only valid text reaches here: the page commits a field's draft only when it validates. */
+    fun onNoiseSettingsChanged(settings: NoiseSettings) {
+        viewModelScope.launch { settingsSource.setNoiseSettings(settings) }
     }
 
     /**

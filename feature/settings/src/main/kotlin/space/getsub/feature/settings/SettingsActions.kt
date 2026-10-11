@@ -14,7 +14,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.ui.component.SubspaceDialog
 import space.getsub.core.ui.icon.SubspaceIcons
@@ -73,6 +75,8 @@ internal data class SettingsActions(
     val onPerTagBreakdownChanged: (Boolean) -> Unit = {},
     val onLightweightModeChanged: (Boolean) -> Unit = {},
     val onDynamicColorChanged: (Boolean) -> Unit = {},
+    val onFragmentSettingsChanged: (FragmentSettings) -> Unit = {},
+    val onNoiseSettingsChanged: (NoiseSettings) -> Unit = {},
 )
 
 /** Every [SettingsActions] callback bound to [viewModel]; shared by the hub and the sub-pages. */
@@ -101,6 +105,8 @@ internal fun settingsActionsOf(viewModel: SettingsViewModel): SettingsActions =
         onPerTagBreakdownChanged = viewModel::onPerTagBreakdownChanged,
         onLightweightModeChanged = viewModel::onLightweightModeChanged,
         onDynamicColorChanged = viewModel::onDynamicColorChanged,
+        onFragmentSettingsChanged = viewModel::onFragmentSettingsChanged,
+        onNoiseSettingsChanged = viewModel::onNoiseSettingsChanged,
     )
 
 /**
