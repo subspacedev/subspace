@@ -6,6 +6,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -17,16 +18,50 @@ public data class OwnMask(
     val present: Boolean get() = inFinalmask || freedomTag != null
 }
 
-/** Whether any outermost eligible outbound of a config fragments / adds noise itself. */
-public data class OwnMasks(
-    val fragment: Boolean,
-    val noise: Boolean,
+/**
+ * A mask the app has on offer for a raw config. [replaceOwn] is true exactly for the user's own
+ * values (M9-A plan ruling R1): they displace the config's own mask; a directive never does.
+ */
+public data class MaskOffer(
+    val replaceOwn: Boolean,
 )
+
+/** What one mask ends up as on one outbound once M9-A spec §3.3 has run. */
+public enum class MaskFate {
+    /** The app's mask is injected. */
+    Ours,
+
+    /** The config's own mask (Finalmask entry or freedom chain) still runs. */
+    Own,
+
+    /** Neither. */
+    Nothing,
+}
+
+/**
+ * M9-A spec §3.3's verdict for one outermost eligible outbound, at [index] in `outbounds`.
+ *
+ * @property editable false for rule 7's malformed shape: the outbound runs exactly as written.
+ * @property cutLink the `sockopt.dialerProxy` link to a fragmenting or noising `freedom` outbound
+ *   is removed. The freedom outbound itself always stays.
+ */
+public data class OutboundPlan(
+    val index: Int,
+    val editable: Boolean,
+    val cutLink: Boolean,
+    val fragment: MaskFate,
+    val noise: MaskFate,
+) {
+    /** Whether the injector changes this outbound at all. */
+    val touched: Boolean get() = cutLink || fragment == MaskFate.Ours || noise == MaskFate.Ours
+}
 
 /**
  * Reads a raw config's outbounds for M9-A spec §3.3. Pure and tolerant: a shape it does not
- * recognise is "not an own mask" and "not eligible", never an exception. Shared by
- * `:core:xray`'s injector and the UI's "from config" line, so they cannot disagree.
+ * recognise is "not an own mask" and "not eligible", never an exception.
+ *
+ * [plan] is the single decision: `:core:xray`'s injector executes it and `:core:data`'s server
+ * report describes it, so the two cannot disagree about what a raw config ends up running.
  */
 public object ObfuscationDetection {
     /** M9-A spec §3.3 rule 1. Anything else is left alone (ARCHITECTURE.md §10.5). */
@@ -63,8 +98,31 @@ public object ObfuscationDetection {
         byTag: Map<String, JsonObject>,
     ): OwnMask = own(outbound, byTag, half = "udp", maskType = "noise", freedomKey = "noises")
 
-    /** For the UI: does this config fragment / add noise by itself anywhere it would matter? */
-    public fun configOwn(rawJson: String): OwnMasks {
+    /**
+     * M9-A spec §3.3 rules 2 to 7 for every outermost eligible outbound, in index order. An
+     * outbound absent from the result is never touched. A null offer means no mask of that type.
+     *
+     * Cut first, then re-evaluate (ruling, fix round 1): when the user's mask of one type cuts a
+     * freedom-chain link, the config's chained mask of the *other* type goes with it, so a
+     * directive of that other type fills the gap, and without one nothing does.
+     */
+    public fun plan(
+        outbounds: List<JsonElement>,
+        fragment: MaskOffer?,
+        noise: MaskOffer?,
+    ): List<OutboundPlan> {
+        val byTag = tagIndex(outbounds)
+        return outermostEligible(outbounds).sorted().map { i ->
+            plan(i, outbounds[i] as JsonObject, byTag, fragment, noise)
+        }
+    }
+
+    /** [plan] over a raw config's text. Junk, or no `outbounds` array, plans nothing. */
+    public fun plan(
+        rawJson: String,
+        fragment: MaskOffer?,
+        noise: MaskOffer?,
+    ): List<OutboundPlan> {
         val outbounds =
             try {
                 (LENIENT.parseToJsonElement(rawJson) as? JsonObject)?.get("outbounds") as? JsonArray
@@ -72,12 +130,35 @@ public object ObfuscationDetection {
                 null
             } catch (_: IllegalArgumentException) {
                 null
-            } ?: return OwnMasks(fragment = false, noise = false)
-        val byTag = tagIndex(outbounds)
-        val outer = outermostEligible(outbounds).map { outbounds[it] as JsonObject }
-        return OwnMasks(
-            fragment = outer.any { ownFragment(it, byTag).present },
-            noise = outer.any { ownNoise(it, byTag).present },
+            } ?: return emptyList()
+        return plan(outbounds, fragment, noise)
+    }
+
+    private fun plan(
+        index: Int,
+        outbound: JsonObject,
+        byTag: Map<String, JsonObject>,
+        fragment: MaskOffer?,
+        noise: MaskOffer?,
+    ): OutboundPlan {
+        val fragmentOwn = ownFragment(outbound, byTag)
+        val noiseOwn = ownNoise(outbound, byTag)
+        if (!editable(outbound)) {
+            return OutboundPlan(
+                index,
+                editable = false,
+                cutLink = false,
+                fragment = fragmentOwn.untouched(),
+                noise = noiseOwn.untouched(),
+            )
+        }
+        val cut = cutsLink(fragment, fragmentOwn) || cutsLink(noise, noiseOwn)
+        return OutboundPlan(
+            index,
+            editable = true,
+            cutLink = cut,
+            fragment = fate(fragment, fragmentOwn, cut),
+            noise = fate(noise, noiseOwn, cut),
         )
     }
 
@@ -101,12 +182,44 @@ public object ObfuscationDetection {
                 ?.string("tag")
         return OwnMask(inFinalmask, freedomTag)
     }
-
-    private fun JsonObject.stream(): JsonObject? = this["streamSettings"] as? JsonObject
-
-    private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? JsonObject)?.string("dialerProxy")
-
-    private fun JsonObject.protocol(): String? = string("protocol")
-
-    private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
+
+private fun OwnMask.untouched(): MaskFate = if (present) MaskFate.Own else MaskFate.Nothing
+
+private fun cutsLink(
+    offer: MaskOffer?,
+    own: OwnMask,
+): Boolean = offer?.replaceOwn == true && own.freedomTag != null
+
+private fun fate(
+    offer: MaskOffer?,
+    own: OwnMask,
+    cut: Boolean,
+): MaskFate {
+    val ownSurvivesCut = own.inFinalmask || (own.freedomTag != null && !cut)
+    return when {
+        offer != null && (offer.replaceOwn || !ownSurvivesCut) -> MaskFate.Ours
+        ownSurvivesCut -> MaskFate.Own
+        else -> MaskFate.Nothing
+    }
+}
+
+/** Rule 7: a shape this cannot safely edit. JSON null reads as absent, as Xray reads it. */
+private fun editable(outbound: JsonObject): Boolean {
+    val stream = outbound.present("streamSettings")
+    val finalmask = (stream as? JsonObject)?.present("finalmask")
+    val halves = (finalmask as? JsonObject)?.let { f -> listOf(f.present("tcp"), f.present("udp")) }.orEmpty()
+    return (stream == null || stream is JsonObject) &&
+        (finalmask == null || finalmask is JsonObject) &&
+        halves.all { it == null || it is JsonArray }
+}
+
+private fun JsonObject.present(key: String): JsonElement? = this[key]?.takeUnless { it is JsonNull }
+
+private fun JsonObject.stream(): JsonObject? = this["streamSettings"] as? JsonObject
+
+private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? JsonObject)?.string("dialerProxy")
+
+private fun JsonObject.protocol(): String? = string("protocol")
+
+private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content

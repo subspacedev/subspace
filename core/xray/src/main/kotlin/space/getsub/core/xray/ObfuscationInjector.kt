@@ -12,8 +12,10 @@ import space.getsub.core.model.Applied
 import space.getsub.core.model.FragmentSpec
 import space.getsub.core.model.NoiseSpec
 import space.getsub.core.model.Obfuscation
+import space.getsub.core.parser.MaskFate
+import space.getsub.core.parser.MaskOffer
 import space.getsub.core.parser.ObfuscationDetection
-import space.getsub.core.parser.OwnMask
+import space.getsub.core.parser.OutboundPlan
 
 /**
  * Applies M9-A spec §3.3 to a raw config's own `outbounds`. Every other mask, key and outbound is
@@ -25,45 +27,40 @@ internal object ObfuscationInjector {
         obfuscation: Obfuscation?,
     ): JsonArray {
         if (obfuscation == null || (obfuscation.fragment == null && obfuscation.noise == null)) return outbounds
-        val byTag = ObfuscationDetection.tagIndex(outbounds)
-        val targets = ObfuscationDetection.outermostEligible(outbounds)
+        // The decision is ObfuscationDetection's, shared with the server report; this only executes it.
+        val plans =
+            ObfuscationDetection
+                .plan(outbounds, obfuscation.fragment?.offer(), obfuscation.noise?.offer())
+                .associateBy { it.index }
         return JsonArray(
             outbounds.mapIndexed { i, element ->
                 val outbound = element as? JsonObject
-                if (i !in targets || outbound == null) element else rewrite(outbound, byTag, obfuscation) ?: element
+                val plan = plans[i]
+                if (plan == null || outbound == null || !plan.touched) element else rewrite(outbound, plan, obfuscation)
             },
         )
     }
 
-    /** Null when the outbound's shape is not one this can safely edit (rule 7). */
+    private fun Applied<*>.offer(): MaskOffer = MaskOffer(replaceOwn)
+
+    /** [plan] is touched, so the outbound is editable (rule 7); the fallbacks only narrow types. */
     @Suppress("ReturnCount")
     private fun rewrite(
         outbound: JsonObject,
-        byTag: Map<String, JsonObject>,
+        plan: OutboundPlan,
         obfuscation: Obfuscation,
-    ): JsonObject? {
-        val stream = outbound.absentOr("streamSettings") { JsonObject(emptyMap()) } as? JsonObject ?: return null
-        val finalmask = stream.absentOr("finalmask") { JsonObject(emptyMap()) } as? JsonObject ?: return null
-        val tcp = finalmask.absentOr("tcp") { JsonArray(emptyList()) } as? JsonArray ?: return null
-        val udp = finalmask.absentOr("udp") { JsonArray(emptyList()) } as? JsonArray ?: return null
+    ): JsonObject {
+        val stream = outbound.absentOr("streamSettings") { JsonObject(emptyMap()) } as? JsonObject ?: return outbound
+        val finalmask = stream.absentOr("finalmask") { JsonObject(emptyMap()) } as? JsonObject ?: return outbound
+        val tcp = finalmask.absentOr("tcp") { JsonArray(emptyList()) } as? JsonArray ?: return outbound
+        val udp = finalmask.absentOr("udp") { JsonArray(emptyList()) } as? JsonArray ?: return outbound
 
-        val fragmentOwn = ObfuscationDetection.ownFragment(outbound, byTag)
-        val noiseOwn = ObfuscationDetection.ownNoise(outbound, byTag)
-        // Cut first, then re-evaluate: a directive fills the gap a cut leaves (ruling, fix round 1).
-        val cut = cutsLink(obfuscation.fragment, fragmentOwn) || cutsLink(obfuscation.noise, noiseOwn)
-        val fragment = obfuscation.fragment?.let { Step(fragmentOwn, it, cut) }
-        val noise = obfuscation.noise?.let { Step(noiseOwn, it, cut) }
-        if (fragment?.applies != true && noise?.applies != true && !cut) return outbound
-
-        val newTcp = if (fragment?.applies == true) withFragment(tcp, fragment.applied.spec) else tcp
-        val newUdp = if (noise?.applies == true) withNoise(udp, noise.applied.spec) else udp
-        return assemble(outbound, stream, finalmask.toMutableMap(), newTcp to newUdp, cut)
+        val fragment = obfuscation.fragment?.takeIf { plan.fragment == MaskFate.Ours }
+        val noise = obfuscation.noise?.takeIf { plan.noise == MaskFate.Ours }
+        val newTcp = if (fragment != null) withFragment(tcp, fragment.spec) else tcp
+        val newUdp = if (noise != null) withNoise(udp, noise.spec) else udp
+        return assemble(outbound, stream, finalmask.toMutableMap(), newTcp to newUdp, plan.cutLink)
     }
-
-    private fun cutsLink(
-        applied: Applied<*>?,
-        own: OwnMask,
-    ): Boolean = applied?.replaceOwn == true && own.freedomTag != null
 
     // JSON null reads as absent, as Xray reads it.
     private fun JsonObject.absentOr(
@@ -100,12 +97,6 @@ internal object ObfuscationInjector {
         udp: JsonArray,
         spec: NoiseSpec,
     ): JsonArray = JsonArray(udp.withoutType("noise") + parse(FinalmaskJson.noiseMask(spec)))
-
-    /** One directive against one outbound's own mask. */
-    private class Step<T>(val own: OwnMask, val applied: Applied<T>, val cut: Boolean) {
-        private val effectivePresent: Boolean get() = own.inFinalmask || (own.freedomTag != null && !cut)
-        val applies: Boolean get() = applied.replaceOwn || !effectivePresent
-    }
 
     private fun MutableMap<String, JsonElement>.putOrRemove(
         key: String,

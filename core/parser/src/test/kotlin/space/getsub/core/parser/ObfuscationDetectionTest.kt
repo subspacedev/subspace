@@ -58,12 +58,71 @@ class ObfuscationDetectionTest {
         ObfuscationDetection.ownNoise(p, byTag(array)) shouldBe OwnMask(inFinalmask = true, freedomTag = null)
     }
 
-    @Test fun `configOwn answers for the whole config, and false for junk`() {
-        ObfuscationDetection.configOwn(
+    private val user = MaskOffer(replaceOwn = true)
+    private val directive = MaskOffer(replaceOwn = false)
+
+    private val bothChain =
+        """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"}}},
+            {"tag":"f","protocol":"freedom",
+             "settings":{"fragment":{"packets":"tlshello"},"noises":[{"packet":"1"}]}}]}"""
+
+    @Test fun `plan of junk or a config without eligible outbounds is empty`() {
+        ObfuscationDetection.plan("not json", user, user) shouldBe emptyList()
+        ObfuscationDetection.plan("""{"outbounds":[{"tag":"w","protocol":"wireguard"}]}""", user, user) shouldBe
+            emptyList()
+        // Two eligible outbounds dialling through each other: neither is outermost (case c).
+        ObfuscationDetection.plan(
+            """{"outbounds":[{"tag":"a","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"b"}}},
+                {"tag":"b","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"a"}}}]}""",
+            user,
+            user,
+        ) shouldBe emptyList()
+    }
+
+    @Test fun `noise On alone cuts a chain carrying both, and the chain's fragmentation is lost`() {
+        ObfuscationDetection.plan(bothChain, fragment = null, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Nothing, MaskFate.Ours))
+        ObfuscationDetection.plan(bothChain, fragment = directive, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Ours, MaskFate.Ours))
+    }
+
+    @Test fun `fragmentation On alone cuts a chain carrying both, and the chain's noise is lost`() {
+        ObfuscationDetection.plan(bothChain, fragment = user, noise = null) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Ours, MaskFate.Nothing))
+    }
+
+    @Test fun `directives never displace a config's own masks`() {
+        ObfuscationDetection.plan(bothChain, directive, directive) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Own, MaskFate.Own))
+        ObfuscationDetection.plan(bothChain, null, null) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Own, MaskFate.Own))
+    }
+
+    @Test fun `plain outbounds get the offered mask and nothing else`() {
+        val plain = """{"outbounds":[{"tag":"p","protocol":"trojan"},{"tag":"d","protocol":"freedom"}]}"""
+        ObfuscationDetection.plan(plain, directive, null) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Ours, MaskFate.Nothing))
+        ObfuscationDetection.plan(plain, null, user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Nothing, MaskFate.Ours))
+    }
+
+    @Test fun `an own finalmask mask survives a cut made for the other type`() {
+        val json =
+            """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"},
+                "finalmask":{"tcp":[{"type":"fragment"}]}}},
+                {"tag":"f","protocol":"freedom","settings":{"noises":[{"packet":"1"}]}}]}"""
+        ObfuscationDetection.plan(json, null, user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Own, MaskFate.Ours))
+    }
+
+    @Test fun `a malformed finalmask runs as written, own masks included`() {
+        val json =
             """{"outbounds":[{"tag":"p","protocol":"vless",
-                "streamSettings":{"finalmask":{"tcp":[{"type":"fragment"}]}}}]}""",
-        ) shouldBe OwnMasks(fragment = true, noise = false)
-        ObfuscationDetection.configOwn("not json") shouldBe OwnMasks(fragment = false, noise = false)
+                "streamSettings":{"sockopt":{"dialerProxy":"f"},"finalmask":{"tcp":"oops"}}},
+                {"tag":"f","protocol":"freedom","settings":{"fragment":{}}}]}"""
+        val plan = ObfuscationDetection.plan(json, user, user).single()
+        plan shouldBe OutboundPlan(0, editable = false, cutLink = false, MaskFate.Own, MaskFate.Nothing)
+        plan.touched shouldBe false
     }
 
     @Test fun `a malformed streamSettings is not an own mask and does not throw`() {
