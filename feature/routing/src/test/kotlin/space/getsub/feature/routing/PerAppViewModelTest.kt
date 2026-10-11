@@ -200,6 +200,33 @@ class PerAppViewModelTest {
         model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe true
     }
 
+    // A package that is gone and no longer selected has nothing left to show: the row was only
+    // there to be unticked.
+    @Test
+    fun clearingDropsRowsForPackagesThatAreNoLongerInstalled() = runTest(dispatcher) {
+        val stored = PerAppSelection(PerAppMode.DenyList, setOf("com.example.deleted"))
+        val model = PerAppViewModel(FakeSource(apps, stored))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.clear()
+
+        model.state.value.rows.map { it.packageName } shouldBe apps.map { it.packageName }
+        model.state.value.picked.shouldBeEmpty()
+    }
+
+    @Test
+    fun deselectingAGhostDropsItsRowAndDiscardBringsItBack() = runTest(dispatcher) {
+        val stored = PerAppSelection(PerAppMode.DenyList, setOf("com.example.deleted"))
+        val model = PerAppViewModel(FakeSource(apps, stored))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.toggle("com.example.deleted")
+        model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe false
+
+        model.discard()
+        model.state.value.rows.any { it.packageName == "com.example.deleted" } shouldBe true
+    }
+
     @Test
     fun searchFiltersByLabelCaseInsensitively() = runTest(dispatcher) {
         val model = PerAppViewModel(FakeSource(apps))

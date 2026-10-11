@@ -103,6 +103,9 @@ constructor(
 
     private fun visibleRows(query: String): List<AppRow> =
         allRows
+            // A package that is gone and no longer selected has nothing left to show; derived here
+            // rather than removed from allRows so Discard can bring a deselected ghost back.
+            .filter { row -> row.isInstalled || row.packageName in selected }
             .map { row -> row.copy(isSelected = row.packageName in selected) }
             .filter { row -> query.isBlank() || row.label.contains(query, ignoreCase = true) }
 
