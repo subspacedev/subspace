@@ -5,17 +5,20 @@ package space.getsub.feature.profiles.subscription
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.OBFUSCATION_DIRECTIVE_KEYS
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredSubscription
@@ -44,6 +47,28 @@ private const val KEY_USER_AGENT = "change-user-agent"
 private const val DEFAULT_INTERVAL_HOURS = "12"
 private const val DEFAULT_TIMEOUT_SECONDS = "9"
 private const val DEFAULT_AUTO_UPDATE = "true"
+
+private val NO_DIRECTIVE_ISSUES = ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
+
+/**
+ * The subscription's obfuscation directive issues, re-read whenever any obfuscation directive's
+ * effective value changes — a sync, a pin or an unpin — and on every [refreshes] emission, so the
+ * "directive ignored" lines never go stale (M9-A spec §2.4).
+ */
+private fun ProfileSource.observeDirectiveIssues(
+    id: Long,
+    refreshes: Flow<Int>,
+): Flow<ResolvedObfuscation> {
+    val directives =
+        combine(OBFUSCATION_DIRECTIVE_KEYS.map { observeEffective(id, it, null) }) { it.toList() }
+            .distinctUntilChanged()
+    return combine(directives, refreshes) { _, _ ->
+        // A failed read shows no "ignored" line; it must never end the combine that drives the screen.
+        runCatching { obfuscationDirectiveIssues(id) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrDefault(NO_DIRECTIVE_ISSUES)
+    }
+}
 
 private fun canonicalUserAgent(raw: String): String? {
     val canonical =
@@ -76,7 +101,11 @@ constructor(
      */
     private val ephemeral = MutableStateFlow(Ephemeral())
 
-    /** Bumped when a refresh completes: directives change on sync, so the issues are read again. */
+    /**
+     * Bumped when a refresh completes. The obfuscation directives' own flows already re-read the
+     * issues whenever a sync writes them; this is the belt to that, for a sync whose write the
+     * flows do not see (another process's Room instance).
+     */
     private val issuesTick = MutableStateFlow(0)
 
     private var loadedId: Long? = null
@@ -104,7 +133,7 @@ constructor(
                 rowsFlow,
                 profileSource.observeEffective(subscriptionId, KEY_USER_AGENT, default = null),
                 profileSource.globalHwidEnabled,
-                issuesTick.map { profileSource.obfuscationDirectiveIssues(subscriptionId) },
+                profileSource.observeDirectiveIssues(subscriptionId, refreshes = issuesTick),
             ) { rows, userAgent, globalHwidEnabled, issues ->
                 DetailSettings(
                     rows = rows,
