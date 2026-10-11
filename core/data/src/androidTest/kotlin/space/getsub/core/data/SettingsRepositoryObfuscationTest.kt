@@ -50,6 +50,24 @@ class SettingsRepositoryObfuscationTest {
             repository.noiseSettingsNow() shouldBe noise
         }
 
+    // The Flow reads seven keys through one positional iterator, so every field gets a distinct
+    // non-default value: a swap of any two would show here and not in the suspend read.
+    @Test
+    fun theNoiseFlowPutsEverySavedFieldInItsPlace() =
+        runTest {
+            val noise = NoiseSettings(true, NoiseMode.Fixed, NoisePacketType.Hex, "0aff", "11-12", "21-22", "31")
+            repository.setNoiseSettings(noise)
+            val read = repository.noiseSettings.first()
+            read.enabled shouldBe true
+            read.mode shouldBe NoiseMode.Fixed
+            read.packetType shouldBe NoisePacketType.Hex
+            read.packet shouldBe "0aff"
+            read.rand shouldBe "11-12"
+            read.randRange shouldBe "21-22"
+            read.delay shouldBe "31"
+            read shouldBe noise
+        }
+
     @Test
     fun turningOffKeepsTheValues() =
         runTest {
