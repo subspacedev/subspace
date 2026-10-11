@@ -73,6 +73,10 @@ internal sealed interface SaveProblem {
  *   first write resolves issue two upserts.
  * @param saveProblem why the most recent [RuleSetEditorViewModel.save] call
  *   failed, or `null` — see [SaveProblem]'s own KDoc.
+ * @param drafts text typed into an entry field and not yet added, per bucket field. Held here
+ *   rather than in the screen so [isDirty] can count it (M8.6 spec §4.9, fix A11).
+ * @param baseline the editable fields as last loaded or saved — what [isDirty] compares against.
+ *   A new rule set's baseline is the defaults, so it is dirty once any field is non-default.
  */
 internal data class RuleSetEditorState(
     val loading: Boolean = true,
@@ -87,6 +91,8 @@ internal data class RuleSetEditorState(
     val saving: Boolean = false,
     val saveProblem: SaveProblem? = null,
     val saved: Boolean = false,
+    val drafts: Map<Pair<RouteOutcome, BucketField>, String> = emptyMap(),
+    val baseline: RuleSetEdits = RuleSetEdits(),
 ) {
     /**
      * The stored entries for [outcome]/[field]. ARCHITECTURE.md §5.6: this is the
@@ -112,6 +118,50 @@ internal data class RuleSetEditorState(
 
     /** The one save gate the brief specifies (step 4): a non-blank name, nothing more. */
     val canSave: Boolean get() = name.isNotBlank()
+
+    /** The editable fields, normalised the way [RuleSetEdits] compares them. */
+    val edits: RuleSetEdits get() = RuleSetEdits(name, buckets, order, domainStrategy)
+
+    /**
+     * Whether leaving now would lose something (M8.6 spec §4.9, fix A11): the editable fields
+     * differ from [baseline], or a field holds typed text that was never added. Transient state —
+     * [saving], [saveProblem], the category lists — never counts.
+     */
+    val isDirty: Boolean get() = !loading && (edits != baseline || drafts.values.any { it.isNotBlank() })
+
+    /** The text typed into [outcome]/[field]'s entry field and not yet added. */
+    fun draft(
+        outcome: RouteOutcome,
+        field: BucketField,
+    ): String = drafts[outcome to field].orEmpty()
+}
+
+/**
+ * The fields a user edits, compared structurally by [RuleSetEditorState.isDirty]. Normalised so
+ * that two drafts which would save the same rule set compare equal: the name is trimmed (save
+ * trims it), and a bucket emptied by removing its last entry equals one that was never there.
+ */
+@ConsistentCopyVisibility
+internal data class RuleSetEdits private constructor(
+    val name: String,
+    val buckets: Map<RouteOutcome, RuleBucket>,
+    val order: List<RouteOutcome>,
+    val domainStrategy: DomainStrategy,
+) {
+    companion object {
+        operator fun invoke(
+            name: String = "",
+            buckets: Map<RouteOutcome, RuleBucket> = emptyMap(),
+            order: List<RouteOutcome> = RoutingRuleSet.DEFAULT_ORDER,
+            domainStrategy: DomainStrategy = DomainStrategy.IP_IF_NON_MATCH,
+        ): RuleSetEdits =
+            RuleSetEdits(
+                name = name.trim(),
+                buckets = buckets.filterValues { !it.isEmpty },
+                order = order,
+                domainStrategy = domainStrategy,
+            )
+    }
 }
 
 /**
@@ -146,37 +196,48 @@ constructor(
             val existing = source.ruleSet(id)
             val siteCategories = source.categoriesFor(BucketField.SITES)
             val ipCategories = source.categoriesFor(BucketField.IPS)
+            val loaded = existing?.toEditorState() ?: RuleSetEditorState(loading = false, id = id)
             _state.value =
-                (existing?.toEditorState() ?: RuleSetEditorState(loading = false, id = id))
-                    .copy(loading = false, siteCategories = siteCategories, ipCategories = ipCategories)
+                loaded.copy(
+                    loading = false,
+                    siteCategories = siteCategories,
+                    ipCategories = ipCategories,
+                    baseline = loaded.edits,
+                )
         }
     }
 
     /**
      * Validates [entry] for [outcome]/[field] and, only if it passes, adds it —
      * never both rejects and adds (brief: "A rejected entry is never added").
+     * "Passes" means [rejectionOf] finds nothing: the design's inline checks
+     * ([problemWith]) and [RoutingEntries.problemWith] must both accept it, so
+     * the stricter check always wins (M8.6 Part 4 plan ruling R4). A picked
+     * category comes through here too and meets the same two checks.
      * A duplicate of an entry already in the bucket is silently ignored rather
      * than reported as a problem: it is not malformed, it would just add
      * nothing.
      *
-     * Reports nothing about *why* a rejected [entry] was refused — per-field live validation in
-     * [RuleSetEditorScreen] calls [RoutingEntries.problemWith] itself for that, reading straight
-     * from the field's own draft text rather than this state (branch review: `entryProblem` used to
-     * live here too, set and tested but never read by the screen once that live path shipped; dead
-     * state removed rather than left as false confidence).
+     * Reports nothing about *why* a rejected [entry] was refused — the screen
+     * calls [rejectionOf] on the field's draft itself for that.
      */
     fun addEntry(
         outcome: RouteOutcome,
         field: BucketField,
         entry: String,
     ) {
-        if (RoutingEntries.problemWith(entry, field) != null) return
+        if (rejectionOf(entry, field) != null) return
         val trimmed = entry.trim()
         _state.update { current ->
             val existing = current.bucket(outcome, field)
-            if (trimmed in existing) return@update current
+            val key = outcome to field
+            // The field's own draft is cleared only when it is what was just added; a picked
+            // category leaves text the user is still typing alone.
+            val drafts = if (current.draft(outcome, field).trim() == trimmed) current.drafts - key else current.drafts
+            if (trimmed in existing) return@update current.copy(drafts = drafts)
             current.copy(
                 buckets = current.buckets + (outcome to current.bucketWith(outcome, field, existing + trimmed)),
+                drafts = drafts,
             )
         }
     }
@@ -194,6 +255,13 @@ constructor(
     }
 
     fun setName(value: String) = update { it.copy(name = value) }
+
+    /** Holds what is typed into [outcome]/[field]'s entry field; see [RuleSetEditorState.drafts]. */
+    fun setDraft(
+        outcome: RouteOutcome,
+        field: BucketField,
+        text: String,
+    ) = update { it.copy(drafts = it.drafts + ((outcome to field) to text)) }
 
     /**
      * Sets the rule evaluation order. Silently ignored when [order] is not a
@@ -262,7 +330,11 @@ constructor(
                     globalProxy = current.globalProxy,
                 ),
             )
-            _state.update { it.copy(saving = false, saved = true) }
+            // One update, so no state is ever both saved and dirty: the screen leaves on `saved`,
+            // and a dirty state in that window would let Back raise the discard dialog over a
+            // finished save (M8.6 spec §4.9, fix A11). The baseline is what was written; drafts
+            // never added are dropped with the screen.
+            _state.update { it.copy(saving = false, saved = true, baseline = current.edits, drafts = emptyMap()) }
         } catch (_: IllegalArgumentException) {
             _state.update { it.copy(saving = false, saveProblem = SaveProblem.InvalidEntry) }
         } catch (error: CancellationException) {

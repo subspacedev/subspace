@@ -31,7 +31,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -40,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -117,6 +115,7 @@ fun PerAppScreen(
 
     if (showDiscardDialog) {
         DiscardChangesDialog(
+            body = stringResource(R.string.per_app_discard_body),
             onConfirm = {
                 showDiscardDialog = false
                 viewModel.discard()
@@ -449,32 +448,4 @@ private fun PackageManager.appIconOrNull(packageName: String): ImageBitmap? {
     drawable.setBounds(0, 0, canvas.width, canvas.height)
     drawable.draw(canvas)
     return bitmap.asImageBitmap()
-}
-
-/**
- * Confirms losing the draft before [PerAppScreen] actually pops — see
- * [PerAppScreen]'s own `showDiscardDialog` comment for why this is raised
- * from there rather than from [PerAppScreenContent].
- *
- * `internal`, not `private`: [PerAppScreen] itself needs no Hilt binding to
- * render (its ViewModel lookup is the only reason [PerAppScreenContentTest]
- * cannot exercise it directly), so this one composable is tested on its own —
- * content and callback wiring — rather than leaving the back-gesture
- * confirmation's UI with zero coverage. See `DiscardChangesDialogTest`.
- */
-@Composable
-internal fun DiscardChangesDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.per_app_discard_title)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.per_app_discard_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.per_app_discard_cancel)) }
-        },
-    )
 }

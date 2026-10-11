@@ -12,7 +12,13 @@ import org.junit.Test
 
 /**
  * [DiscardChangesDialog] on its own, not through [PerAppScreenContent] or
- * [PerAppScreen]. [PerAppScreen]'s own KDoc explains why the dialog is hoisted
+ * [PerAppScreen].
+ *
+ * M8.6 Part 4 Task 6: the dialog moved onto `SubspaceDialog` and takes the raising screen's
+ * [BODY]. Every assertion below is unchanged; the body is passed only because the signature now
+ * requires one, and its text matches none of the three strings these tests find by exact text.
+ * The rule set editor's own Back gating, which this class says nothing about, is covered by
+ * `RuleSetEditorDiscardGuardTest`. [PerAppScreen]'s own KDoc explains why the dialog is hoisted
  * there rather than into [PerAppScreenContent]: the system back gesture
  * ([androidx.activity.compose.BackHandler]) and the on-screen back button need
  * to raise the *same* confirmation, and only the stateful half can see both.
@@ -35,7 +41,7 @@ class DiscardChangesDialogTest {
 
     @Test
     fun theThreeDiscardStringsAreDisplayed() {
-        rule.setContent { DiscardChangesDialog(onConfirm = {}, onDismiss = {}) }
+        rule.setContent { DiscardChangesDialog(body = BODY, onConfirm = {}, onDismiss = {}) }
 
         rule.onNodeWithText("Discard changes?").assertIsDisplayed()
         rule.onNodeWithText("Discard").assertIsDisplayed()
@@ -47,7 +53,7 @@ class DiscardChangesDialogTest {
         var confirmed = false
         var dismissed = false
         rule.setContent {
-            DiscardChangesDialog(onConfirm = { confirmed = true }, onDismiss = { dismissed = true })
+            DiscardChangesDialog(body = BODY, onConfirm = { confirmed = true }, onDismiss = { dismissed = true })
         }
 
         rule.onNodeWithText("Discard").performClick()
@@ -61,12 +67,16 @@ class DiscardChangesDialogTest {
         var confirmed = false
         var dismissed = false
         rule.setContent {
-            DiscardChangesDialog(onConfirm = { confirmed = true }, onDismiss = { dismissed = true })
+            DiscardChangesDialog(body = BODY, onConfirm = { confirmed = true }, onDismiss = { dismissed = true })
         }
 
         rule.onNodeWithText("Keep editing").performClick()
 
         confirmed shouldBe false
         dismissed shouldBe true
+    }
+
+    private companion object {
+        const val BODY = "Your app selection hasn't been saved."
     }
 }

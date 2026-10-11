@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -484,5 +486,203 @@ class RuleSetEditorViewModelTest {
         viewModel.save()
 
         source.upserted shouldBe null
+    }
+
+    // M8.6 Part 4 Task 6, R4: an entry is added only when the design's checks and EntryProblem
+    // both accept it. "localhost" passes EntryProblem and fails the design's; "999.1.1.1" above is
+    // the reverse.
+    @Test
+    fun `an entry only the design's checks reject is not added`() = runTest {
+        val viewModel = editor()
+
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.SITES, "localhost")
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.IPS, "!geoip:cn")
+
+        viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.SITES) shouldBe emptyList()
+        viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.IPS) shouldBe emptyList()
+    }
+
+    // M8.6 Part 4 Task 6, A11: isDirty drives the discard guard.
+
+    private val storedLan =
+        RoutingRuleSet(
+            id = 7,
+            name = "lan",
+            buckets = mapOf(RouteOutcome.DIRECT to RuleBucket(ips = listOf("10.0.0.0/8"))),
+            order = listOf(RouteOutcome.DIRECT, RouteOutcome.BLOCK, RouteOutcome.PROXY),
+            domainStrategy = DomainStrategy.AS_IS,
+        )
+
+    private fun loaded(): RuleSetEditorViewModel {
+        val viewModel = editor(FakeSource(MutableStateFlow(listOf(storedLan))))
+        viewModel.load(storedLan.id)
+        return viewModel
+    }
+
+    @Test
+    fun `a draft still loading is not dirty`() = runTest {
+        editor().state.value.isDirty shouldBe false
+    }
+
+    @Test
+    fun `a fresh new rule set is not dirty`() = runTest {
+        val viewModel = editor()
+
+        viewModel.load(0L)
+
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    @Test
+    fun `a new rule set is dirty once any field is non-default`() = runTest {
+        val edits =
+            listOf<(RuleSetEditorViewModel) -> Unit>(
+                { it.setName("ads") },
+                { it.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "example.com") },
+                { it.setOrder(listOf(RouteOutcome.PROXY, RouteOutcome.BLOCK, RouteOutcome.DIRECT)) },
+                { it.setDomainStrategy(DomainStrategy.IP_ON_DEMAND) },
+            )
+        edits.forEach { edit ->
+            val viewModel = editor()
+            viewModel.load(0L)
+
+            edit(viewModel)
+
+            viewModel.state.value.isDirty shouldBe true
+        }
+    }
+
+    @Test
+    fun `a loaded rule set is not dirty until edited`() = runTest {
+        val viewModel = loaded()
+
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    @Test
+    fun `every kind of edit to a loaded rule set makes it dirty`() = runTest {
+        val edits =
+            listOf<(RuleSetEditorViewModel) -> Unit>(
+                { it.setName("lan2") },
+                { it.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "example.com") },
+                { it.removeEntry(RouteOutcome.DIRECT, BucketField.IPS, "10.0.0.0/8") },
+                { it.setOrder(RoutingRuleSet.DEFAULT_ORDER) },
+                { it.setDomainStrategy(DomainStrategy.IP_ON_DEMAND) },
+            )
+        edits.forEach { edit ->
+            val viewModel = loaded()
+
+            edit(viewModel)
+
+            viewModel.state.value.isDirty shouldBe true
+        }
+    }
+
+    @Test
+    fun `undoing an edit by hand makes the rule set clean again`() = runTest {
+        val viewModel = loaded()
+
+        viewModel.setName("lan2")
+        viewModel.setName("lan")
+        viewModel.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "example.com")
+        viewModel.removeEntry(RouteOutcome.BLOCK, BucketField.SITES, "example.com")
+
+        // The second pair leaves an empty BLOCK bucket in the map where the loaded one had no key;
+        // that is the same rule set, so it must not count as an edit.
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    @Test
+    fun `whitespace around the name is not an edit, since save trims it`() = runTest {
+        val viewModel = loaded()
+
+        viewModel.setName(" lan ")
+
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    // The safer reading for the user: text typed into an entry field but not yet added would be
+    // lost by leaving, so it counts. A blank draft would lose nothing.
+    @Test
+    fun `text typed but not yet added makes the rule set dirty`() = runTest {
+        val viewModel = loaded()
+
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "   ")
+        viewModel.state.value.isDirty shouldBe false
+
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "exam")
+        viewModel.state.value.isDirty shouldBe true
+        viewModel.state.value.draft(RouteOutcome.PROXY, BucketField.SITES) shouldBe "exam"
+    }
+
+    @Test
+    fun `adding a field's draft clears that draft`() = runTest {
+        val viewModel = loaded()
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, " example.com ")
+
+        viewModel.addEntry(RouteOutcome.PROXY, BucketField.SITES, " example.com ")
+
+        viewModel.state.value.draft(RouteOutcome.PROXY, BucketField.SITES) shouldBe ""
+        viewModel.state.value.bucket(RouteOutcome.PROXY, BucketField.SITES) shouldBe listOf("example.com")
+    }
+
+    @Test
+    fun `a rejected draft is kept`() = runTest {
+        val viewModel = loaded()
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.IPS, "999.1.1.1")
+
+        viewModel.addEntry(RouteOutcome.PROXY, BucketField.IPS, "999.1.1.1")
+
+        viewModel.state.value.draft(RouteOutcome.PROXY, BucketField.IPS) shouldBe "999.1.1.1"
+    }
+
+    @Test
+    fun `a picked category leaves another draft in the same field alone`() = runTest {
+        val viewModel = loaded()
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "exam")
+
+        viewModel.addEntry(RouteOutcome.PROXY, BucketField.SITES, "geosite:google")
+
+        viewModel.state.value.draft(RouteOutcome.PROXY, BucketField.SITES) shouldBe "exam"
+    }
+
+    @Test
+    fun `a successful save clears dirty`() = runTest {
+        val viewModel = loaded()
+        viewModel.setName("lan2")
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "exam")
+
+        viewModel.save()
+
+        viewModel.state.value.saved shouldBe true
+        viewModel.state.value.isDirty shouldBe false
+    }
+
+    // The screen leaves on `saved`. If any state ever said saved while still dirty, a back
+    // press or the arrow in that window would raise the discard dialog over a finished save.
+    @Test
+    fun `no state is ever both saved and dirty`() = runTest {
+        val viewModel = loaded()
+        val seen = mutableListOf<RuleSetEditorState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.state.toList(seen) }
+        viewModel.setName("lan2")
+
+        viewModel.save()
+
+        seen.last().saved shouldBe true
+        seen.none { it.saved && it.isDirty } shouldBe true
+    }
+
+    @Test
+    fun `a failed save stays dirty`() = runTest {
+        val source = FakeSource(MutableStateFlow(listOf(storedLan)), failUpsertWith = IOException("disk full"))
+        val viewModel = editor(source)
+        viewModel.load(7)
+        viewModel.setName("lan2")
+
+        viewModel.save()
+
+        viewModel.state.value.saveProblem shouldBe SaveProblem.WriteFailed
+        viewModel.state.value.isDirty shouldBe true
     }
 }
