@@ -104,21 +104,63 @@ class EntryChecksTest {
     }
 
     // R4 / review focus 3, the reverse: entries only the design's check rejects are rejected.
+    // After ruling R4a this is only what `domain:` exists to cover: single-label and IDN names.
 
     @Test
     fun `entries EntryProblem accepts but the design rejects are rejected`() {
         val cases =
             listOf(
                 Triple("localhost", SITES, EntryHint.NotADomain),
-                Triple("dotless:intranet", SITES, EntryHint.NotADomain),
-                Triple("ext-site:my.dat:cn", SITES, EntryHint.NotADomain),
                 Triple("bücher.de", SITES, EntryHint.NotADomain),
-                Triple("!geoip:cn", IPS, EntryHint.NotAnIp),
-                Triple("ext-ip:my.dat:cn", IPS, EntryHint.NotAnIp),
+                Triple("!localhost", SITES, EntryHint.NotADomain),
             )
         cases.forEach { (entry, field, hint) ->
             RoutingEntries.problemWith(entry, field).shouldBeNull()
             rejectionOf(entry, field) shouldBe EntryRejection.Hint(hint)
+        }
+    }
+
+    // M8.6 Part 4 ruling R4a: the design's check never rejects Xray syntax RoutingEntries
+    // supports — `!` negation, the ext-site:/ext-domain:/ext-ip: variants and dotless:. Whether
+    // they are usable is then EntryProblem's call alone.
+
+    @Test
+    fun `xray syntax the existing validator supports passes the design's check`() {
+        val cases =
+            listOf(
+                "!geoip:cn" to IPS,
+                "!10.0.0.0/8" to IPS,
+                "ext-ip:x.dat:cat" to IPS,
+                "ext-site:x.dat:cat" to SITES,
+                "ext-domain:x.dat:cat" to SITES,
+                "dotless:intranet" to SITES,
+            )
+        cases.forEach { (entry, field) ->
+            problemWith(entry, field).shouldBeNull()
+            rejectionOf(entry, field) shouldBe RoutingEntries.problemWith(entry, field)?.let(EntryRejection::Problem)
+            rejectionOf(entry, field).shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `EntryProblem still decides the xray syntax the design now lets through`() {
+        // The design's shape check passes these; the existing filename grammar does not.
+        rejectionOf("ext-ip:-x.dat:cat", IPS) shouldBe EntryRejection.Problem(EntryProblem.MalformedExtReference)
+        rejectionOf("ext-site:-x.dat:cat", SITES) shouldBe EntryRejection.Problem(EntryProblem.MalformedExtReference)
+        rejectionOf("!999.1.1.1", IPS) shouldBe EntryRejection.Problem(EntryProblem.MalformedAddress)
+    }
+
+    @Test
+    fun `malformed xray variants are still rejected`() {
+        problemWith("ext-ip:nodat", IPS) shouldBe EntryHint.MalformedExt
+        problemWith("ext-site:x.dat", SITES) shouldBe EntryHint.MalformedExt
+        problemWith("ext-domain:x.dat:", SITES) shouldBe EntryHint.MalformedExt
+        problemWith("!", IPS) shouldBe EntryHint.NotAnIp
+        problemWith("!", SITES) shouldBe EntryHint.NotADomain
+        problemWith("!   ", IPS) shouldBe EntryHint.NotAnIp
+        problemWith("! 10.0.0.0/8", IPS) shouldBe EntryHint.SpacesOrCommas
+        listOf("!" to IPS, "!" to SITES, "!   " to IPS, "ext-ip:nodat" to IPS).forEach { (entry, field) ->
+            rejectionOf(entry, field).shouldNotBeNull()
         }
     }
 

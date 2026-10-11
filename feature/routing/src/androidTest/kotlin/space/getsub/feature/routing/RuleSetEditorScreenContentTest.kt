@@ -6,6 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -13,6 +16,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -176,6 +180,33 @@ class RuleSetEditorScreenContentTest {
         )
 
         composeRule.onNodeWithText("Use geosite: for sites").performScrollTo().assertIsDisplayed()
+        // Fix round 1, minor 8: the reason is on the field itself too, for TalkBack.
+        composeRule
+            .onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.SITES), useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Use geosite: for sites"))
+    }
+
+    // Fix round 1, minor 7: while the write is in flight nothing can be edited, so nothing typed
+    // then is lost when the screen leaves on `saved`.
+    @Test
+    fun whileSavingNothingCanBeEdited() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "ads",
+                saving = true,
+                buckets = mapOf(RouteOutcome.BLOCK to RuleBucket(sites = listOf("example.com"))),
+            ),
+        )
+
+        composeRule.onNodeWithText("Saving…").assertIsNotEnabled()
+        composeRule.onNodeWithText("ads").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Remove entry").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Move Proxy earlier").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Move Proxy later").assertIsNotEnabled()
+        composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.SITES)).assertIsNotEnabled()
+        composeRule.onAllNodesWithText("Add IPs")[0].assertIsNotEnabled()
+        composeRule.onNodeWithText("As is").assertIsNotEnabled()
     }
 
     // Fix S5: an empty field is one Add button until opened; one with entries shows its input.

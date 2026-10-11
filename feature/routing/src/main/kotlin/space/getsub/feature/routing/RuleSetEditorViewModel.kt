@@ -228,13 +228,13 @@ constructor(
     ) {
         if (rejectionOf(entry, field) != null) return
         val trimmed = entry.trim()
-        _state.update { current ->
+        edit { current ->
             val existing = current.bucket(outcome, field)
             val key = outcome to field
             // The field's own draft is cleared only when it is what was just added; a picked
             // category leaves text the user is still typing alone.
             val drafts = if (current.draft(outcome, field).trim() == trimmed) current.drafts - key else current.drafts
-            if (trimmed in existing) return@update current.copy(drafts = drafts)
+            if (trimmed in existing) return@edit current.copy(drafts = drafts)
             current.copy(
                 buckets = current.buckets + (outcome to current.bucketWith(outcome, field, existing + trimmed)),
                 drafts = drafts,
@@ -248,20 +248,20 @@ constructor(
         field: BucketField,
         entry: String,
     ) {
-        _state.update { current ->
+        edit { current ->
             val existing = current.bucket(outcome, field)
             current.copy(buckets = current.buckets + (outcome to current.bucketWith(outcome, field, existing - entry)))
         }
     }
 
-    fun setName(value: String) = update { it.copy(name = value) }
+    fun setName(value: String) = edit { it.copy(name = value) }
 
     /** Holds what is typed into [outcome]/[field]'s entry field; see [RuleSetEditorState.drafts]. */
     fun setDraft(
         outcome: RouteOutcome,
         field: BucketField,
         text: String,
-    ) = update { it.copy(drafts = it.drafts + ((outcome to field) to text)) }
+    ) = edit { it.copy(drafts = it.drafts + ((outcome to field) to text)) }
 
     /**
      * Sets the rule evaluation order. Silently ignored when [order] is not a
@@ -271,10 +271,10 @@ constructor(
      */
     fun setOrder(order: List<RouteOutcome>) {
         val isPermutation = order.size == RouteOutcome.entries.size && order.toSet() == RouteOutcome.entries.toSet()
-        if (isPermutation) update { it.copy(order = order) }
+        if (isPermutation) edit { it.copy(order = order) }
     }
 
-    fun setDomainStrategy(strategy: DomainStrategy) = update { it.copy(domainStrategy = strategy) }
+    fun setDomainStrategy(strategy: DomainStrategy) = edit { it.copy(domainStrategy = strategy) }
 
     /**
      * Writes the current draft through [RoutingSource.upsert]. Refuses when
@@ -301,10 +301,10 @@ constructor(
     fun save() {
         val current = _state.value
         if (!current.canSave || current.saving) return
-        viewModelScope.launch {
-            _state.update { it.copy(saving = true, saveProblem = null) }
-            saveDraft(current, current.name.trim())
-        }
+        // Set before the launch, not inside it, so no edit can land between taking [current] and
+        // [edit] starting to refuse them (fix round 1, minor 7).
+        _state.update { it.copy(saving = true, saveProblem = null) }
+        viewModelScope.launch { saveDraft(current, current.name.trim()) }
     }
 
     // TooGenericExceptionCaught: either RoutingSource call below can fail in ways this ViewModel
@@ -330,10 +330,12 @@ constructor(
                     globalProxy = current.globalProxy,
                 ),
             )
-            // One update, so no state is ever both saved and dirty: the screen leaves on `saved`,
-            // and a dirty state in that window would let Back raise the discard dialog over a
-            // finished save (M8.6 spec §4.9, fix A11). The baseline is what was written; drafts
-            // never added are dropped with the screen.
+            // The baseline becomes what was written, and drafts never added are dropped with the
+            // screen, in the same update that sets `saved`. Because [edit] refuses every change
+            // while `saving`, the state here still equals [current] apart from drafts, so the
+            // resulting state is clean: the screen leaves on `saved` without Back or the arrow
+            // being able to raise the discard dialog over a finished save (M8.6 spec §4.9, fix
+            // A11). RuleSetEditorViewModelTest pins this.
             _state.update { it.copy(saving = false, saved = true, baseline = current.edits, drafts = emptyMap()) }
         } catch (_: IllegalArgumentException) {
             _state.update { it.copy(saving = false, saveProblem = SaveProblem.InvalidEntry) }
@@ -344,8 +346,13 @@ constructor(
         }
     }
 
-    private inline fun update(transform: (RuleSetEditorState) -> RuleSetEditorState) {
-        _state.update(transform)
+    /**
+     * Applies a user edit, or nothing while [RuleSetEditorState.saving] — the write in flight was
+     * built from the state before it, so an edit made now would be lost when the screen leaves on
+     * `saved` (fix round 1, minor 7). The screen disables its inputs too; this is the gate.
+     */
+    private inline fun edit(transform: (RuleSetEditorState) -> RuleSetEditorState) {
+        _state.update { if (it.saving) it else transform(it) }
     }
 }
 

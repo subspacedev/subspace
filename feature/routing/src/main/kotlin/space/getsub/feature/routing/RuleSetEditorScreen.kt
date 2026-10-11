@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -281,13 +282,29 @@ private fun EditorForm(
             .padding(top = 12.dp, bottom = SAVE_BAR_CLEARANCE),
         verticalArrangement = Arrangement.spacedBy(SECTION_GAP),
     ) {
-        NameSection(name = state.name, onNameChanged = actions.onNameChanged)
+        // Nothing is editable while the write is in flight: it was built from the state before it,
+        // so an edit made now would be lost when the screen leaves (fix round 1, minor 7).
+        // RuleSetEditorViewModel refuses such edits too; this only stops offering them.
+        val enabled = !state.saving
 
-        OrderSection(order = state.order, onMoveEarlier = actions.onMoveEarlier, onMoveLater = actions.onMoveLater)
+        NameSection(name = state.name, onNameChanged = actions.onNameChanged, enabled = enabled)
 
-        DomainStrategySection(selected = state.domainStrategy, onSelected = actions.onDomainStrategyChanged)
+        OrderSection(
+            order = state.order,
+            onMoveEarlier = actions.onMoveEarlier,
+            onMoveLater = actions.onMoveLater,
+            enabled = enabled,
+        )
 
-        state.order.forEach { outcome -> OutcomeCard(outcome = outcome, state = state, actions = actions) }
+        DomainStrategySection(
+            selected = state.domainStrategy,
+            onSelected = actions.onDomainStrategyChanged,
+            enabled = enabled,
+        )
+
+        state.order.forEach { outcome ->
+            OutcomeCard(outcome = outcome, state = state, actions = actions, enabled = enabled)
+        }
 
         // Save-time-only problems (fix round 1, Findings 7/8) — a rejected-entry-while-typing
         // problem is shown inline on its own field, never here (Finding 4).
@@ -319,12 +336,14 @@ private fun SectionLabel(
 private fun NameSection(
     name: String,
     onNameChanged: (String) -> Unit,
+    enabled: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SectionLabel(stringResource(R.string.rule_set_editor_name_label))
         TextField(
             value = name,
             onValueChange = onNameChanged,
+            enabled = enabled,
             placeholder = { Text(stringResource(R.string.rule_set_editor_name_placeholder)) },
             singleLine = true,
             shape = SubspaceShapeTokens.bubble,
@@ -346,6 +365,7 @@ private fun OrderSection(
     order: List<RouteOutcome>,
     onMoveEarlier: (RouteOutcome) -> Unit,
     onMoveLater: (RouteOutcome) -> Unit,
+    enabled: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(LABEL_GAP)) {
         Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
@@ -366,8 +386,8 @@ private fun OrderSection(
                     OrderRow(
                         position = index + 1,
                         outcome = outcome,
-                        canMoveEarlier = index > 0,
-                        canMoveLater = index < order.lastIndex,
+                        canMoveEarlier = enabled && index > 0,
+                        canMoveLater = enabled && index < order.lastIndex,
                         onMoveEarlier = { onMoveEarlier(outcome) },
                         onMoveLater = { onMoveLater(outcome) },
                     )
@@ -450,6 +470,7 @@ private fun OutcomeTile(
 private fun DomainStrategySection(
     selected: DomainStrategy,
     onSelected: (DomainStrategy) -> Unit,
+    enabled: Boolean,
 ) {
     val strategies = DomainStrategy.entries
     Column(verticalArrangement = Arrangement.spacedBy(LABEL_GAP)) {
@@ -458,6 +479,7 @@ private fun DomainStrategySection(
             options = strategies.map { ModeTile(icon = it.icon(), label = it.displayName()) },
             selected = strategies.indexOf(selected),
             onSelect = { index -> onSelected(strategies[index]) },
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
@@ -474,6 +496,7 @@ private fun OutcomeCard(
     outcome: RouteOutcome,
     state: RuleSetEditorState,
     actions: RuleSetEditorActions,
+    enabled: Boolean,
 ) {
     val total = BucketField.entries.sumOf { state.bucket(outcome, it).size }
     Surface(
@@ -495,6 +518,7 @@ private fun OutcomeCard(
                         draft = state.draft(outcome, field),
                         categories = state.categoriesFor(field),
                         actions = actions,
+                        enabled = enabled,
                     )
                 }
             }
@@ -563,6 +587,7 @@ private fun EntryField(
     draft: String,
     categories: List<GeoCategory>,
     actions: RuleSetEditorActions,
+    enabled: Boolean,
 ) {
     var opened by rememberSaveable(outcome, field) { mutableStateOf(false) }
     var focusOnOpen by remember { mutableStateOf(false) }
@@ -576,24 +601,16 @@ private fun EntryField(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!showInput) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                TextButton(
-                    onClick = {
-                        opened = true
-                        focusOnOpen = true
-                    },
-                ) {
-                    Icon(painterResource(SubspaceIcons.Add), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(field.addLabel(), modifier = Modifier.padding(start = 8.dp))
-                }
-                if (categories.isNotEmpty()) {
-                    Browse(prefix = RoutingEntries.builtInPrefix(field), categories = categories, onSelected = onPick)
-                }
-            }
+            CollapsedField(
+                field = field,
+                categories = categories,
+                enabled = enabled,
+                onOpen = {
+                    opened = true
+                    focusOnOpen = true
+                },
+                onPick = onPick,
+            )
         } else {
             if (entries.isNotEmpty()) {
                 FlowRow(
@@ -601,7 +618,11 @@ private fun EntryField(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     entries.forEach { entry ->
-                        EntryChip(entry = entry, onRemove = { actions.onRemoveEntry(outcome, field, entry) })
+                        EntryChip(
+                            entry = entry,
+                            onRemove = { actions.onRemoveEntry(outcome, field, entry) },
+                            enabled = enabled,
+                        )
                     }
                 }
             }
@@ -613,6 +634,36 @@ private fun EntryField(
                 focusOnShow = focusOnOpen,
                 onFocused = { focusOnOpen = false },
                 actions = actions,
+                enabled = enabled,
+            )
+        }
+    }
+}
+
+/** An empty, unopened field (fix S5): its Add button, and Browse when there are categories. */
+@Composable
+private fun CollapsedField(
+    field: BucketField,
+    categories: List<GeoCategory>,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        TextButton(onClick = onOpen, enabled = enabled) {
+            Icon(painterResource(SubspaceIcons.Add), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(field.addLabel(), modifier = Modifier.padding(start = 8.dp))
+        }
+        if (categories.isNotEmpty()) {
+            Browse(
+                prefix = RoutingEntries.builtInPrefix(field),
+                categories = categories,
+                onSelected = onPick,
+                enabled = enabled,
             )
         }
     }
@@ -629,10 +680,12 @@ private fun EntryInput(
     focusOnShow: Boolean,
     onFocused: () -> Unit,
     actions: RuleSetEditorActions,
+    enabled: Boolean,
 ) {
     // Blank is not shown: an empty field is not yet a mistake.
     val rejection = if (draft.isEmpty()) null else rejectionOf(draft, field)
-    val canAdd = draft.isNotBlank() && rejection == null
+    val canAdd = enabled && draft.isNotBlank() && rejection == null
+    val problem = rejection?.toDisplayText()
     val add = { if (canAdd) actions.onAddEntry(outcome, field, draft) }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(focusOnShow) {
@@ -651,7 +704,8 @@ private fun EntryInput(
             EntryTextField(
                 draft = draft,
                 field = field,
-                isError = rejection != null,
+                problem = problem,
+                enabled = enabled,
                 canAdd = canAdd,
                 onDraftChanged = { actions.onDraftChanged(outcome, field, it) },
                 onAdd = add,
@@ -666,12 +720,13 @@ private fun EntryInput(
                     prefix = RoutingEntries.builtInPrefix(field),
                     categories = categories,
                     onSelected = { entry -> actions.onAddEntry(outcome, field, entry) },
+                    enabled = enabled,
                 )
             }
         }
-        if (rejection != null) {
+        if (problem != null) {
             Text(
-                text = rejection.toDisplayText(),
+                text = problem,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -685,7 +740,8 @@ private fun EntryInput(
 private fun EntryTextField(
     draft: String,
     field: BucketField,
-    isError: Boolean,
+    problem: String?,
+    enabled: Boolean,
     canAdd: Boolean,
     onDraftChanged: (String) -> Unit,
     onAdd: () -> Unit,
@@ -694,6 +750,7 @@ private fun EntryTextField(
     OutlinedTextField(
         value = draft,
         onValueChange = onDraftChanged,
+        enabled = enabled,
         placeholder = {
             Text(
                 text = field.hint(),
@@ -704,7 +761,7 @@ private fun EntryTextField(
         },
         textStyle = MaterialTheme.typography.bodySmall.mono(),
         singleLine = true,
-        isError = isError,
+        isError = problem != null,
         shape = MaterialTheme.shapes.large,
         colors =
         OutlinedTextFieldDefaults.colors(
@@ -738,7 +795,10 @@ private fun EntryTextField(
                 )
             }
         },
-        modifier = modifier,
+        // The reason shown under the field, attached to the field itself so TalkBack says why it
+        // is in error when it lands there, not only when it reaches the text below (fix round 1,
+        // minor 8).
+        modifier = if (problem != null) modifier.semantics { error(problem) } else modifier,
     )
 }
 
@@ -747,6 +807,7 @@ private fun EntryTextField(
 private fun EntryChip(
     entry: String,
     onRemove: () -> Unit,
+    enabled: Boolean,
 ) {
     Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
         Row(
@@ -760,7 +821,7 @@ private fun EntryChip(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.size(32.dp)) {
                 Icon(
                     painter = painterResource(SubspaceIcons.Close),
                     contentDescription = stringResource(R.string.rule_set_editor_remove_entry_description),
@@ -783,12 +844,14 @@ private fun Browse(
     prefix: String,
     categories: List<GeoCategory>,
     onSelected: (String) -> Unit,
+    enabled: Boolean,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val numbers = remember { NumberFormat.getIntegerInstance() }
     Box {
         OutlinedButton(
             onClick = { menuOpen = true },
+            enabled = enabled,
             shape = MaterialTheme.shapes.large,
             contentPadding = PaddingValues(horizontal = 12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),

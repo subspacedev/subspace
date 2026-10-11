@@ -20,11 +20,56 @@ internal enum class EntryHint {
     NotAnIp,
 }
 
+/**
+ * The design's inline checks (Phone.dc.html problemWith), with the additions M8.6 Part 4 ruling
+ * R4a makes so they never reject Xray syntax [RoutingEntries.problemWith] supports. Null =
+ * acceptable to these checks; whether the entry is then usable is still [RoutingEntries]' call
+ * (see [rejectionOf]).
+ *
+ * The R4a additions, each run before the verbatim port in [designProblemWith]:
+ * - one leading `!` (Xray's negation) is set aside, on both fields, and the rest is checked. A
+ *   bare `!`, or `!` followed by whitespace, is still refused.
+ * - `ext-site:`/`ext-domain:` (sites) and `ext-ip:` (IPs) get the same `<prefix><file>.dat:<category>`
+ *   shape check as the design's own `ext:` branch.
+ * - `dotless:` counts as a site prefix, like the design's `domain:`/`full:`/`keyword:`/`regexp:`.
+ *
+ * Single-label and IDN names stay refused by the design's domain check: `domain:` is the way to
+ * write them.
+ */
+@Suppress("ReturnCount") // One early return per R4a addition, in the order the KDoc lists them.
+internal fun problemWith(
+    raw: String,
+    field: BucketField,
+): EntryHint? {
+    val t = raw.trim()
+    val body = if (t.length > 1 && t.startsWith('!')) t.substring(1) else t
+    if (body.any { it.isWhitespace() || it == ',' }) return EntryHint.SpacesOrCommas
+    XRAY_EXT_PREFIXES.getValue(field).firstOrNull { body.startsWith(it, ignoreCase = true) }?.let { prefix ->
+        return if (xrayExtShape(prefix).matches(body)) null else EntryHint.MalformedExt
+    }
+    if (field == BucketField.SITES && DOTLESS.matches(body)) return null
+    return designProblemWith(body, field)
+}
+
+/** M8.6 Part 4 ruling R4a: the ext variants [RoutingEntries] accepts beyond the design's `ext:`. */
+private val XRAY_EXT_PREFIXES =
+    mapOf(
+        BucketField.SITES to listOf("ext-site:", "ext-domain:"),
+        BucketField.IPS to listOf("ext-ip:"),
+    )
+
+/** The design's own [EXT] shape, for one of [XRAY_EXT_PREFIXES]. */
+private fun xrayExtShape(prefix: String): Regex =
+    Regex("^" + Regex.escape(prefix) + "[^:]+\\.dat:[^:]+$", RegexOption.IGNORE_CASE)
+
+/** M8.6 Part 4 ruling R4a: `dotless:`, in the design's [SITE_PREFIXED] form. */
+private val DOTLESS = Regex("^dotless:.+$", RegexOption.IGNORE_CASE)
+
 /** The design's inline checks (Phone.dc.html problemWith), ported verbatim. Null = acceptable to these checks. */
 // CyclomaticComplexMethod/ReturnCount: a line-for-line port of the design's function, kept in its
 // shape so the two can be compared by eye; splitting it would hide which branch matches which line.
 @Suppress("CyclomaticComplexMethod", "ReturnCount")
-internal fun problemWith(
+private fun designProblemWith(
     raw: String,
     field: BucketField,
 ): EntryHint? {

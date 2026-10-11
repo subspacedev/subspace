@@ -496,10 +496,78 @@ class RuleSetEditorViewModelTest {
         val viewModel = editor()
 
         viewModel.addEntry(RouteOutcome.DIRECT, BucketField.SITES, "localhost")
-        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.IPS, "!geoip:cn")
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.SITES, "bücher.de")
 
         viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.SITES) shouldBe emptyList()
-        viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.IPS) shouldBe emptyList()
+    }
+
+    // M8.6 Part 4 ruling R4a: Xray syntax RoutingEntries supports is never refused by the
+    // design's check.
+    @Test
+    fun `negation and the ext variants can be added`() = runTest {
+        val viewModel = editor()
+
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.IPS, "!geoip:cn")
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.IPS, "ext-ip:x.dat:cat")
+        viewModel.addEntry(RouteOutcome.DIRECT, BucketField.SITES, "dotless:intranet")
+
+        viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.IPS) shouldBe
+            listOf("!geoip:cn", "ext-ip:x.dat:cat")
+        viewModel.state.value.bucket(RouteOutcome.DIRECT, BucketField.SITES) shouldBe listOf("dotless:intranet")
+    }
+
+    // Fix round 1, minor 6: the design's check gates adding only. A stored set holding entries it
+    // would refuse still loads, saves, and keeps them.
+    @Test
+    fun `stored entries the design rejects survive an edit and save`() = runTest {
+        val legacy =
+            RoutingRuleSet(
+                id = 9,
+                name = "legacy",
+                buckets = mapOf(RouteOutcome.DIRECT to RuleBucket(sites = listOf("localhost", "bücher.de"))),
+            )
+        val source = FakeSource(MutableStateFlow(listOf(legacy)))
+        val viewModel = editor(source)
+        viewModel.load(legacy.id)
+
+        viewModel.setName("legacy 2")
+        viewModel.save()
+
+        viewModel.state.value.saved shouldBe true
+        source.upserted?.name shouldBe "legacy 2"
+        source.upserted?.bucket(RouteOutcome.DIRECT)?.sites shouldBe listOf("localhost", "bücher.de")
+    }
+
+    // Fix round 1, minor 7: nothing can be edited while the write is in flight, so nothing typed
+    // then is lost when the screen leaves on `saved`.
+    @Test
+    fun `edits are refused while a save is in flight`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = editor(FakeSource(MutableStateFlow(listOf(storedLan)), upsertGate = gate))
+        viewModel.load(storedLan.id)
+        viewModel.setName("lan2")
+        viewModel.save()
+        viewModel.state.value.saving shouldBe true
+
+        viewModel.setName("lan3")
+        viewModel.setDraft(RouteOutcome.PROXY, BucketField.SITES, "exam")
+        viewModel.addEntry(RouteOutcome.PROXY, BucketField.SITES, "example.com")
+        viewModel.removeEntry(RouteOutcome.DIRECT, BucketField.IPS, "10.0.0.0/8")
+        viewModel.setOrder(RoutingRuleSet.DEFAULT_ORDER)
+        viewModel.setDomainStrategy(DomainStrategy.IP_ON_DEMAND)
+
+        val during = viewModel.state.value
+        during.name shouldBe "lan2"
+        during.drafts shouldBe emptyMap()
+        during.bucket(RouteOutcome.PROXY, BucketField.SITES) shouldBe emptyList()
+        during.bucket(RouteOutcome.DIRECT, BucketField.IPS) shouldBe listOf("10.0.0.0/8")
+        during.order shouldBe storedLan.order
+        during.domainStrategy shouldBe storedLan.domainStrategy
+
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        viewModel.state.value.saved shouldBe true
+        viewModel.state.value.isDirty shouldBe false
     }
 
     // M8.6 Part 4 Task 6, A11: isDirty drives the discard guard.
