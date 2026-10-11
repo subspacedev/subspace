@@ -1514,8 +1514,10 @@ hub rows, group cards and `SubspaceSheet` replace them. Rationale and licence:
 **The launcher icon is the "5b" adaptive icon** with a monochrome layer for
 Android 13+ themed icons (`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`:
 `ic_launcher_background` colour, `ic_launcher_foreground`,
-`ic_launcher_monochrome`). Below API 26 the launcher falls back to the legacy
-resource; checking that fallback is owner-pending (M8.6 spec §7.4 row 13).
+`ic_launcher_monochrome`). `minSdk` is 26, so the adaptive icon is used on every
+supported version and there are no legacy PNG mipmaps; the monochrome layer only
+takes effect on Android 13+. Rendering on Android 8–11 is owner-pending
+(M8.6 spec §7.4 row 13).
 
 ---
 
