@@ -192,6 +192,10 @@ constructor(
      * for why the filesystem read is dispatched inside [source], not here.
      */
     fun load(id: Long) {
+        // The screen's LaunchedEffect re-runs on activity recreation (rotation, dark mode, locale);
+        // reloading the same id would replace the edits, drafts and baseline (M8.6 spec §4.9, A11).
+        val current = _state.value
+        if (!current.loading && current.id == id) return
         viewModelScope.launch {
             val existing = source.ruleSet(id)
             val siteCategories = source.categoriesFor(BucketField.SITES)

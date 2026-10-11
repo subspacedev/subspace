@@ -284,6 +284,47 @@ class RuleSetEditorViewModelTest {
         state.canSave shouldBe false
     }
 
+    // Activity recreation (rotation, dark mode, locale) re-runs the screen's LaunchedEffect; a
+    // second load of the same id must not wipe unsaved edits (M8.6 spec §4.9, fix A11).
+    @Test
+    fun `loading the same id again keeps the edits and the dirty flag`() = runTest {
+        val stored = RoutingRuleSet(id = 7, name = "lan")
+        val viewModel = editor(FakeSource(MutableStateFlow(listOf(stored))))
+        viewModel.load(7)
+        viewModel.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "domain:ads.test")
+
+        viewModel.load(7)
+
+        viewModel.state.value.bucket(RouteOutcome.BLOCK, BucketField.SITES) shouldBe listOf("domain:ads.test")
+        viewModel.state.value.isDirty shouldBe true
+    }
+
+    @Test
+    fun `loading a new rule set twice keeps the first draft's edits`() = runTest {
+        val viewModel = editor(FakeSource())
+        viewModel.load(0L)
+        viewModel.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "domain:ads.test")
+
+        viewModel.load(0L)
+
+        viewModel.state.value.bucket(RouteOutcome.BLOCK, BucketField.SITES) shouldBe listOf("domain:ads.test")
+        viewModel.state.value.isDirty shouldBe true
+    }
+
+    @Test
+    fun `loading a different id does load it`() = runTest {
+        val first = RoutingRuleSet(id = 7, name = "lan")
+        val second = RoutingRuleSet(id = 8, name = "work")
+        val viewModel = editor(FakeSource(MutableStateFlow(listOf(first, second))))
+        viewModel.load(7)
+        viewModel.addEntry(RouteOutcome.BLOCK, BucketField.SITES, "domain:ads.test")
+
+        viewModel.load(8)
+
+        viewModel.state.value.name shouldBe "work"
+        viewModel.state.value.isDirty shouldBe false
+    }
+
     @Test
     fun `a valid order permutation is accepted`() = runTest {
         val viewModel = editor()
