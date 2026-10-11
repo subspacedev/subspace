@@ -98,6 +98,17 @@ class CensorshipPageTest {
     }
 
     @Test
+    fun theNextConnectionNoteShowsOnlyWhileConnected() {
+        setContent(SettingsState())
+        composeRule.onNodeWithText("Fragmentation changes from your next connection.").assertDoesNotExist()
+
+        composeRule.runOnIdle { hosted.value = hosted.value.copy(sessionConnected = true) }
+
+        composeRule.onNodeWithText("Fragmentation changes from your next connection.").assertIsDisplayed()
+        composeRule.onNodeWithText("Noise changes from your next connection.").assertIsDisplayed()
+    }
+
+    @Test
     fun anInvalidLengthShowsTheErrorAndIsNotCommitted() {
         setContent(SettingsState(fragment = FragmentSettings.DEFAULT.copy(enabled = true)))
 

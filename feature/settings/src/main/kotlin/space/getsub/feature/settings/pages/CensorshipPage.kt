@@ -55,8 +55,9 @@ internal fun CensorshipPage(
     modifier: Modifier = Modifier,
 ) {
     PageScaffold(title = stringResource(R.string.settings_censorship_title), onBack = onBack, modifier = modifier) {
-        FragmentSection(state.fragment, actions.onFragmentSettingsChanged)
-        NoiseSection(state.noise, actions.onNoiseSettingsChanged)
+        // Read once at connect, like lightweight mode: while connected, say a change waits for the next one.
+        FragmentSection(state.fragment, state.sessionConnected, actions.onFragmentSettingsChanged)
+        NoiseSection(state.noise, state.sessionConnected, actions.onNoiseSettingsChanged)
     }
 }
 
@@ -69,6 +70,7 @@ private val LocalDraftResets = compositionLocalOf { 0 }
 @Composable
 private fun FragmentSection(
     value: FragmentSettings,
+    connected: Boolean,
     update: Patch<FragmentSettings>,
 ) {
     var resets by remember { mutableIntStateOf(0) }
@@ -81,6 +83,7 @@ private fun FragmentSection(
         ),
         checked = value.enabled,
         onCheckedChange = { on -> update { it.copy(enabled = on) } },
+        note = stringResource(R.string.settings_fragment_connected_note).takeIf { connected },
     )
     if (!value.enabled) return
     CompositionLocalProvider(LocalDraftResets provides resets) { FragmentFields(value, update) }
@@ -119,6 +122,7 @@ private fun FragmentFields(
 @Composable
 private fun NoiseSection(
     value: NoiseSettings,
+    connected: Boolean,
     update: Patch<NoiseSettings>,
 ) {
     var resets by remember { mutableIntStateOf(0) }
@@ -129,6 +133,7 @@ private fun NoiseSection(
         stringResource(if (value.enabled) R.string.settings_noise_summary else R.string.settings_noise_off_summary),
         checked = value.enabled,
         onCheckedChange = { on -> update { it.copy(enabled = on) } },
+        note = stringResource(R.string.settings_noise_connected_note).takeIf { connected },
     )
     if (!value.enabled) return
     CompositionLocalProvider(LocalDraftResets provides resets) { NoiseFields(value, update) }

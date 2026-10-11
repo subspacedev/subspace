@@ -77,10 +77,16 @@ class SettingsPagesSnapshotTest {
     @Test
     fun about() = shoot(SettingsPageId.About)
 
-    /** M9-A spec §2.3: fragmentation On shows its fields; noise stays Off and says the provider's apply. */
+    /**
+     * M9-A spec §2.3: fragmentation On shows its fields; noise stays Off and says the provider's apply.
+     * Connected, so both rows carry the "from your next connection" note.
+     */
     @Test
     fun censorshipFragmentOn() =
-        shoot(SettingsPageId.Censorship, base.copy(fragment = FragmentSettings.DEFAULT.copy(enabled = true)))
+        shoot(
+            SettingsPageId.Censorship,
+            base.copy(fragment = FragmentSettings.DEFAULT.copy(enabled = true), sessionConnected = true),
+        )
 
     /** Noise On in Fixed mode: the packet-type list and the packet field. */
     @Test
