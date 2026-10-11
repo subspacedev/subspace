@@ -7,6 +7,7 @@ import space.getsub.core.data.EffectiveValue
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.sync.SubscriptionSyncFailure
+import space.getsub.core.model.ObfuscationProblem
 import space.getsub.feature.profiles.add.UserMessage
 import java.net.URI
 
@@ -175,6 +176,10 @@ internal data class SubscriptionDetailState(
     val isRefreshing: Boolean = false,
     val refreshResult: UserMessage? = null,
     val deleted: Boolean = false,
+    /** Why this subscription's fragmentation directive is being ignored, if it is. */
+    val fragmentIgnored: ObfuscationProblem? = null,
+    /** Why this subscription's noise directive is being ignored, if it is. */
+    val noiseIgnored: ObfuscationProblem? = null,
 )
 
 /**

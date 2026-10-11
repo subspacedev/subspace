@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import space.getsub.core.data.MaskResolution
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.parser.directive.DirectiveRegistry
 import space.getsub.core.parser.directive.KindResult
@@ -74,6 +76,9 @@ constructor(
      */
     private val ephemeral = MutableStateFlow(Ephemeral())
 
+    /** Bumped when a refresh completes: directives change on sync, so the issues are read again. */
+    private val issuesTick = MutableStateFlow(0)
+
     private var loadedId: Long? = null
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
@@ -84,6 +89,7 @@ constructor(
         loadJob?.cancel()
         _state.value = SubscriptionDetailState(subscriptionId = subscriptionId)
         ephemeral.value = Ephemeral()
+        issuesTick.value = 0
 
         val subscriptionFlow =
             profileSource.observeSubscriptions().map { subs ->
@@ -98,11 +104,13 @@ constructor(
                 rowsFlow,
                 profileSource.observeEffective(subscriptionId, KEY_USER_AGENT, default = null),
                 profileSource.globalHwidEnabled,
-            ) { rows, userAgent, globalHwidEnabled ->
+                issuesTick.map { profileSource.obfuscationDirectiveIssues(subscriptionId) },
+            ) { rows, userAgent, globalHwidEnabled, issues ->
                 DetailSettings(
                     rows = rows,
                     providerUserAgent = userAgent.providerValue,
                     globalHwidEnabled = globalHwidEnabled,
+                    issues = issues,
                 )
             }
 
@@ -123,6 +131,7 @@ constructor(
                         rows = settings.rows,
                         providerUserAgent = settings.providerUserAgent,
                         globalHwidEnabled = settings.globalHwidEnabled,
+                        issues = settings.issues,
                         ephemeral = eph,
                     ),
                 )
@@ -193,6 +202,8 @@ constructor(
             isRefreshing = inputs.ephemeral.isRefreshing,
             refreshResult = inputs.ephemeral.refreshResult,
             deleted = inputs.ephemeral.deleted,
+            fragmentIgnored = (inputs.issues.fragment as? MaskResolution.Ignored)?.problem,
+            noiseIgnored = (inputs.issues.noise as? MaskResolution.Ignored)?.problem,
         )
     }
 
@@ -204,6 +215,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
+        val issues: ResolvedObfuscation,
         val ephemeral: Ephemeral,
     )
 
@@ -211,6 +223,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
+        val issues: ResolvedObfuscation,
     )
 
     /**
@@ -223,6 +236,7 @@ constructor(
         refreshJob = viewModelScope.launch {
             ephemeral.value = ephemeral.value.copy(isRefreshing = true, refreshResult = null)
             val result = profileSource.syncSubscription(id)
+            issuesTick.value++
             ephemeral.value = ephemeral.value.copy(isRefreshing = false, refreshResult = result.toUserMessage())
         }
     }

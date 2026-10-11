@@ -20,10 +20,14 @@ import org.junit.Before
 import org.junit.Test
 import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.feature.profiles.ProfileSource
@@ -110,6 +114,11 @@ class SubscriptionDetailViewModelTest {
         override suspend fun setUserAgentOverride(id: Long, userAgent: String?) {
             userAgentOverride = userAgent
         }
+
+        val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
+        override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+        override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
+            directiveIssues[subscriptionId] ?: ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
     }
 
     private lateinit var source: FakeProfileSource
@@ -126,6 +135,34 @@ class SubscriptionDetailViewModelTest {
     fun tearDown() {
         Dispatchers.resetMain()
     }
+
+    @Test
+    fun `an invalid directive surfaces its reason`() =
+        runTest {
+            source.directiveIssues[SUBSCRIPTION_ID] =
+                ResolvedObfuscation(MaskResolution.Ignored(ObfuscationProblem.LengthFromZero), MaskResolution.Absent)
+
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.LengthFromZero
+            viewModel.state.value.noiseIgnored shouldBe null
+        }
+
+    @Test
+    fun `directive issues are read again after a refresh completes`() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.state.value.noiseIgnored shouldBe null
+
+            source.directiveIssues[SUBSCRIPTION_ID] =
+                ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Ignored(ObfuscationProblem.LengthFromZero))
+            viewModel.onRefreshNow()
+            advanceUntilIdle()
+
+            viewModel.state.value.noiseIgnored shouldBe ObfuscationProblem.LengthFromZero
+        }
 
     @Test
     fun pinShowsTheProviderSuggestionAlongsideThePinnedValue() =

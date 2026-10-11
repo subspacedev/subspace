@@ -19,9 +19,14 @@ import org.junit.Before
 import org.junit.Test
 import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.MaskReport
+import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.ObfuscationOrigin
+import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.sync.SyncResult
@@ -310,6 +315,13 @@ class EditorViewModelTest {
             enabled: Boolean,
         ) = Unit
 
+        val obfuscationReports = mutableMapOf<Long, ObfuscationReport>()
+
+        override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationReports[id]
+
+        override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
+            ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
+
         override suspend fun setUserAgentOverride(
             id: Long,
             userAgent: String?,
@@ -351,6 +363,24 @@ class EditorViewModelTest {
         pending: PendingRoutingConversion = PendingRoutingConversion(),
     ): EditorViewModel =
         EditorViewModel(source, pending).apply { setConversionDispatcherForTesting(Dispatchers.Unconfined) }
+
+    @Test
+    fun `load carries the obfuscation report`() =
+        runTest {
+            val report =
+                ObfuscationReport(
+                    MaskReport(ObfuscationOrigin.Subscription, null),
+                    MaskReport(ObfuscationOrigin.None, null),
+                )
+            val source = FakeProfileSource(listOf(typedProfile))
+            source.obfuscationReports[typedProfile.id] = report
+            val viewModel = editorViewModel(source)
+
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.obfuscation shouldBe report
+        }
 
     @Test
     fun `editing a typed profile rewrites its identity hash`() =

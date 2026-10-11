@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
@@ -82,6 +83,8 @@ internal enum class EditorSecurityKind { None, Reality, Tls }
  */
 internal data class EditorState(
     val loading: Boolean = true,
+    /** Where this server's fragmentation and noise come from; `null` until [EditorViewModel.load] resolves it. */
+    val obfuscation: ObfuscationReport? = null,
     /** `false` only once [EditorViewModel.load] resolves a `null` profile — an id that names no real row. */
     val exists: Boolean = true,
     val id: Long = 0L,
@@ -277,7 +280,10 @@ constructor(
                     EditorState(loading = false, exists = false, id = profileId, availableGroups = groups)
                 } else {
                     val loaded =
-                        profile.toEditorState(groups).copy(routingOverridesThisConfig = routingOverridesThisConfig)
+                        profile.toEditorState(groups).copy(
+                            routingOverridesThisConfig = routingOverridesThisConfig,
+                            obfuscation = profileSource.obfuscationReport(profileId),
+                        )
                     // Off Main: convertibleRouting() and analysePassthrough() each do a full JSON
                     // parse of the pasted config, and load() otherwise runs on Main.immediate — a
                     // large config would add a frame hitch on every RAW_JSON editor open. One hop,

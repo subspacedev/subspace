@@ -50,6 +50,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import space.getsub.core.data.MaskReport
+import space.getsub.core.data.ObfuscationOrigin
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.OverrideBlocker
@@ -63,6 +65,7 @@ import space.getsub.core.ui.component.SectionTitle
 import space.getsub.core.ui.component.SwitchRow
 import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.textRes
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
@@ -305,6 +308,23 @@ private fun NotFoundBody(
 }
 
 @Composable
+private fun MaskReport.label(): String {
+    val ignoredProblem = ignored
+    return if (origin == ObfuscationOrigin.None && ignoredProblem != null) {
+        stringResource(R.string.obfuscation_origin_none_ignored, stringResource(ignoredProblem.textRes()))
+    } else {
+        stringResource(
+            when (origin) {
+                ObfuscationOrigin.Yours -> R.string.obfuscation_origin_yours
+                ObfuscationOrigin.Subscription -> R.string.obfuscation_origin_subscription
+                ObfuscationOrigin.Config -> R.string.obfuscation_origin_config
+                ObfuscationOrigin.None -> R.string.obfuscation_origin_none
+            },
+        )
+    }
+}
+
+@Composable
 private fun EditorForm(
     state: EditorState,
     actions: EditorActions,
@@ -322,6 +342,24 @@ private fun EditorForm(
             TypedSections(state = state, actions = actions)
         } else {
             RawJsonSections(state = state, actions = actions)
+        }
+
+        state.obfuscation?.let { report ->
+            Column(
+                modifier = Modifier.padding(top = FIELD_GAP),
+                verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
+            ) {
+                Text(
+                    text = stringResource(R.string.editor_fragment_line, report.fragment.label()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.editor_noise_line, report.noise.label()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         if (state.duplicateIdentity) {
