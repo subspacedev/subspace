@@ -160,6 +160,9 @@ class RuleSetEditorScreenContentTest {
             }
         }
 
+        // Same as above: the editor now clears the navigation bar, so Save floats higher and the
+        // first Add IPs is under it at scroll 0. Scroll it clear first, as a user would.
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp(startY = centerY, endY = centerY - 600f) }
         composeRule.onAllNodesWithText("Add IPs")[0].performScrollTo().performClick()
         composeRule
             .onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS))

@@ -18,13 +18,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.testTag
@@ -92,8 +100,10 @@ private val SECTION_GAP = 20.dp
 private val LABEL_GAP = 8.dp
 private val LOADING_TOP_PADDING = 48.dp
 
-// Room under the last section for the save bar, which floats over the form.
-private val SAVE_BAR_CLEARANCE = 96.dp
+// Room under the last section for the save bar, which floats over the form: the bar's 56 dp, its
+// 20 dp margin and a 28 dp breath, so the last Add button rests clear of it at full scroll. The
+// system bars and the keyboard are not part of this number: the whole editor is padded for them.
+private val SAVE_BAR_CLEARANCE = 104.dp
 
 /**
  * Identifies the loading spinner to `RuleSetEditorScreenContentTest` — same pattern as
@@ -195,7 +205,16 @@ internal fun RuleSetEditorContent(
     actions: RuleSetEditorActions,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
+    // The activity draws edge to edge and nothing above pads for the bottom of the display, so this
+    // screen does: the navigation bar, or the keyboard when it is up (the larger of the two). With
+    // the keyboard up the form's viewport shrinks to what is left, which is what lets a field and
+    // its inline problem be scrolled above it, and the Save bar rides up with it.
+    Box(
+        modifier =
+        modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             EditorTopBar(
                 title =
@@ -695,7 +714,10 @@ private fun EntryInput(
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.bringProblemIntoView(problem),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -732,6 +754,21 @@ private fun EntryInput(
             )
         }
     }
+}
+
+/**
+ * Keeps a field and its inline problem on screen together. The message is the last thing in the
+ * column and used to sit below the keyboard while the field above it stayed visible, so the whole
+ * column is what gets brought into view, when a problem appears for the focused field.
+ */
+@Composable
+private fun Modifier.bringProblemIntoView(problem: String?): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(problem, focused) {
+        if (problem != null && focused) requester.bringIntoView()
+    }
+    return this.bringIntoViewRequester(requester).onFocusChanged { focused = it.hasFocus }
 }
 
 /** The entry input itself, mono (a machine string), with its add button inside it as the design has. */
