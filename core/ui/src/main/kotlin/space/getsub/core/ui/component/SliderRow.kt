@@ -38,6 +38,11 @@ fun SliderRow(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The drag lives in local state and is committed once it ends, so a slow write cannot drag
+    // the thumb back mid-gesture. Keyed on the caller's value: a new external value wins. Declared
+    // above the label so the number follows the drag too.
+    var local by remember(value) { mutableIntStateOf(value) }
+    var dirty by remember(value) { mutableStateOf(false) }
     Column(modifier.padding(vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Text(
@@ -47,15 +52,11 @@ fun SliderRow(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                valueText(value),
+                valueText(local),
                 style = MaterialTheme.typography.bodyLarge.tabular(),
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        // The drag lives in local state and is committed once it ends, so a slow write cannot drag
-        // the thumb back mid-gesture. Keyed on the caller's value: a new external value wins.
-        var local by remember(value) { mutableIntStateOf(value) }
-        var dirty by remember(value) { mutableStateOf(false) }
         val state =
             rememberSliderState(
                 local.toFloat(),
