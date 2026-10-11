@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -199,6 +201,7 @@ internal data class RuleSetEditorActions(
  * [space.getsub.feature.home.HomeScreenContent]'s KDoc for why this
  * split exists.
  */
+@OptIn(ExperimentalLayoutApi::class) // isImeVisible; not the Expressive opt-in.
 @Composable
 internal fun RuleSetEditorContent(
     state: RuleSetEditorState,
@@ -208,7 +211,9 @@ internal fun RuleSetEditorContent(
     // The activity draws edge to edge and nothing above pads for the bottom of the display, so this
     // screen does: the navigation bar, or the keyboard when it is up (the larger of the two). With
     // the keyboard up the form's viewport shrinks to what is left, which is what lets a field and
-    // its inline problem be scrolled above it, and the Save bar rides up with it.
+    // its inline problem be scrolled above it. Save is hidden meanwhile: riding up with the keyboard
+    // it sat on top of the very field being typed in.
+    val imeVisible = WindowInsets.isImeVisible
     Box(
         modifier =
         modifier
@@ -231,7 +236,7 @@ internal fun RuleSetEditorContent(
                 EditorForm(state = state, actions = actions)
             }
         }
-        if (!state.loading) {
+        if (!state.loading && !imeVisible) {
             SaveBar(
                 enabled = state.canSave && !state.saving,
                 saving = state.saving,
