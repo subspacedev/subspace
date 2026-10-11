@@ -6,9 +6,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +16,8 @@ import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.PingMode
+import space.getsub.core.ui.component.SubspaceDialog
+import space.getsub.core.ui.icon.SubspaceIcons
 
 /**
  * The hub's cross-module navigation callbacks, grouped so the hub takes one parameter for them.
@@ -138,25 +137,17 @@ internal fun TunnelSystemEffects(
     }
 
     if (state.showBatteryPrompt) {
-        AlertDialog(
-            onDismissRequest = actions.onBatteryPromptResolved,
-            title = { Text(stringResource(R.string.settings_battery_prompt_title)) },
-            text = { Text(stringResource(R.string.settings_battery_prompt_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        actions.onBatteryPromptResolved()
-                        openBatterySettings(context)
-                    },
-                ) {
-                    Text(stringResource(R.string.settings_battery_prompt_confirm))
-                }
+        SubspaceDialog(
+            icon = SubspaceIcons.BatterySaver,
+            title = stringResource(R.string.settings_battery_prompt_title),
+            body = stringResource(R.string.settings_battery_prompt_body),
+            confirmLabel = stringResource(R.string.settings_battery_prompt_confirm),
+            onConfirm = {
+                actions.onBatteryPromptResolved()
+                openBatterySettings(context)
             },
-            dismissButton = {
-                TextButton(onClick = actions.onBatteryPromptResolved) {
-                    Text(stringResource(R.string.settings_battery_prompt_dismiss))
-                }
-            },
+            dismissLabel = stringResource(R.string.settings_battery_prompt_dismiss),
+            onDismiss = actions.onBatteryPromptResolved,
         )
     }
 }

@@ -78,9 +78,9 @@
     <string name="settings_battery_summary">Stop Android pausing the tunnel</string>
     <!-- M8 spec §7.2, ARCHITECTURE.md §9: shown once, the moment the user turns on a setting that
          says they want the tunnel to survive (boot autostart or fail-closed) — never at launch. -->
-    <string name="settings_battery_prompt_title">Keep the tunnel running?</string>
-    <string name="settings_battery_prompt_body">Android may stop the tunnel while the screen is off. Exempt Subspace from battery optimisation to keep it running.</string>
-    <string name="settings_battery_prompt_confirm">Open battery settings</string>
+    <string name="settings_battery_prompt_title">Keep the tunnel alive?</string>
+    <string name="settings_battery_prompt_body">Android may stop Subspace to save battery, which drops the tunnel. Exempting it keeps startup connect and the kill switch dependable. We\'ll only ask once.</string>
+    <string name="settings_battery_prompt_confirm">Open settings</string>
     <string name="settings_battery_prompt_dismiss">Not now</string>
 
     <string name="settings_section_routing">Routing</string>
