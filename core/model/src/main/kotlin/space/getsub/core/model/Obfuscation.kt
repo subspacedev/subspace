@@ -6,7 +6,10 @@ package space.getsub.core.model
  * An Xray `Int32Range` as this app emits it (M9-A spec §3.2). Always `0 ≤ from ≤ to`: Xray silently
  * swaps a reversed range, and this type refuses one instead so a typo is caught where it was typed.
  */
-public data class XrayRange(val from: Int, val to: Int) {
+public data class XrayRange(
+    val from: Int,
+    val to: Int,
+) {
     init {
         require(from in 0..to) { "range must satisfy 0 <= from <= to" }
     }
@@ -19,7 +22,9 @@ public data class XrayRange(val from: Int, val to: Int) {
 public sealed interface FragmentPackets {
     public data object TlsHello : FragmentPackets
 
-    public data class Records(val range: XrayRange) : FragmentPackets
+    public data class Records(
+        val range: XrayRange,
+    ) : FragmentPackets
 }
 
 /** A Finalmask `fragment` TCP mask (research note, `FragmentMask`). */
@@ -31,7 +36,9 @@ public data class FragmentSpec(
 )
 
 /** How a fixed noise packet is written, matching Finalmask's `PraseByteSlice` types. */
-public enum class NoisePacketType(public val wire: String) {
+public enum class NoisePacketType(
+    public val wire: String,
+) {
     Array("array"),
     Str("str"),
     Hex("hex"),
@@ -40,18 +47,29 @@ public enum class NoisePacketType(public val wire: String) {
 
 /** One noise datagram's content: random bytes, or a fixed packet. Finalmask has no `rand` *type*. */
 public sealed interface NoisePayload {
-    public data class Random(val length: XrayRange, val byteRange: XrayRange) : NoisePayload
+    public data class Random(
+        val length: XrayRange,
+        val byteRange: XrayRange,
+    ) : NoisePayload
 
-    public data class Fixed(val type: NoisePacketType, val packet: String) : NoisePayload {
+    public data class Fixed(
+        val type: NoisePacketType,
+        val packet: String,
+    ) : NoisePayload {
         // ARCHITECTURE.md §5.6: a pasted packet is user content.
         override fun toString(): String = "Fixed(type=$type, packet=<redacted>)"
     }
 }
 
-public data class NoiseItem(val payload: NoisePayload, val delay: XrayRange)
+public data class NoiseItem(
+    val payload: NoisePayload,
+    val delay: XrayRange,
+)
 
 /** A Finalmask `noise` UDP mask. */
-public data class NoiseSpec(val items: List<NoiseItem>) {
+public data class NoiseSpec(
+    val items: List<NoiseItem>,
+) {
     init {
         require(items.isNotEmpty()) { "a noise mask needs at least one item" }
     }
@@ -61,7 +79,10 @@ public data class NoiseSpec(val items: List<NoiseItem>) {
  * A mask plus whether it replaces a raw config's own (M9-A plan ruling R1). True exactly when the
  * user's setting is On: our rules always win; a directive never displaces what a config does itself.
  */
-public data class Applied<out T>(val spec: T, val replaceOwn: Boolean)
+public data class Applied<out T>(
+    val spec: T,
+    val replaceOwn: Boolean,
+)
 
 /** What [space.getsub.core.model] hands the config writers. Null fields emit nothing. */
 public data class Obfuscation(
@@ -69,8 +90,7 @@ public data class Obfuscation(
     val noise: Applied<NoiseSpec>?,
 ) {
     // Presence and replaceOwn only — never values (ARCHITECTURE.md §5.6).
-    override fun toString(): String =
-        "Obfuscation(fragment=${fragment.describe()}, noise=${noise.describe()})"
+    override fun toString(): String = "Obfuscation(fragment=${fragment.describe()}, noise=${noise.describe()})"
 
     private fun Applied<*>?.describe(): String = if (this == null) "none" else "present(replaceOwn=$replaceOwn)"
 }

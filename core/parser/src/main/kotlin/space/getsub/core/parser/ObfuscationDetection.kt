@@ -46,8 +46,10 @@ public object ObfuscationDetection {
                 .toSet()
         return objects.indices
             .filter { i ->
-                val outbound = objects[i] ?: return@filter false
-                outbound.protocol() in ELIGIBLE_PROTOCOLS && outbound.dialerProxy() !in eligibleTags
+                val outbound = objects[i]
+                outbound != null &&
+                    outbound.protocol() in ELIGIBLE_PROTOCOLS &&
+                    outbound.dialerProxy() !in eligibleTags
             }.toSet()
     }
 

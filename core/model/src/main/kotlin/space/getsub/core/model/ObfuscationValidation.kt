@@ -18,9 +18,13 @@ public enum class ObfuscationProblem {
 }
 
 public sealed interface Checked<out T> {
-    public data class Ok<T>(val value: T) : Checked<T>
+    public data class Ok<T>(
+        val value: T,
+    ) : Checked<T>
 
-    public data class Invalid(val problem: ObfuscationProblem) : Checked<Nothing>
+    public data class Invalid(
+        val problem: ObfuscationProblem,
+    ) : Checked<Nothing>
 }
 
 /**
@@ -47,7 +51,10 @@ public object ObfuscationValidation {
         }
     }
 
-    private fun spanOf(fromText: String, toText: String): Checked<XrayRange> {
+    private fun spanOf(
+        fromText: String,
+        toText: String,
+    ): Checked<XrayRange> {
         val from = fromText.toLong()
         val to = toText.toLong()
         return when {
@@ -92,11 +99,17 @@ public object ObfuscationValidation {
                 NoisePacketType.Base64 ->
                     trimmed.takeIf { it.length % BASE64_QUANTUM == 0 && BASE64.matches(it) }
                 NoisePacketType.Array ->
-                    trimmed.split(',').map { it.trim().toIntOrNull() }
+                    trimmed
+                        .split(',')
+                        .map { it.trim().toIntOrNull() }
                         .takeIf { bytes -> bytes.all { it != null && it in 0..MAX_BYTE } }
                         ?.joinToString(",")
             }
-        return normalised?.let { Checked.Ok(it) } ?: Checked.Invalid(ObfuscationProblem.PacketUndecodable)
+        return if (normalised == null) {
+            Checked.Invalid(ObfuscationProblem.PacketUndecodable)
+        } else {
+            Checked.Ok(normalised)
+        }
     }
 
     public fun fragment(settings: FragmentSettings): Checked<FragmentSpec> =
