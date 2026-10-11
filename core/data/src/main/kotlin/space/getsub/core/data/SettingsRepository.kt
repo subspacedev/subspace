@@ -3,11 +3,16 @@
 package space.getsub.core.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import space.getsub.core.data.db.SettingDao
 import space.getsub.core.data.db.SettingEntity
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.FragmentSettings
+import space.getsub.core.model.NoiseMode
+import space.getsub.core.model.NoisePacketType
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.perAppModeFrom
@@ -42,6 +47,18 @@ private const val KEY_PER_TAG_BREAKDOWN = "per_tag_breakdown"
 private const val KEY_LIGHTWEIGHT_MODE = "lightweight_mode"
 private const val KEY_DYNAMIC_COLOR = "dynamic_color"
 private const val KEY_BATTERY_PROMPT_SHOWN = "battery_prompt_shown"
+private const val KEY_FRAGMENT_ENABLED = "fragment_enabled"
+private const val KEY_FRAGMENT_PACKETS = "fragment_packets"
+private const val KEY_FRAGMENT_LENGTH = "fragment_length"
+private const val KEY_FRAGMENT_DELAY = "fragment_delay"
+private const val KEY_FRAGMENT_MAX_SPLIT = "fragment_max_split"
+private const val KEY_NOISE_ENABLED = "noise_enabled"
+private const val KEY_NOISE_MODE = "noise_mode"
+private const val KEY_NOISE_PACKET_TYPE = "noise_packet_type"
+private const val KEY_NOISE_PACKET = "noise_packet"
+private const val KEY_NOISE_RAND = "noise_rand"
+private const val KEY_NOISE_RAND_RANGE = "noise_rand_range"
+private const val KEY_NOISE_DELAY = "noise_delay"
 
 /**
  * A 204 endpoint on purpose: a `HEAD` against it returns no body, so a latency
@@ -508,4 +525,113 @@ internal constructor(
     ) {
         dao.putTerminalFailure(reason = reasonName.orEmpty(), detail = detail.orEmpty())
     }
+
+    /**
+     * The Fragmentation setting (M9-A spec §2.1). Each field falls back to [FragmentSettings.DEFAULT]
+     * when unset. Text is stored as typed; resolution re-validates it (M9-A plan ruling R7).
+     */
+    public val fragmentSettings: Flow<FragmentSettings> =
+        combine(
+            dao.observe(KEY_FRAGMENT_ENABLED),
+            dao.observe(KEY_FRAGMENT_PACKETS),
+            dao.observe(KEY_FRAGMENT_LENGTH),
+            dao.observe(KEY_FRAGMENT_DELAY),
+            dao.observe(KEY_FRAGMENT_MAX_SPLIT),
+        ) { enabled, packets, length, delay, maxSplit -> fragmentFrom(enabled, packets, length, delay, maxSplit) }
+
+    public suspend fun fragmentSettingsNow(): FragmentSettings =
+        fragmentFrom(
+            dao.value(KEY_FRAGMENT_ENABLED),
+            dao.value(KEY_FRAGMENT_PACKETS),
+            dao.value(KEY_FRAGMENT_LENGTH),
+            dao.value(KEY_FRAGMENT_DELAY),
+            dao.value(KEY_FRAGMENT_MAX_SPLIT),
+        )
+
+    /** Writes every field, so switching [FragmentSettings.enabled] keeps the values (M9-A spec §2.1). */
+    public suspend fun setFragmentSettings(settings: FragmentSettings) {
+        dao.put(SettingEntity(KEY_FRAGMENT_ENABLED, settings.enabled.toString()))
+        dao.put(SettingEntity(KEY_FRAGMENT_PACKETS, settings.packets))
+        dao.put(SettingEntity(KEY_FRAGMENT_LENGTH, settings.length))
+        dao.put(SettingEntity(KEY_FRAGMENT_DELAY, settings.delay))
+        dao.put(SettingEntity(KEY_FRAGMENT_MAX_SPLIT, settings.maxSplit))
+    }
+
+    public val noiseSettings: Flow<NoiseSettings> =
+        combine(
+            listOf(
+                dao.observe(KEY_NOISE_ENABLED),
+                dao.observe(KEY_NOISE_MODE),
+                dao.observe(KEY_NOISE_PACKET_TYPE),
+                dao.observe(KEY_NOISE_PACKET),
+                dao.observe(KEY_NOISE_RAND),
+                dao.observe(KEY_NOISE_RAND_RANGE),
+                dao.observe(KEY_NOISE_DELAY),
+            ),
+        ) { values ->
+            // Arguments evaluate left to right, so this reads the values in the order they were listed above.
+            val next = values.iterator()
+            noiseFrom(next.next(), next.next(), next.next(), next.next(), next.next(), next.next(), next.next())
+        }
+
+    public suspend fun noiseSettingsNow(): NoiseSettings =
+        noiseFrom(
+            dao.value(KEY_NOISE_ENABLED),
+            dao.value(KEY_NOISE_MODE),
+            dao.value(KEY_NOISE_PACKET_TYPE),
+            dao.value(KEY_NOISE_PACKET),
+            dao.value(KEY_NOISE_RAND),
+            dao.value(KEY_NOISE_RAND_RANGE),
+            dao.value(KEY_NOISE_DELAY),
+        )
+
+    public suspend fun setNoiseSettings(settings: NoiseSettings) {
+        dao.put(SettingEntity(KEY_NOISE_ENABLED, settings.enabled.toString()))
+        dao.put(SettingEntity(KEY_NOISE_MODE, settings.mode.name))
+        dao.put(SettingEntity(KEY_NOISE_PACKET_TYPE, settings.packetType.name))
+        dao.put(SettingEntity(KEY_NOISE_PACKET, settings.packet))
+        dao.put(SettingEntity(KEY_NOISE_RAND, settings.rand))
+        dao.put(SettingEntity(KEY_NOISE_RAND_RANGE, settings.randRange))
+        dao.put(SettingEntity(KEY_NOISE_DELAY, settings.delay))
+    }
+}
+
+@Suppress("LongParameterList") // One parameter per stored field.
+private fun fragmentFrom(
+    enabled: String?,
+    packets: String?,
+    length: String?,
+    delay: String?,
+    maxSplit: String?,
+): FragmentSettings {
+    val d = FragmentSettings.DEFAULT
+    return FragmentSettings(
+        enabled = enabled?.toBooleanStrictOrNull() ?: d.enabled,
+        packets = packets ?: d.packets,
+        length = length ?: d.length,
+        delay = delay ?: d.delay,
+        maxSplit = maxSplit ?: d.maxSplit,
+    )
+}
+
+@Suppress("LongParameterList")
+private fun noiseFrom(
+    enabled: String?,
+    mode: String?,
+    packetType: String?,
+    packet: String?,
+    rand: String?,
+    randRange: String?,
+    delay: String?,
+): NoiseSettings {
+    val d = NoiseSettings.DEFAULT
+    return NoiseSettings(
+        enabled = enabled?.toBooleanStrictOrNull() ?: d.enabled,
+        mode = mode?.let { runCatching { NoiseMode.valueOf(it) }.getOrNull() } ?: d.mode,
+        packetType = packetType?.let { runCatching { NoisePacketType.valueOf(it) }.getOrNull() } ?: d.packetType,
+        packet = packet ?: d.packet,
+        rand = rand ?: d.rand,
+        randRange = randRange ?: d.randRange,
+        delay = delay ?: d.delay,
+    )
 }
