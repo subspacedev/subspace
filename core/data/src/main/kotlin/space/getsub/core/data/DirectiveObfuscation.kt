@@ -14,7 +14,6 @@ import space.getsub.core.model.NoiseSpec
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.ObfuscationValidation
-import space.getsub.core.model.XrayRange
 
 public enum class ObfuscationSource { User, Directive }
 
@@ -109,10 +108,12 @@ private fun noiseFromDirectives(d: Map<String, String?>): MaskResolution<NoiseSp
     if (!isDirectiveEnabled(d[NOISE_ENABLE])) return MaskResolution.Absent
     val defaults = NoiseSettings.DEFAULT
     val delay =
-        d[NOISE_DELAY]?.takeIf(String::isNotBlank)?.toIntOrNull()?.let { XrayRange(it, it) }
-            ?: (ObfuscationValidation.delay(defaults.delay) as Checked.Ok).value
+        when (val checked = ObfuscationValidation.delay(d[NOISE_DELAY].orDefault(defaults.delay))) {
+            is Checked.Ok -> checked.value
+            is Checked.Invalid -> return MaskResolution.Ignored(checked.problem)
+        }
     val packet = d[NOISE_PACKET]?.takeIf(String::isNotBlank)
-    val rand = d[NOISE_RAND]?.takeIf { it.isNotBlank() && it.trim() != "0" }
+    val rand = d[NOISE_RAND]?.takeIf { !isZeroRand(it) }
     if (packet != null && rand != null) return MaskResolution.Ignored(ObfuscationProblem.PacketAndRand)
 
     val payloads =
@@ -127,14 +128,40 @@ private fun noiseFromDirectives(d: Map<String, String?>): MaskResolution<NoiseSp
     }
 }
 
+// "Zero" is numeric, so "0", "00" and "0-0" all mean no random length.
+private fun isZeroRand(text: String): Boolean =
+    text.isBlank() || (ObfuscationValidation.range(text) as? Checked.Ok)?.value?.to == 0
+
 private fun fixedPayloads(
     typeText: String?,
     packet: String,
 ): Checked<List<NoisePayload>> {
-    // Ruling R3: no type means str.
-    val type = NoisePacketType.entries.firstOrNull { it.wire == typeText?.trim() } ?: NoisePacketType.Str
+    // Ruling R3: no type means str. An unknown, non-blank type is a refusal, not str.
+    val typeName = typeText?.trim().orEmpty()
+    val type =
+        if (typeName.isEmpty()) {
+            NoisePacketType.Str
+        } else {
+            NoisePacketType.entries.firstOrNull { it.wire.equals(typeName, ignoreCase = true) }
+        }
     // Ruling R2: an array CSV is one packet's bytes; any other type is one packet per entry.
-    val entries = if (type == NoisePacketType.Array) listOf(packet) else packet.split(',').filter(String::isNotBlank)
+    val entries =
+        when (type) {
+            null -> emptyList()
+            NoisePacketType.Array -> listOf(packet)
+            else -> packet.split(',').filter(String::isNotBlank)
+        }
+    return when {
+        type == null -> Checked.Invalid(ObfuscationProblem.PacketUndecodable)
+        entries.isEmpty() -> Checked.Invalid(ObfuscationProblem.Blank)
+        else -> checkedPayloads(type, entries)
+    }
+}
+
+private fun checkedPayloads(
+    type: NoisePacketType,
+    entries: List<String>,
+): Checked<List<NoisePayload>> {
     val payloads = mutableListOf<NoisePayload>()
     for (entry in entries) {
         when (val checked = ObfuscationValidation.packet(type, entry)) {

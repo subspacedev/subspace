@@ -141,4 +141,41 @@ class DirectiveObfuscationTest {
         val r = resolve(mapOf("noises-enable" to "1", "noises-packet" to "secret"))
         r.toString().contains("secret") shouldBe false
     }
+
+    @Test fun `a negative or non-numeric noise delay is ignored, not thrown`() {
+        resolve(mapOf("noises-enable" to "1", "noises-delay" to "-5")).noise shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.NotARange)
+        resolve(mapOf("noises-enable" to "1", "noises-delay" to "abc")).noise shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.NotARange)
+    }
+
+    @Test fun `a noise delay may be a range`() {
+        val noise = resolve(mapOf("noises-enable" to "1", "noises-delay" to "5-10")).noise
+        (noise as MaskResolution.Resolved).spec.items.single().delay shouldBe XrayRange(5, 10)
+    }
+
+    @Test fun `a packet of only commas is blank`() {
+        resolve(mapOf("noises-enable" to "1", "noises-packet" to ",")).noise shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.Blank)
+        resolve(mapOf("noises-enable" to "1", "noises-packet" to " , ")).noise shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.Blank)
+    }
+
+    @Test fun `the packet type matches ignoring case`() {
+        resolve(mapOf("noises-enable" to "1", "noises-packet-type" to "HEX", "noises-packet" to "0aff")).noise shouldBe
+            MaskResolution.Resolved(
+                NoiseSpec(listOf(NoiseItem(NoisePayload.Fixed(NoisePacketType.Hex, "0aff"), XrayRange(10, 16)))),
+                ObfuscationSource.Directive,
+            )
+    }
+
+    @Test fun `an unknown packet type is ignored`() {
+        resolve(mapOf("noises-enable" to "1", "noises-packet-type" to "foo", "noises-packet" to "ab")).noise shouldBe
+            MaskResolution.Ignored(ObfuscationProblem.PacketUndecodable)
+    }
+
+    @Test fun `a numerically zero rand does not clash with a packet`() {
+        val noise = resolve(mapOf("noises-enable" to "1", "noises-packet" to "ab", "noises-rand" to "0-0")).noise
+        (noise is MaskResolution.Resolved) shouldBe true
+    }
 }
