@@ -491,7 +491,10 @@ reasoning stands on §10.6 and on tun2socks dialling a port this app allocated.
 `noise` mask to the config's outermost proxy outbounds. A subscription directive is only added where
 the config has none of its own; the user's Fragmentation or Noise setting, when On, replaces the
 config's own (including cutting a `dialerProxy` link to a freedom fragmenter, never deleting that
-outbound). Everything else still runs as written. See §14.6.
+outbound). A cut link takes the freedom outbound's other mask with it: when the user's override of one
+type cuts a chain that also carries the other type, the config's own chained mask of that other type is
+lost unless a subscription directive supplies it. Everything else is untouched apart from the rewrites
+below. See §14.6.
 
 `RawConfigComposer` (`:core:xray`) does the rewriting, working on parsed JSON
 rather than a typed model precisely so it preserves whatever the config
