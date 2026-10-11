@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -22,6 +23,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
@@ -225,6 +228,11 @@ class RuleSetEditorScreenContentTest {
         composeRule.onAllNodesWithText("Add sites").assertCountEquals(2)
         composeRule.onAllNodesWithText("Add IPs").assertCountEquals(3)
 
+        // BLOCK x IPS sits at the bottom of the first screenful, under the floating Save button:
+        // inside the viewport, so performScrollTo has nothing to do, yet a click there lands on
+        // Save (device run, Pixel 8: Save 2200-2347px over Add IPs 2211-2316px, scroll value 0).
+        // Scroll it clear first, as a user would.
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp(startY = centerY, endY = centerY - 600f) }
         composeRule.onAllNodesWithText("Add IPs")[0].performScrollTo().performClick()
 
         composeRule.onNodeWithTag(ruleSetEntryFieldTag(RouteOutcome.BLOCK, BucketField.IPS)).assertExists()
