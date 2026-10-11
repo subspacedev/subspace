@@ -137,6 +137,19 @@ internal fun geoRowsFor(
     }
 }
 
+/**
+ * The source id in effect for every install filename: what [geoRowsFor] resolves to, so the stored
+ * choice, an installed asset that is ground truth, or [GeoSourceCatalogue.defaults] when the user
+ * never chose. This is what the Geo page's radio lists mark as selected; [selectedIds] alone is
+ * empty on a fresh install, which left every radio unchecked while the hub and the downloads used
+ * the default. No second copy of the default lives here — it comes out of [geoRowsFor].
+ */
+internal fun effectiveGeoSourceIds(
+    sources: List<GeoSource>,
+    selectedIds: Set<String>,
+    installed: List<InstalledGeoAsset>,
+): Set<String> = geoRowsFor(sources, selectedIds, installed).map { it.sourceId }.toSet()
+
 @Suppress("ReturnCount") // Three independent, mutually-exclusive precedence rules — see the KDoc above.
 private fun rowForFileName(
     fileName: String,

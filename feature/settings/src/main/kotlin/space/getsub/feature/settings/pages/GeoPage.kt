@@ -78,7 +78,7 @@ internal fun GeoPage(
 
         GeoSourceChoice(
             sources = state.geoSources,
-            selectedIds = state.selectedGeoSourceIds,
+            selectedIds = state.effectiveGeoSourceIds,
             onSourceSelected = actions.onGeoSourceSelected,
         )
 

@@ -117,6 +117,10 @@ internal data class SettingsState(
     val geoRows: List<GeoRow>
         get() = geoRowsFor(geoSources, selectedGeoSourceIds, geoInstalledAssets)
 
+    /** The source in effect per install filename (stored choice, else installed, else default). */
+    val effectiveGeoSourceIds: Set<String>
+        get() = effectiveGeoSourceIds(geoSources, selectedGeoSourceIds, geoInstalledAssets)
+
     /**
      * Whether [space.getsub.feature.settings.hub.DiagnosticsGroup] shows the "applies to your next connection" notice
      * beneath the per-server breakdown switch (ruling R43, replacing review finding I-2's one-way
