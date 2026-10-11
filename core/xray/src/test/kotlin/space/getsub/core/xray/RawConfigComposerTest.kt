@@ -507,7 +507,9 @@ class RawConfigComposerTest {
             val composed = RawConfigComposer.compose(raw, settings.copy(obfuscation = obf), "/assets", override)
             val json = (composed as ComposeResult.Ok).json
             val proxy = Json.parseToJsonElement(json).jsonObject["outbounds"]!!.jsonArray[0].jsonObject
-            proxy["streamSettings"]!!.jsonObject["finalmask"]!!.jsonObject["tcp"]!!.jsonArray.size shouldBe 1
+            val tcp = proxy["streamSettings"]!!.jsonObject["finalmask"]!!.jsonObject["tcp"]!!.jsonArray
+            tcp.size shouldBe 1
+            tcp[0].jsonObject["type"]!!.jsonPrimitive.content shouldBe "fragment"
         }
     }
 }

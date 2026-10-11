@@ -5,6 +5,7 @@ package space.getsub.core.xray
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import space.getsub.core.model.Applied
@@ -41,36 +42,44 @@ internal object ObfuscationInjector {
         byTag: Map<String, JsonObject>,
         obfuscation: Obfuscation,
     ): JsonObject? {
-        val stream = (outbound["streamSettings"] ?: JsonObject(emptyMap())) as? JsonObject ?: return null
-        val finalmask = (stream["finalmask"] ?: JsonObject(emptyMap())) as? JsonObject ?: return null
-        val tcp = (finalmask["tcp"] ?: JsonArray(emptyList())) as? JsonArray ?: return null
-        val udp = (finalmask["udp"] ?: JsonArray(emptyList())) as? JsonArray ?: return null
+        val stream = outbound.absentOr("streamSettings") { JsonObject(emptyMap()) } as? JsonObject ?: return null
+        val finalmask = stream.absentOr("finalmask") { JsonObject(emptyMap()) } as? JsonObject ?: return null
+        val tcp = finalmask.absentOr("tcp") { JsonArray(emptyList()) } as? JsonArray ?: return null
+        val udp = finalmask.absentOr("udp") { JsonArray(emptyList()) } as? JsonArray ?: return null
 
-        val fragment = obfuscation.fragment?.let { Step(ObfuscationDetection.ownFragment(outbound, byTag), it) }
-        val noise = obfuscation.noise?.let { Step(ObfuscationDetection.ownNoise(outbound, byTag), it) }
+        val fragmentOwn = ObfuscationDetection.ownFragment(outbound, byTag)
+        val noiseOwn = ObfuscationDetection.ownNoise(outbound, byTag)
+        // Cut first, then re-evaluate: a directive fills the gap a cut leaves (ruling, fix round 1).
+        val cut = cutsLink(obfuscation.fragment, fragmentOwn) || cutsLink(obfuscation.noise, noiseOwn)
+        val fragment = obfuscation.fragment?.let { Step(fragmentOwn, it, cut) }
+        val noise = obfuscation.noise?.let { Step(noiseOwn, it, cut) }
+        if (fragment?.applies != true && noise?.applies != true && !cut) return outbound
 
         val newTcp = if (fragment?.applies == true) withFragment(tcp, fragment.applied.spec) else tcp
         val newUdp = if (noise?.applies == true) withNoise(udp, noise.applied.spec) else udp
-        val cut = fragment?.cutsLink == true || noise?.cutsLink == true
-        return assemble(outbound, stream, mergedFinalmask(finalmask, newTcp, newUdp), cut)
+        return assemble(outbound, stream, finalmask.toMutableMap(), newTcp to newUdp, cut)
     }
 
-    private fun mergedFinalmask(
-        finalmask: JsonObject,
-        tcp: JsonArray,
-        udp: JsonArray,
-    ): Map<String, JsonElement> =
-        finalmask.toMutableMap().apply {
-            putOrRemove("tcp", tcp)
-            putOrRemove("udp", udp)
-        }
+    private fun cutsLink(
+        applied: Applied<*>?,
+        own: OwnMask,
+    ): Boolean = applied?.replaceOwn == true && own.freedomTag != null
+
+    // JSON null reads as absent, as Xray reads it.
+    private fun JsonObject.absentOr(
+        key: String,
+        default: () -> JsonElement,
+    ): JsonElement = this[key]?.takeUnless { it is JsonNull } ?: default()
 
     private fun assemble(
         outbound: JsonObject,
         stream: JsonObject,
-        finalmask: Map<String, JsonElement>,
+        finalmask: MutableMap<String, JsonElement>,
+        masks: Pair<JsonArray, JsonArray>,
         cutLink: Boolean,
     ): JsonObject {
+        finalmask.putOrRemove("tcp", masks.first)
+        finalmask.putOrRemove("udp", masks.second)
         val newStream = stream.toMutableMap().apply { put("finalmask", JsonObject(finalmask)) }
         if (cutLink) {
             // Ruling R4: only the link goes. The freedom outbound stays, since other outbounds or rules may name it.
@@ -93,9 +102,9 @@ internal object ObfuscationInjector {
     ): JsonArray = JsonArray(udp.withoutType("noise") + parse(FinalmaskJson.noiseMask(spec)))
 
     /** One directive against one outbound's own mask. */
-    private class Step<T>(val own: OwnMask, val applied: Applied<T>) {
-        val applies: Boolean get() = applied.replaceOwn || !own.present
-        val cutsLink: Boolean get() = applies && applied.replaceOwn && own.freedomTag != null
+    private class Step<T>(val own: OwnMask, val applied: Applied<T>, val cut: Boolean) {
+        private val effectivePresent: Boolean get() = own.inFinalmask || (own.freedomTag != null && !cut)
+        val applies: Boolean get() = applied.replaceOwn || !effectivePresent
     }
 
     private fun MutableMap<String, JsonElement>.putOrRemove(

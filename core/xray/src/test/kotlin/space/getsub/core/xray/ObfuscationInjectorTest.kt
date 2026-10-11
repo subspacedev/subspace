@@ -52,6 +52,7 @@ class ObfuscationInjectorTest {
         val out = ObfuscationInjector.apply(parse(chain), Obfuscation(Applied(frag, replaceOwn = false), null))
         out.at(0).masks("tcp") shouldBe listOf("header-custom")
         out.at(0).dialerProxy() shouldBe "frag"
+        out.at(0) shouldBe parse(chain).at(0)
     }
 
     @Test fun `user mode cuts the chain link, keeps the freedom outbound and puts ours first`() {
@@ -101,5 +102,66 @@ class ObfuscationInjectorTest {
         out.at(0) shouldBe array.at(0)
         out.at(1) shouldBe array.at(1)
         out.at(2) shouldBe array.at(2)
+    }
+
+    private fun freedomChain(
+        freedomSettings: String,
+        finalmask: String = "",
+    ) = parse(
+        """[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"}$finalmask}},
+            {"tag":"f","protocol":"freedom","settings":$freedomSettings}]""",
+    )
+
+    private val fragOnly = """{"fragment":{"packets":"tlshello","length":"1-2","interval":"1"}}"""
+    private val both = """{"fragment":{"packets":"tlshello","length":"1-2","interval":"1"},"noises":[{"packet":"1"}]}"""
+    private val noisesOnly = """{"noises":[{"packet":"1"}]}"""
+
+    @Test fun `fragment user mode cut leaves a noise directive to fill its gap`() {
+        val out = ObfuscationInjector.apply(freedomChain(both), Obfuscation(Applied(frag, true), Applied(noise, false)))
+        out.at(0).dialerProxy() shouldBe null
+        out.at(0).masks("tcp") shouldBe listOf("fragment")
+        out.at(0).masks("udp").last() shouldBe "noise"
+    }
+
+    @Test fun `noise user mode cut leaves a fragment directive to fill its gap`() {
+        val out = ObfuscationInjector.apply(freedomChain(both), Obfuscation(Applied(frag, false), Applied(noise, true)))
+        out.at(0).dialerProxy() shouldBe null
+        out.at(0).masks("tcp")[0] shouldBe "fragment"
+        out.at(0).masks("udp") shouldBe listOf("noise")
+    }
+
+    @Test fun `noise user mode cuts a noises-only chain`() {
+        val out = ObfuscationInjector.apply(freedomChain(noisesOnly), Obfuscation(null, Applied(noise, true)))
+        out.at(0).dialerProxy() shouldBe null
+        out.at(0).masks("udp") shouldBe listOf("noise")
+        out.size shouldBe 2
+    }
+
+    @Test fun `a fragment directive keeps a chain that only carries noises`() {
+        val out = ObfuscationInjector.apply(freedomChain(noisesOnly), Obfuscation(Applied(frag, false), null))
+        out.at(0).dialerProxy() shouldBe "f"
+        out.at(0).masks("tcp") shouldBe listOf("fragment")
+    }
+
+    @Test fun `own finalmask fragment plus fragmenting chain gives exactly one fragment in user mode`() {
+        val array = freedomChain(fragOnly, ""","finalmask":{"tcp":[{"type":"fragment","settings":{}}]}""")
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, true), null))
+        out.at(0).masks("tcp") shouldBe listOf("fragment")
+        out.at(0).dialerProxy() shouldBe null
+    }
+
+    @Test fun `an outbound where nothing applies is returned unchanged`() {
+        val array = freedomChain(fragOnly)
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, false), null))
+        out.at(0) shouldBe array.at(0)
+    }
+
+    @Test fun `null streamSettings and null tcp read as absent`() {
+        val a = parse("""[{"tag":"p","protocol":"trojan","streamSettings":null}]""")
+        ObfuscationInjector.apply(a, Obfuscation(Applied(frag, false), null)).at(0).masks("tcp") shouldBe
+            listOf("fragment")
+        val b = parse("""[{"tag":"p","protocol":"trojan","streamSettings":{"finalmask":{"tcp":null}}}]""")
+        ObfuscationInjector.apply(b, Obfuscation(Applied(frag, false), null)).at(0).masks("tcp") shouldBe
+            listOf("fragment")
     }
 }
