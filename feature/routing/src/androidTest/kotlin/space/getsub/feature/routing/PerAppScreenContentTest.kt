@@ -2,6 +2,9 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.routing
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -160,12 +163,16 @@ class PerAppScreenContentTest {
         rule.onNode(hasText("Maps") and hasText("Tunnelled")).assertIsDisplayed()
     }
 
+    // The design hides the list in Off: no rows, no tags, no count; the selection is only noted.
     @Test
-    fun offTagsEveryRowTunnelled() {
+    fun offShowsNoAppRowsOrTags() {
         rule.setContent { PerAppScreenContent(PerAppState(rows = rows, selectedCount = 1), noopActions) }
 
-        rule.onAllNodesWithText("Tunnelled").assertCountEquals(2)
+        rule.onAllNodesWithText("Bank").assertCountEquals(0)
+        rule.onAllNodesWithText("Maps").assertCountEquals(0)
+        rule.onAllNodesWithText("Tunnelled").assertCountEquals(0)
         rule.onAllNodesWithText("Direct").assertCountEquals(0)
+        rule.onAllNodesWithText("1 app selected").assertCountEquals(0)
     }
 
     @Test
@@ -181,6 +188,23 @@ class PerAppScreenContentTest {
         rule.onNodeWithText("Skipping the tunnel · 1").assertIsDisplayed()
         rule.onNodeWithText("Clear").performClick()
         assertTrue(cleared)
+    }
+
+    // A picked package that is no longer installed is chipped under its package name.
+    @Test
+    fun aGhostChipSitsInTheTrayAndClearRemovesIt() {
+        val ghost = AppRow("com.example.deleted", "com.example.deleted", isSelected = true, isInstalled = false)
+        var picked by mutableStateOf(listOf(ghost))
+        rule.setContent {
+            PerAppScreenContent(
+                PerAppState(mode = PerAppMode.DenyList, picked = picked, selectedCount = picked.size),
+                noopActions.copy(onClear = { picked = emptyList() }),
+            )
+        }
+
+        rule.onNodeWithText("com.example.deleted").assertIsDisplayed()
+        rule.onNodeWithText("Clear").performClick()
+        rule.onAllNodesWithText("com.example.deleted").assertCountEquals(0)
     }
 
     @Test

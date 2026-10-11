@@ -125,6 +125,16 @@ class PerAppViewModelTest {
         source.applyCount shouldBe 0
     }
 
+    @Test
+    fun clearOnAnEmptySelectionIsNotDirty() = runTest(dispatcher) {
+        val model = PerAppViewModel(FakeSource(apps))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        model.clear()
+
+        model.state.value.isDirty shouldBe false
+    }
+
     // Nothing is written until save(): a half-finished edit must not reach the
     // tunnel, and on this screen reaching the tunnel means a reconnect.
     @Test

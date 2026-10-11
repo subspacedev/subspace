@@ -30,8 +30,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -49,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +65,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,6 +89,7 @@ private val TRAY_ICON_SIZE = 48.dp
 private val TRAY_CHIP_WIDTH = 60.dp
 private val LIST_CORNER = 28.dp
 private val LIST_TAIL_CORNER = 10.dp
+private val SAVE_CLEARANCE = 112.dp
 
 /**
  * The per-app proxy picker (M5.5 spec §7): mode selector, search and the
@@ -188,8 +193,6 @@ internal fun PerAppScreenContent(
     }
 }
 
-private val SAVE_CLEARANCE = 112.dp
-
 @Composable
 private fun PerAppList(
     state: PerAppState,
@@ -243,15 +246,20 @@ private fun PerAppList(
                 )
             }
         }
-        item {
-            SelectedCountText(
-                // The whole selection, never the visible slice of it: typing a
-                // query must not appear to untick what the user chose.
-                count = state.selectedCount,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+        // Off hides the list and the count, as the design does; the selection itself is kept in
+        // the view model. A query typed earlier stays too: its search field is back on screen,
+        // showing it, as soon as a list mode is picked again.
+        if (state.mode != PerAppMode.Off) {
+            item {
+                SelectedCountText(
+                    // The whole selection, never the visible slice of it: typing a
+                    // query must not appear to untick what the user chose.
+                    count = state.selectedCount,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            appRows(state, actions.onToggle)
         }
-        appRows(state, actions.onToggle)
     }
 }
 
@@ -380,7 +388,7 @@ private fun TrayChip(
         modifier =
         modifier
             .width(TRAY_CHIP_WIDTH)
-            .clickable(onClick = onRemove)
+            .clickable(role = Role.Button, onClick = onRemove)
             .semantics { contentDescription = removeLabel },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -425,14 +433,14 @@ private fun SelectedCountText(
  * The app rows as one rounded list. Each row is its own lazy item with the card's corners applied
  * to the first and last, so only the visible rows ever compose.
  */
-private fun androidx.compose.foundation.lazy.LazyListScope.appRows(
+private fun LazyListScope.appRows(
     state: PerAppState,
     onToggle: (String) -> Unit,
 ) {
     val rows = state.rows
-    items(rows, key = { it.packageName }) { row ->
-        val first = row == rows.first()
-        val last = row == rows.last()
+    itemsIndexed(rows, key = { _, row -> row.packageName }) { index, row ->
+        val first = index == 0
+        val last = index == rows.lastIndex
         val shape =
             RoundedCornerShape(
                 topStart = if (first) LIST_CORNER else 0.dp,
@@ -514,7 +522,7 @@ private fun AppRowItem(
 @Composable
 private fun AppGlyph(
     row: AppRow,
-    size: androidx.compose.ui.unit.Dp,
+    size: Dp,
     modifier: Modifier = Modifier,
 ) {
     val packageManager = LocalContext.current.packageManager
@@ -525,7 +533,7 @@ private fun AppGlyph(
         val s = MaterialTheme.colorScheme
         Surface(
             shape = RoundedCornerShape(size / 3),
-            color = if (row.isInstalled) s.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+            color = if (row.isInstalled) s.secondaryContainer else Color.Transparent,
             contentColor = if (row.isInstalled) s.onSecondaryContainer else s.onSurfaceVariant,
             border = if (row.isInstalled) null else BorderStroke(2.dp, s.outlineVariant),
             modifier = modifier.size(size),
