@@ -57,7 +57,13 @@ public class ProxyHeadProbe(
                 allocatePortWithOneRetry()
                     ?: return@withContext LatencyResult.failed(LatencyOutcome.UNREACHABLE)
 
-            val settings = TunnelSettings(socksPort = port, dnsServer = PING_DNS, enableSniffing = false, obfuscation = obfuscation)
+            val settings =
+                TunnelSettings(
+                    socksPort = port,
+                    dnsServer = PING_DNS,
+                    enableSniffing = false,
+                    obfuscation = obfuscation,
+                )
             // Resolved before any file is written: an unsupported protocol must
             // cost nothing, not a config write we immediately delete.
             val json =
