@@ -176,7 +176,7 @@ private fun CardMenu(
             listOf(
                 if (row.isReadOnly) {
                     MenuItem(
-                        icon = SubspaceIcons.Edit,
+                        icon = SubspaceIcons.ContentCopy,
                         label = stringResource(R.string.routing_duplicate_label),
                         onClick = actions.onDuplicate,
                     )

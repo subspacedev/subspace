@@ -27,6 +27,7 @@ object SubspaceIcons {
     val ChevronRight: Int = R.drawable.sym_chevron_right
     val Close: Int = R.drawable.sym_close
     val CloudDownload: Int = R.drawable.sym_cloud_download
+    val ContentCopy: Int = R.drawable.sym_content_copy
     val ContentPaste: Int = R.drawable.sym_content_paste
     val Contrast: Int = R.drawable.sym_contrast
     val DarkMode: Int = R.drawable.sym_dark_mode
@@ -95,6 +96,7 @@ object SubspaceIcons {
             "chevron_right" to ChevronRight,
             "close" to Close,
             "cloud_download" to CloudDownload,
+            "content_copy" to ContentCopy,
             "content_paste" to ContentPaste,
             "contrast" to Contrast,
             "dark_mode" to DarkMode,
