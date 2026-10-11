@@ -145,7 +145,7 @@ compile error.
 :feature:home           Connect blob, active profile, traffic counters and throughput history
 :feature:profiles       Profile list, editor, subscription management
 :feature:routing        Rule editor, per-app selection
-:feature:settings       Preferences, geo file updates, logs
+:feature:settings       Settings hub and sub-pages, geo file updates, logs
 :service                TunnelService, tun2socks JNI bridge, notification
 ```
 
@@ -1483,6 +1483,39 @@ Compose to alpha. Only `:core:ui` may use the experimental Expressive APIs
 later touches one module. Source:
 `docs/agent/specs/2026-10-03-m8.6-m3e-redesign-design.md` §1;
 `docs/agent/research/2026-10-03-m3-expressive-availability.md`.
+
+### 14.9 Settings structure, icons and launcher icon (M8.6 Part 4)
+
+**Settings is a hub plus sub-pages.** The `Settings` top-level route shows the
+hub: a tunnel card and one row per topic, each row carrying its current value
+(pure functions in `:feature:settings`, so they are unit-tested). A row opens
+`SettingsPage(SettingsPageId)`, one route with an enum argument covering
+Appearance, Device ID, Latency, DNS, Geo and About. Routing, Per-app proxy and
+the session log keep their own routes, reached from the hub. A sub-page hides
+the navigation pill, as Routing does; this falls out of
+`selectedTopLevelValue()`'s `else -> null` branch rather than a new case.
+
+The hub and every sub-page share **one `SettingsViewModel`, owned by the
+`Settings` back-stack entry** (`viewModelStoreOwner =
+getBackStackEntry<Settings>()`). A per-page ViewModel would die when its page
+left the stack and cancel an in-flight geo download; the shared one keeps the
+lifetime the old single screen had. Do not give a sub-page its own
+`hiltViewModel()`.
+
+**Icons come from Material Symbols only.** `SubspaceIcons` in `:core:ui`
+exposes the vector drawables under `core/ui/src/main/res/drawable/sym_*.xml`,
+imported by `scripts/import-material-symbols.sh`. `material-icons-core` is gone
+from every module. Do not add `androidx.compose.material.icons`; import the
+glyph you need with the script instead. The pre-redesign `SettingRow`,
+`SectionHeader` and `SubspaceBottomSheet` were deleted in Part 4; the kit's
+hub rows, group cards and `SubspaceSheet` replace them. Rationale and licence:
+`THIRD_PARTY.md` and M8.6 spec §2.7.
+
+**The launcher icon is the "5b" adaptive icon** with a monochrome layer for
+Android 13+ themed icons (`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`:
+`ic_launcher_background` colour, `ic_launcher_foreground`,
+`ic_launcher_monochrome`). Below API 26 the launcher falls back to the legacy
+resource; checking that fallback is owner-pending (M8.6 spec §7.4 row 13).
 
 ---
 
