@@ -487,6 +487,12 @@ adapted to. A shipping libXray client resolves the same constraint the same
 way (Appendix C.2, OneXray); that is corroboration, not the reason — the
 reasoning stands on §10.6 and on tun2socks dialling a port this app allocated.
 
+**One exception, since M9-A: fragment and noise.** The composer may add a Finalmask `fragment` or
+`noise` mask to the config's outermost proxy outbounds. A subscription directive is only added where
+the config has none of its own; the user's Fragmentation or Noise setting, when On, replaces the
+config's own (including cutting a `dialerProxy` link to a freedom fragmenter, never deleting that
+outbound). Everything else still runs as written. See §14.6.
+
 `RawConfigComposer` (`:core:xray`) does the rewriting, working on parsed JSON
 rather than a typed model precisely so it preserves whatever the config
 carries that this design does not name — `burstObservatory`, `reverse`, an
@@ -1442,13 +1448,17 @@ external tunnel first keeps the packet path in §3 explicit and debuggable.
 v2.16.0 ships prebuilt Android binaries for all four ABIs, which is a useful
 fallback, but the source build is preferred so the tunnel is reproducible.
 
-### 14.6 Finalmask exposure — DEFERRED, not open
+### 14.6 Finalmask exposure — RESOLVED
 
-Leave Finalmask (`header-custom`, `Sudoku`, `fragment`, `noise`) to raw-JSON
-profiles for now. Revisit in the censorship-resistance milestone, where it is
-evaluated alongside the §A.3.3 fragmentation and noise directives rather than
-in isolation — they overlap, and picking a UI for both at once avoids shipping
-two competing controls for the same job.
+Fragment and noise are exposed as Finalmask (`fragment` TCP mask, `noise` UDP mask), through two
+global settings and the `fragmentation-*`/`noises-*` directives; the user's setting, when On,
+overrides every provider source. The server-paired masks (`header-custom`, `sudoku`, `salamander`,
+`xdns`, `xicmp`, `xmc`, `realm`, `mkcp-*`) are not offered: they only work when they match the
+server, so they pass through when a raw config carries them and are never added or removed. The
+freedom-outbound `fragment`/`noises` chain is not generated; a raw config's own chain is detected,
+and the user's override cuts its link. Design: M9-A spec
+(`docs/agent/specs/2026-10-12-m9a-fragment-noise-design.md`, gitignored); upstream facts:
+`docs/agent/research/2026-10-11-m9a-fragment-noise-finalmask.md`.
 
 ### 14.7 Distribution target — RESOLVED
 
@@ -1923,8 +1933,8 @@ above cosmetic parity:
 - [ ] **User-Agent override** for subscription fetch and for geo file
       downloads (`safari-mac`, `chrome-win`, `chrome-android`, ...)
 - [ ] **Configurable request timeout** (Happ: 5–15s, default 9)
-- [ ] Consider exposing Xray's **Finalmask** (§6) — newer than anything in
-      this list and arguably more important now
+- [ ] Consider exposing Xray's **Finalmask** (§6) — decided in §14.6: fragment
+      and noise only, as above; the server-paired masks pass through
 
 ### A.3.4 Tunnel and core tuning
 
