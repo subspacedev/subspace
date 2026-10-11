@@ -7,8 +7,11 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -88,6 +91,7 @@ internal fun SettingsHubContent(
 ) {
     val context = LocalContext.current
     val open = navigation.onOpenPage
+    val navigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Column(
         modifier =
         modifier
@@ -95,8 +99,12 @@ internal fun SettingsHubContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
             // The hub scrolls, so it — not FloatingNavBar — reserves the space the pill floats
-            // over. See FLOATING_NAV_CONTENT_BOTTOM_PADDING's own KDoc.
-            .padding(top = 16.dp, bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING),
+            // over. See FLOATING_NAV_CONTENT_BOTTOM_PADDING's own KDoc. The pill also sits above the
+            // navigation bar, so that inset is added: the constant alone left the last row under it.
+            .padding(
+                top = 16.dp,
+                bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING + navigationBarInset,
+            ),
     ) {
         Text(
             text = stringResource(R.string.settings_title),
