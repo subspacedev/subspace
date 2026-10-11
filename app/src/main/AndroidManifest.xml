@@ -5,12 +5,19 @@
     <!-- android:networkSecurityConfig below: F1 (2026-09-22 review). Permits
          cleartext to 127.0.0.1 only — see res/xml/network_security_config.xml
          for why this app needs it below API 37 and why it is scoped this
-         narrowly. Do not replace with android:usesCleartextTraffic="true". -->
+         narrowly. Do not replace with android:usesCleartextTraffic="true".
+
+         android:enableOnBackInvokedCallback: opts in to predictive back on API 33-35 (API 36+
+         targets get it by default), so the system feeds the gesture's progress to NavHost and
+         the back card in navigation/NavTransitions.kt follows the finger. Below API 33 the
+         attribute is ignored and Back plays the same card motion without a preview. -->
     <application
         android:name=".SubspaceApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:enableOnBackInvokedCallback="true"
+        tools:targetApi="33"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.Subspace">

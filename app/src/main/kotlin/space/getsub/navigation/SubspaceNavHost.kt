@@ -20,8 +20,6 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
@@ -49,7 +47,7 @@ private const val SETTINGS_VALUE = "settings"
 
 /**
  * Wires [Home], [Servers], [Settings], [Editor], [QrScan], [SubscriptionDetail],
- * [RoutingList], [RuleSetEditor], [PerApp] and [LogViewer] into a [NavHost] behind
+ * [RoutingList], [RuleSetEditor], [PerApp] and [LogViewer] into a [NavHost][androidx.navigation.compose.NavHost] behind
  * [FloatingNavBar].
  *
  * [Home], [Servers] and [Settings] are top-level: selecting one navigates
@@ -99,10 +97,15 @@ private const val SETTINGS_VALUE = "settings"
  * the device's own `navigationBars` inset height (63px / ~24dp, read from
  * `WindowInsets changed: ... navigationBars:[0,0,0,63]` in logcat for this
  * device/orientation), i.e. that inset counted twice. This `Box` arrangement
- * does not double-count it. The top is different: the [NavHost] pads for
+ * does not double-count it. The top is different: the [NavHost][androidx.navigation.compose.NavHost] pads for
  * `statusBars` itself, once, for every destination. Individual screens reserve
  * [space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING]
  * themselves for exactly the same reason — that constant's own KDoc says so.
+ *
+ * Every destination is declared with [cardComposable], never plain `composable`: opening one
+ * slides it in as a card over the still screen beneath, Back (predictive or not) shrinks it and
+ * slides it out, and a pill tap between [Home], [Servers] and [Settings] crossfades instead.
+ * [NavMotion] and [NavCard] hold the details.
  *
  * @param onRequestConsent forwarded to [HomeScreen] verbatim; see its own
  *   KDoc for why a `ViewModel` cannot own this.
@@ -134,18 +137,15 @@ fun SubspaceNavHost(
         navController = navController,
     )
 
+    val motion = rememberNavMotion(currentBackStackEntry)
     Box(modifier = modifier.fillMaxSize()) {
         // The activity draws edge to edge, and nothing else pads for the status bar: every
         // screen's header used to start at the top of the display, under it (Servers'
         // "Add server" and the Session log's Back button could not be tapped). Top only;
         // the bottom inset stays with FloatingNavBar, as above.
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
-            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-        ) {
+        CardNavHost(navController, startDestination, motion, Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
             topLevelDestinations(navController, onRequestConsent)
-            composable<Servers> {
+            cardComposable<Servers> {
                 // Task 19: ServersScreen now owns its own add-server flow
                 // (AddServerSheet) rather than forwarding to the Editor
                 // placeholder — no onAddProfile hook to wire here any more.
@@ -165,7 +165,7 @@ fun SubspaceNavHost(
                     },
                 )
             }
-            composable<Settings> {
+            cardComposable<Settings> {
                 // Task 22: SettingsScreen replaces the placeholder outright — the same
                 // "no later task owns this" treatment ServersScreen (Task 18 fix round 1),
                 // QrScanScreen (Task 20 fix round 1) and EditorScreen (Task 21) already got.
@@ -184,7 +184,7 @@ fun SubspaceNavHost(
                 )
             }
             editorDestination(navController)
-            composable<QrScan> { entry ->
+            cardComposable<QrScan> { entry ->
                 // Task 20 fix round 1: QrScanScreen was built, tested and
                 // left unreachable — this closes that gap. QrScanRoute
                 // resolves ImportViewModel scoped to the Servers entry
@@ -206,7 +206,7 @@ fun SubspaceNavHost(
                     onDone = { navController.popBackStack() },
                 )
             }
-            composable<SubscriptionDetail> { entry ->
+            cardComposable<SubscriptionDetail> { entry ->
                 // Task 15: SubscriptionDetailScreen replaces the previously-undeclared route —
                 // the same "no later task owns this" treatment ServersScreen, QrScanScreen,
                 // EditorScreen and SettingsScreen already got.
@@ -223,7 +223,7 @@ fun SubspaceNavHost(
             FloatingNavBar(
                 items = topLevelNavItems(),
                 selected = selected,
-                onSelect = { value -> navController.navigateToTopLevel(value) },
+                onSelect = { value -> motion.switchTab(navController, value) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -352,7 +352,7 @@ internal fun NavHostController.navigateToTopLevel(value: String) {
  * `LongMethod` budget again.
  */
 private fun NavGraphBuilder.editorDestination(navController: NavHostController) {
-    composable<Editor> { entry ->
+    cardComposable<Editor> { entry ->
         // Task 21: EditorScreen replaces the placeholder outright — the same "no later task
         // owns this" treatment ServersScreen (Task 18 fix round 1) and QrScanScreen (Task 20
         // fix round 1) already got.
@@ -372,7 +372,7 @@ private fun NavGraphBuilder.topLevelDestinations(
     navController: NavHostController,
     onRequestConsent: (onGranted: () -> Unit) -> Unit,
 ) {
-    composable<Home> {
+    cardComposable<Home> {
         HomeScreen(
             onRequestConsent = onRequestConsent,
             onNavigateToServers = { navController.navigateToTopLevel(SERVERS_VALUE) },
@@ -422,7 +422,7 @@ private fun NavigateToRoutingOnDeeplink(
 private fun RoutingList.routeName(): String = this::class.qualifiedName.orEmpty()
 
 private fun NavGraphBuilder.routingDestinations(navController: NavHostController) {
-    composable<RoutingList> {
+    cardComposable<RoutingList> {
         // Task 15 (M5): the rule set list — the activation gate screen.
         RoutingListScreen(
             onCreateRuleSet = { navController.navigate(RuleSetEditor(ruleSetId = NEW_RULE_SET)) },
@@ -431,7 +431,7 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
             onBack = { navController.popBackStack() },
         )
     }
-    composable<RoutingQrScan> { entry ->
+    cardComposable<RoutingQrScan> { entry ->
         // M6 Task 13. Scoped to RoutingList's entry, not this one, so the
         // scanned payload raises the sheet the list is already showing —
         // RoutingQrScanRoute's own KDoc has the full reasoning, and it is the
@@ -445,7 +445,7 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
             onDone = { navController.popBackStack() },
         )
     }
-    composable<RuleSetEditor> { entry ->
+    cardComposable<RuleSetEditor> { entry ->
         // Task 16: RuleSetEditorScreen replaces the placeholder outright — the same
         // "no later task owns this" treatment ServersScreen (Task 18 fix round 1),
         // QrScanScreen (Task 20 fix round 1), EditorScreen (Task 21) and SettingsScreen/
@@ -453,12 +453,12 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
         val route: RuleSetEditor = entry.toRoute()
         RuleSetEditorScreen(ruleSetId = route.ruleSetId, onDone = { navController.popBackStack() })
     }
-    composable<PerApp> {
+    cardComposable<PerApp> {
         // Task 9 (M5.5): the per-app proxy picker, reached from Settings' new
         // "Per-app proxy" row.
         PerAppScreen(onBack = { navController.popBackStack() })
     }
-    composable<LogViewer> {
+    cardComposable<LogViewer> {
         // M8.5 Task 7: the session log viewer, reached from Settings'
         // Diagnostics section — folded into this grouping rather than given
         // its own function, the same `TooManyFunctions` budget reason
@@ -469,7 +469,7 @@ private fun NavGraphBuilder.routingDestinations(navController: NavHostController
         // function is actually keyed on.
         LogViewerScreen(onBack = { navController.popBackStack() })
     }
-    composable<SettingsPage> { entry ->
+    cardComposable<SettingsPage> { entry ->
         // M8.6 plan ruling R1: one of the Settings hub's sub-pages, pushed from its rows.
         val route: SettingsPage = entry.toRoute()
         // The hub and every page share the Settings entry's SettingsViewModel, so Back does not
