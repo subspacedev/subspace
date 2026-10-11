@@ -5,6 +5,7 @@
 
 package space.getsub.feature.settings
 
+import androidx.annotation.Keep
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,7 +21,13 @@ import space.getsub.feature.settings.pages.DnsPage
 import space.getsub.feature.settings.pages.GeoPage
 import space.getsub.feature.settings.pages.LatencyPage
 
-/** The Settings hub's sub-pages (M8.6 spec §4.4, plan ruling R1). Routing and Per-app have their own routes. */
+/**
+ * The Settings hub's sub-pages (M8.6 spec §4.4, plan ruling R1). Routing and Per-app have their own routes.
+ *
+ * [Keep] because `:app`'s `SettingsPage` route carries this enum, and navigation-compose finds an enum
+ * argument's type by its class name at runtime. R8 renamed it, and the release build crashed on launch.
+ */
+@Keep
 enum class SettingsPageId(
     @param:StringRes internal val titleRes: Int,
 ) {
