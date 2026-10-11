@@ -39,6 +39,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONException
 import org.json.JSONObject
 import space.getsub.core.data.GeoAssetRepository
+import space.getsub.core.data.ObfuscationResolver
 import space.getsub.core.data.PerAppRepository
 import space.getsub.core.data.ProfileRepository
 import space.getsub.core.data.RoutingRepository
@@ -553,6 +554,9 @@ class TunnelService : VpnService() {
 
     @Inject
     lateinit var ruleSetAssets: RuleSetAssets
+
+    @Inject
+    lateinit var obfuscationResolver: ObfuscationResolver
 
     // Built in onCreate, once profileRepository is injected. Wraps the
     // repository's two spec-D4 methods as plain suspend lambdas rather than
@@ -1840,6 +1844,8 @@ class TunnelService : VpnService() {
                 httpPort = httpPort,
                 dns = dnsPlan,
                 metricsPort = allocated.metricsPort,
+                // M9-A spec §3.1: resolved once per start, from the same row this session connects.
+                obfuscation = obfuscationResolver.forConfig(rowId),
             )
         // §10.4/failStart's cleanup applies here too, not just to the try/catch
         // below: an early return that only published a state (skipping
@@ -3363,6 +3369,9 @@ class TunnelService : VpnService() {
                         ProxyHeadProbe(LibXrayPingApi(), cacheDir).measure(
                             Profile(id = profile.id.toString(), name = profile.name, outbound = outbound),
                             options,
+                            // Ruling R5: a raw row is probed through its typed projection, so a
+                            // config's own fragment is not represented here.
+                            obfuscation = obfuscationResolver.forConfig(profile.id),
                         )
                     }
                 }
