@@ -3,10 +3,7 @@
 package space.getsub.navigation
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,15 +94,16 @@ private const val SETTINGS_VALUE = "settings"
  * the device's own `navigationBars` inset height (63px / ~24dp, read from
  * `WindowInsets changed: ... navigationBars:[0,0,0,63]` in logcat for this
  * device/orientation), i.e. that inset counted twice. This `Box` arrangement
- * does not double-count it. The top is different: the [NavHost][androidx.navigation.compose.NavHost] pads for
- * `statusBars` itself, once, for every destination. Individual screens reserve
+ * does not double-count it. The top is different: every destination's [NavCard] pads for
+ * `statusBars` itself, once. Individual screens reserve
  * [space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING]
  * themselves for exactly the same reason — that constant's own KDoc says so.
  *
- * Every destination is declared with [cardComposable], never plain `composable`: opening one
- * slides it in as a card over the still screen beneath, Back (predictive or not) shrinks it and
- * slides it out, and a pill tap between [Home], [Servers] and [Settings] crossfades instead.
- * [NavMotion] and [NavCard] hold the details.
+ * Every destination is declared with [cardComposable], never plain `composable`, so navigation
+ * moves like Android's own activities: the default activity open and close animations, and the
+ * system's predictive back (the screen shrinks over the one beneath, then slides away) for a back
+ * gesture. A pill tap between [Home], [Servers] and [Settings] crossfades instead. [NavMotion]
+ * and [NavCard] hold the details.
  *
  * @param onRequestConsent forwarded to [HomeScreen] verbatim; see its own
  *   KDoc for why a `ViewModel` cannot own this.
@@ -137,13 +135,15 @@ fun SubspaceNavHost(
         navController = navController,
     )
 
-    val motion = rememberNavMotion(currentBackStackEntry)
+    val motion = rememberNavMotion(navController, currentBackStackEntry)
     Box(modifier = modifier.fillMaxSize()) {
         // The activity draws edge to edge, and nothing else pads for the status bar: every
         // screen's header used to start at the top of the display, under it (Servers'
-        // "Add server" and the Session log's Back button could not be tapped). Top only;
-        // the bottom inset stays with FloatingNavBar, as above.
-        CardNavHost(navController, startDestination, motion, Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
+        // "Add server" and the Session log's Back button could not be tapped). Top only, and
+        // inside each NavCard rather than around the NavHost, so a screen shrinking under the
+        // back gesture carries its status bar strip like a window does; the bottom inset stays
+        // with FloatingNavBar, as above.
+        CardNavHost(navController, startDestination, motion) {
             topLevelDestinations(navController, onRequestConsent)
             cardComposable<Servers> {
                 // Task 19: ServersScreen now owns its own add-server flow

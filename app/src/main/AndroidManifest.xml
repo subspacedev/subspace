@@ -8,9 +8,9 @@
          narrowly. Do not replace with android:usesCleartextTraffic="true".
 
          android:enableOnBackInvokedCallback: opts in to predictive back on API 33-35 (API 36+
-         targets get it by default), so the system feeds the gesture's progress to NavHost and
-         the back card in navigation/NavTransitions.kt follows the finger. Below API 33 the
-         attribute is ignored and Back plays the same card motion without a preview. -->
+         targets get it by default), so the system feeds the gesture's progress to the app and
+         navigation/NavTransitions.kt can draw the system's own back animation in-app. Without a
+         gesture (below API 34, or the Back key) Back plays the default activity close. -->
     <application
         android:name=".SubspaceApplication"
         android:allowBackup="false"
