@@ -104,8 +104,14 @@ internal interface SubscriptionDao {
     @Query("UPDATE subscriptions SET linkFragment = :fragment WHERE id = :id")
     suspend fun setLinkFragment(id: Long, fragment: String?)
 
-    /** M9-B spec §3.4 step 4. Route columns are left alone: they are the user's. */
-    @Query("UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at WHERE id = :id")
+    /**
+     * M9-B spec §3.4 step 4. Route columns are left alone: they are the user's. Conditional on the
+     * stored trust so a revocation that lands after the syncer's own check still wins (M9-B spec §1.2).
+     */
+    @Query(
+        "UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at " +
+            "WHERE id = :id AND redirectTrust = 'ALLOWED'",
+    )
     suspend fun applyMove(id: Long, url: String, fromHost: String, at: Long)
 
     @Query("UPDATE subscriptions SET lastFetchVia = :via WHERE id = :id")

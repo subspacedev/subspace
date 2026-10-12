@@ -132,8 +132,8 @@ class SubscriptionSyncerReachTest {
         lastRequest!!.route.fragment!!.length shouldBe XrayRange(60, 90)
     }
 
-    private suspend fun allowedWithFallback(): Long {
-        val id = addSubscription()
+    private suspend fun allowedWithFallback(link: String = "https://example.com/sub"): Long {
+        val id = subscriptions.add(link, "Provider").id
         subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
         response = ok(mapOf("fallback-url" to "https://backup.example/s"))
         syncer().sync(id)
@@ -143,7 +143,7 @@ class SubscriptionSyncerReachTest {
 
     @Test
     fun aDownMainUrlFallsBackWhenAllowed() = runTest {
-        val id = allowedWithFallback()
+        val id = allowedWithFallback(FRONTED_LINK)
         responseForRequest = { r ->
             requests += r
             if (r.url == "https://example.com/sub") FetchOutcome.Failed(FetchFailure.TimedOut) else ok()
@@ -154,6 +154,7 @@ class SubscriptionSyncerReachTest {
         requests.map { it.url } shouldBe listOf("https://example.com/sub", "https://backup.example/s")
         requests[1].route.hostHeader shouldBe null
         requests[1].route.resolveAddress shouldBe null
+        requests[1].route.fragment shouldBe requests[0].route.fragment
         subscriptions.observeSubscriptions().first().single().lastFetchVia shouldBe FetchVia.Fallback
     }
 
@@ -270,5 +271,34 @@ class SubscriptionSyncerReachTest {
         syncer().sync(id)
 
         subscriptions.observeSubscriptions().first().single().url shouldBe "https://example.com/sub"
+    }
+
+    @Test
+    fun aRevocationDuringTheFetchStopsTheMove() = runTest {
+        val id = addSubscription()
+        subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
+        responseForRequest = { r ->
+            requests += r
+            subscriptions.setRedirectTrust(id, RedirectTrust.Denied)
+            ok(mapOf("new-domain" to "moved.example"))
+        }
+
+        syncer().sync(id)
+
+        subscriptions.observeSubscriptions().first().single().url shouldBe "https://example.com/sub"
+    }
+
+    @Test
+    fun aRevocationDuringTheFetchStopsTheFallback() = runTest {
+        val id = allowedWithFallback()
+        responseForRequest = { r ->
+            requests += r
+            subscriptions.setRedirectTrust(id, RedirectTrust.Denied)
+            FetchOutcome.Failed(FetchFailure.TimedOut)
+        }
+
+        syncer().sync(id)
+
+        requests.size shouldBe 1
     }
 }

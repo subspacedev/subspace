@@ -160,6 +160,10 @@ internal constructor(
         return if (fallback is FetchOutcome.Success) fallback to FetchVia.Fallback else main to FetchVia.FallbackFailed
     }
 
+    /** The fetch can outlive a consent change, so trust is read fresh, never from the pre-fetch row. */
+    private suspend fun isRedirectAllowed(id: Long): Boolean =
+        dao.subscription(id)?.let { redirectTrustOf(it.redirectTrust) == RedirectTrust.Allowed } == true
+
     /** The validated fallback URL, or null when [main] is not a failure worth retrying or redirects are not allowed. */
     private suspend fun fallbackTarget(
         subscription: SubscriptionEntity,
@@ -168,7 +172,7 @@ internal constructor(
         val eligible =
             main is FetchOutcome.Failed &&
                 FetchDecisions.fallbackEligible(main.reason) &&
-                redirectTrustOf(subscription.redirectTrust) == RedirectTrust.Allowed
+                isRedirectAllowed(subscription.id)
         val raw = if (eligible) subscriptions.effective(subscription.id, KEY_FALLBACK_URL, null).value else null
         return (raw?.let { RedirectTargets.checkUrl(it) } as? RedirectCheck.Ok)?.url
     }
@@ -274,9 +278,11 @@ internal constructor(
         accepted: Map<String, String>,
         now: Long,
     ) {
+        // Fresh row: consent and url may have changed during the fetch (M9-B spec §1.2).
+        val current = dao.subscription(subscription.id)
         val move =
-            if (redirectTrustOf(subscription.redirectTrust) == RedirectTrust.Allowed) {
-                FetchDecisions.moveTarget(subscription.url, accepted[KEY_NEW_URL], accepted[KEY_NEW_DOMAIN])
+            if (current != null && redirectTrustOf(current.redirectTrust) == RedirectTrust.Allowed) {
+                FetchDecisions.moveTarget(current.url, accepted[KEY_NEW_URL], accepted[KEY_NEW_DOMAIN])
             } else {
                 MoveDecision.None
             }
@@ -287,6 +293,7 @@ internal constructor(
                 Log.i(TAG, "subscription ${subscription.id} moved by provider directive")
             } catch (ignored: SQLiteConstraintException) {
                 // Another subscription took the URL between the check and the write; skip, as above.
+                Log.i(TAG, "subscription ${subscription.id} move skipped: target taken")
             }
         }
     }
