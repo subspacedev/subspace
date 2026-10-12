@@ -200,6 +200,8 @@ class ImportViewModelTest {
             private set
         var lastAddSubscriptionUrl: String? = null
             private set
+        var lastAddSubscriptionName: String? = null
+            private set
         var syncSubscriptionCallCount = 0
             private set
         var lastSyncedSubscriptionId: Long? = null
@@ -215,6 +217,7 @@ class ImportViewModelTest {
         ): AddedSubscription {
             addSubscriptionCallCount++
             lastAddSubscriptionUrl = url
+            lastAddSubscriptionName = name
             return existingSubscriptionId?.let { AddedSubscription(it, created = false) }
                 ?: AddedSubscription(nextId++, created = true)
         }
@@ -709,6 +712,47 @@ class ImportViewModelTest {
             repository.addSubscriptionCallCount shouldBe 1
             repository.lastAddSubscriptionUrl shouldBe "https://example.com/sub"
             viewModel.state.value.completed shouldBe false
+        }
+
+    @Test
+    fun `a happ link whose title has a space is a subscription named after the plain url's host`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("https://a.example/s#My VPN?host=x.example")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            repository.lastAddSubscriptionUrl shouldBe "https://a.example/s#My VPN?host=x.example"
+            repository.lastAddSubscriptionName shouldBe "a.example"
+        }
+
+    @Test
+    fun `a happ link whose title has a bar is a subscription`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("https://a.example/s#Home|Work")
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+        }
+
+    @Test
+    fun `a url with a title followed by share links on later lines still imports`() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.submit("https://a.example/s#title\nvless://x")
+            advanceUntilIdle()
+            viewModel.state.first { it.completed }
+
+            repository.addSubscriptionCallCount shouldBe 0
         }
 
     @Test
