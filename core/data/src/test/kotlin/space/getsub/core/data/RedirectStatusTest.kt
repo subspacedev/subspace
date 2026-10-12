@@ -19,12 +19,40 @@ class RedirectStatusTest {
         redirectStatusOf(
             current,
             mapOf(
-                "new-domain" to "new.example",
                 "fallback-url" to "https://backup.example/s",
                 "new-url" to "https://new.example/x",
             ),
             emptySet(),
         ).targetHosts shouldBe listOf("new.example", "backup.example")
+    }
+
+    @Test
+    fun withBothValidOnlyNewUrlIsListedAndNewDomainIsSuperseded() {
+        val status =
+            redirectStatusOf(
+                current,
+                mapOf("new-url" to "https://moved.example/s", "new-domain" to "other.example"),
+                emptySet(),
+            )
+        status.targetHosts shouldBe listOf("moved.example")
+        status.issues shouldBe
+            listOf(RedirectIssue("new-domain", reason = null, collides = false, superseded = true))
+    }
+
+    @Test
+    fun anInvalidNewUrlStillSupersedesAValidNewDomain() {
+        val status =
+            redirectStatusOf(
+                current,
+                mapOf("new-url" to "http://moved.example/s", "new-domain" to "other.example"),
+                emptySet(),
+            )
+        status.targetHosts shouldBe emptyList()
+        status.issues shouldBe
+            listOf(
+                RedirectIssue("new-url", RedirectRejection.NotHttps, collides = false),
+                RedirectIssue("new-domain", reason = null, collides = false, superseded = true),
+            )
     }
 
     @Test

@@ -8,11 +8,15 @@ import space.getsub.core.parser.RedirectTargets
 
 private val REDIRECT_KEYS = listOf("new-url", "new-domain", "fallback-url")
 
-/** Why a stored redirect directive is not acted on: an invalid target, or a move onto another subscription. */
+/**
+ * Why a stored redirect directive is not acted on: an invalid target, a move onto another subscription,
+ * or ([superseded]) a `new-domain` sent alongside `new-url`, which alone is the move candidate.
+ */
 public data class RedirectIssue(
     val key: String,
     val reason: RedirectRejection?,
     val collides: Boolean,
+    val superseded: Boolean = false,
 )
 
 /**
@@ -38,6 +42,12 @@ public fun redirectStatusOf(
     val issues = mutableListOf<RedirectIssue>()
     REDIRECT_KEYS.forEach { key ->
         val value = directives[key] ?: return@forEach
+        // The syncer's precedence (FetchDecisions.moveTarget): with new-url present, new-domain is never
+        // a target, valid or not, whether or not new-url itself is.
+        if (key == "new-domain" && "new-url" in directives) {
+            issues += RedirectIssue(key, reason = null, collides = false, superseded = true)
+            return@forEach
+        }
         val check =
             if (key == "new-domain") {
                 RedirectTargets.applyDomain(currentUrl, value)
