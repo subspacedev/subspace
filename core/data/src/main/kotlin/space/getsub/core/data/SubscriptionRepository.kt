@@ -15,6 +15,7 @@ import space.getsub.core.data.db.SubscriptionDao
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SubscriptionOverrideEntity
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.directive.DirectiveKind
 import space.getsub.core.parser.directive.KindResult
 import space.getsub.core.parser.directive.canonicalise
@@ -45,6 +46,14 @@ public data class StoredSubscription(
      * therefore no "healthy until" moment to measure staleness from.
      */
     val createdAt: Long = 0L,
+    val resolveAddress: String? = null,
+    val hostHeader: String? = null,
+    val linkFragment: String? = null,
+    val insecureIgnored: Boolean = false,
+    val redirectTrust: RedirectTrust = RedirectTrust.Unasked,
+    val movedFromHost: String? = null,
+    val movedAt: Long? = null,
+    val lastFetchVia: FetchVia? = null,
 ) {
     // ARCHITECTURE.md §5.6: url is a secret, same treatment as SubscriptionEntity.toString() —
     // this type is what crosses out of :core:data, so the redaction has to
@@ -53,7 +62,13 @@ public data class StoredSubscription(
         "StoredSubscription(id=$id, groupId=$groupId, url=<redacted>, " +
             "userAgentOverride=$userAgentOverride, hwidEnabled=$hwidEnabled, " +
             "lastFetchedAt=$lastFetchedAt, lastAttemptedAt=$lastAttemptedAt, lastFetchStatus=$lastFetchStatus, " +
-            "lastFetchDetail=$lastFetchDetail)"
+            "lastFetchDetail=$lastFetchDetail, " +
+            "resolveAddress=${if (resolveAddress == null) "none" else "<redacted>"}, " +
+            "hostHeader=${if (hostHeader == null) "none" else "<redacted>"}, " +
+            "linkFragment=${if (linkFragment == null) "none" else "<redacted>"}, " +
+            "insecureIgnored=$insecureIgnored, redirectTrust=$redirectTrust, " +
+            "movedFromHost=${if (movedFromHost == null) "none" else "<redacted>"}, " +
+            "movedAt=$movedAt, lastFetchVia=$lastFetchVia)"
 }
 
 /**
@@ -213,16 +228,17 @@ internal constructor(
             // writes atomic. `withTransaction` does — room-ktx installs a transaction element in
             // the coroutine context, so the suspend DAO calls inside this block run on that same
             // transaction and roll back together.
+            val link = SubscriptionLink.parse(url)
             database.withTransaction {
-                dao.subscriptionByUrl(url)?.let {
+                dao.subscriptionByUrl(link.plainUrl)?.let {
                     return@withTransaction AddedSubscription(it.id, created = false)
                 }
 
-                val groupId = profiles.createGroup(name, source = GROUP_SOURCE_SUBSCRIPTION)
+                val groupId = profiles.createGroup(link.title ?: name, source = GROUP_SOURCE_SUBSCRIPTION)
                 dao.insertSubscription(
                     SubscriptionEntity(
                         groupId = groupId,
-                        url = url,
+                        url = link.plainUrl,
                         userAgentOverride = null,
                         hwidEnabled = true,
                         lastFetchedAt = null,
@@ -230,6 +246,10 @@ internal constructor(
                         lastFetchStatus = null,
                         lastFetchDetail = null,
                         createdAt = System.currentTimeMillis(),
+                        resolveAddress = link.resolveAddress,
+                        hostHeader = link.hostHeader,
+                        linkFragment = link.fragment,
+                        insecureIgnored = link.insecure,
                     ),
                 ).let { AddedSubscription(it, created = true) }
             }
@@ -277,6 +297,16 @@ internal constructor(
         id: Long,
         userAgent: String?,
     ): Unit = dao.setUserAgentOverride(id, userAgent?.takeIf(String::isNotBlank))
+
+    /** M9-B spec §1.2. */
+    public suspend fun setRedirectTrust(id: Long, trust: RedirectTrust): Unit = dao.setRedirectTrust(id, trust.stored)
+
+    /** M9-B spec §4: the user edits fronting in subscription details. */
+    public suspend fun setFronting(id: Long, resolveAddress: String?, hostHeader: String?): Unit =
+        dao.setFronting(id, resolveAddress?.trim()?.ifEmpty { null }, hostHeader?.trim()?.ifEmpty { null })
+
+    public suspend fun setLinkFragment(id: Long, fragment: String?): Unit =
+        dao.setLinkFragment(id, fragment?.trim()?.ifEmpty { null })
 
     /** Pins [value] for [key], so no future fetch moves it (spec D3). */
     public suspend fun pin(
@@ -367,4 +397,12 @@ private fun SubscriptionEntity.toStored() =
         lastFetchStatus = lastFetchStatus,
         lastFetchDetail = lastFetchDetail,
         createdAt = createdAt,
+        resolveAddress = resolveAddress,
+        hostHeader = hostHeader,
+        linkFragment = linkFragment,
+        insecureIgnored = insecureIgnored,
+        redirectTrust = redirectTrustOf(redirectTrust),
+        movedFromHost = movedFromHost,
+        movedAt = movedAt,
+        lastFetchVia = fetchViaOf(lastFetchVia),
     )

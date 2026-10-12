@@ -95,6 +95,22 @@ internal interface SubscriptionDao {
         value: String?,
     )
 
+    @Query("UPDATE subscriptions SET redirectTrust = :trust WHERE id = :id")
+    suspend fun setRedirectTrust(id: Long, trust: String)
+
+    @Query("UPDATE subscriptions SET resolveAddress = :resolveAddress, hostHeader = :hostHeader WHERE id = :id")
+    suspend fun setFronting(id: Long, resolveAddress: String?, hostHeader: String?)
+
+    @Query("UPDATE subscriptions SET linkFragment = :fragment WHERE id = :id")
+    suspend fun setLinkFragment(id: Long, fragment: String?)
+
+    /** M9-B spec §3.4 step 4. Route columns are left alone: they are the user's. */
+    @Query("UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at WHERE id = :id")
+    suspend fun applyMove(id: Long, url: String, fromHost: String, at: Long)
+
+    @Query("UPDATE subscriptions SET lastFetchVia = :via WHERE id = :id")
+    suspend fun setLastFetchVia(id: Long, via: String?)
+
     @Query("DELETE FROM subscriptions WHERE id = :id")
     suspend fun deleteSubscription(id: Long)
 
