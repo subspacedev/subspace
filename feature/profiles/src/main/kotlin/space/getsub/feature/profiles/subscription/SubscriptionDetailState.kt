@@ -200,7 +200,23 @@ internal data class SubscriptionDetailState(
     /** Plan ruling P2: the request shows only while unanswered and there is something to ask about. */
     val showsRedirectRequest: Boolean
         get() = redirectTrust == RedirectTrust.Unasked && redirectTargetHosts.isNotEmpty()
+
+    /** The provider asks to move or redirect and the user said no: say so, or the refusal is invisible. */
+    val showsRedirectsDenied: Boolean
+        get() = redirectTrust == RedirectTrust.Denied && redirectTargetHosts.isNotEmpty()
+
+    // ARCHITECTURE.md §5.6: the route, the URL's host and the origin it moved from stay out of logs and crash
+    // reports, mirroring StoredSubscription.toString().
+    override fun toString(): String =
+        "SubscriptionDetailState(subscriptionId=$subscriptionId, loading=$loading, notFound=$notFound, " +
+            "redactedUrl=<redacted>, lastFetchState=$lastFetchState, redirectTrust=$redirectTrust, " +
+            "redirectTargetHosts=<redacted>, redirectIssues=$redirectIssues, " +
+            "resolveAddress=${redactedOrNone(resolveAddress)}, hostHeader=${redactedOrNone(hostHeader)}, " +
+            "linkFragment=${redactedOrNone(linkFragment)}, movedFromHost=${redactedOrNone(movedFromHost)}, " +
+            "movedAt=$movedAt, lastFetchVia=$lastFetchVia, isRefreshing=$isRefreshing, deleted=$deleted)"
 }
+
+private fun redactedOrNone(value: String?): String = if (value == null) "none" else "<redacted>"
 
 /**
  * ARCHITECTURE.md §5.6: a subscription URL is a secret alongside server addresses and REALITY keys — this keeps

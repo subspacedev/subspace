@@ -10,6 +10,8 @@ import androidx.compose.ui.test.performScrollTo
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.data.RedirectIssue
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.ui.theme.SubspaceTheme
 
 class SubscriptionDetailScreenTest {
@@ -101,6 +103,33 @@ class SubscriptionDetailScreenTest {
         setContent(state = detailState().copy(globalFragmentationOn = true))
 
         composeRule.onNodeWithText("Your Fragmentation settings apply").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aNewDomainSupersededByNewUrlSaysSo() {
+        val superseded = RedirectIssue("new-domain", reason = null, collides = false, superseded = true)
+        setContent(state = detailState().copy(redirectIssues = listOf(superseded)))
+
+        composeRule.onNodeWithText("new-domain ignored: new-url takes precedence").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun deniedRedirectsAreNamedWhenTheProviderAsks() {
+        setContent(
+            state = detailState().copy(redirectTrust = RedirectTrust.Denied, redirectTargetHosts = listOf("n.example")),
+        )
+
+        composeRule
+            .onNodeWithText("Your provider's redirects are not followed — you didn't allow them")
+            .performScrollTo()
+            .assertExists()
+    }
+
+    @Test
+    fun aMoveWithoutATimeNamesOnlyTheOldHost() {
+        setContent(state = detailState().copy(movedFromHost = "old.example", movedAt = null))
+
+        composeRule.onNodeWithText("Moved from old.example").performScrollTo().assertExists()
     }
 
     private fun noOpActions(

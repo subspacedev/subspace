@@ -54,6 +54,8 @@ class ServersAddActionTest {
                         onUpdateSubscription = {},
                         onDismissUpdateResult = {},
                         onOpenSubscriptionDetail = {},
+                        onAllowRedirects = {},
+                        onDenyRedirects = {},
                         onTestProfile = {},
                         onTestGroup = {},
                         onCancelTests = {},

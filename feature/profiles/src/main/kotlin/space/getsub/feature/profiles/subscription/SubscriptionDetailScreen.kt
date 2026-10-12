@@ -424,9 +424,12 @@ private fun LinkFragmentField(
 @Composable
 private fun ReachLines(state: SubscriptionDetailState) {
     state.movedFromHost?.let { host ->
-        val whenMoved = state.movedAt?.let { relativeTime(it) }.orEmpty()
-        ReachFact(stringResource(R.string.subscription_moved_from, host, whenMoved))
+        val text =
+            state.movedAt?.let { stringResource(R.string.subscription_moved_from, host, relativeTime(it)) }
+                ?: stringResource(R.string.subscription_moved_from_no_time, host)
+        ReachFact(text)
     }
+    if (state.showsRedirectsDenied) ReachFact(stringResource(R.string.subscription_redirects_denied))
     when (state.lastFetchVia) {
         FetchVia.Fallback -> ReachFact(stringResource(R.string.subscription_via_fallback))
         FetchVia.FallbackFailed -> ReachFact(stringResource(R.string.subscription_fallback_failed))
@@ -452,11 +455,13 @@ private fun ReachFact(text: String) {
 
 @Composable
 private fun redirectIssueText(issue: RedirectIssue): String =
-    if (issue.collides) {
-        stringResource(R.string.subscription_redirect_collides, issue.key)
-    } else {
-        val reason = issue.reason?.let { stringResource(it.textRes()) }.orEmpty()
-        stringResource(R.string.subscription_redirect_ignored, issue.key, reason)
+    when {
+        issue.superseded -> stringResource(R.string.subscription_redirect_superseded, issue.key)
+        issue.collides -> stringResource(R.string.subscription_redirect_collides, issue.key)
+        else -> {
+            val reason = issue.reason?.let { stringResource(it.textRes()) }.orEmpty()
+            stringResource(R.string.subscription_redirect_ignored, issue.key, reason)
+        }
     }
 
 private fun RedirectRejection.textRes(): Int =
