@@ -299,7 +299,6 @@ internal constructor(
         userAgent: String?,
     ): Unit = dao.setUserAgentOverride(id, userAgent?.takeIf(String::isNotBlank))
 
-    /** M9-B spec §1.2. */
     /** M9-B spec §4: recomposes on any directive or subscription change, so the card never goes stale. */
     public fun observeRedirectStatus(id: Long): Flow<RedirectStatus> =
         combine(dao.observeDirectives(id), dao.observeSubscriptions()) { directives, rows ->
@@ -311,6 +310,7 @@ internal constructor(
             )
         }.distinctUntilChanged()
 
+    /** M9-B spec §1.2. */
     public suspend fun setRedirectTrust(id: Long, trust: RedirectTrust): Unit = dao.setRedirectTrust(id, trust.stored)
 
     /** M9-B spec §4: the user edits fronting in subscription details. */

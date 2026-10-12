@@ -44,4 +44,28 @@ class RedirectStatusTest {
             )
         status.issues shouldBe listOf(RedirectIssue("new-url", reason = null, collides = true))
     }
+
+    @Test
+    fun aNewDomainOntoAnotherSubscriptionIsACollision() {
+        val status = redirectStatusOf(current, mapOf("new-domain" to "taken.example"), setOf("https://taken.example/s"))
+        status.issues shouldBe listOf(RedirectIssue("new-domain", reason = null, collides = true))
+        status.targetHosts shouldBe emptyList()
+    }
+
+    @Test
+    fun aTargetEqualToTheCurrentUrlIsNotListed() {
+        redirectStatusOf(current, mapOf("new-url" to current), emptySet()) shouldBe RedirectStatus.NONE
+    }
+
+    @Test
+    fun aFallbackOntoAnotherSubscriptionIsNotACollision() {
+        val status =
+            redirectStatusOf(
+                current,
+                mapOf("fallback-url" to "https://taken.example/s"),
+                setOf("https://taken.example/s"),
+            )
+        status.issues shouldBe emptyList()
+        status.targetHosts shouldBe listOf("taken.example")
+    }
 }

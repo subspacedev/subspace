@@ -28,6 +28,7 @@ public data class RedirectStatus(
     }
 }
 
+/** Lists the valid targets and ignored keys of [directives], given the other subscriptions' [otherUrls]. */
 public fun redirectStatusOf(
     currentUrl: String,
     directives: Map<String, String>,
