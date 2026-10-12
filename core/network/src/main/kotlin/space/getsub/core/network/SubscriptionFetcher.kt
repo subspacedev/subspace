@@ -5,6 +5,7 @@ package space.getsub.core.network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -180,27 +181,7 @@ constructor(
         // case a malformed URL already mapped to before this fix widened
         // the guard to cover client construction too.
         val call = runCatching {
-            baseClient.newBuilder()
-                .callTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-                .connectTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-                .readTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-                .addInterceptor { chain -> chain.proceedWithSafeRedirects() }
-                .apply {
-                    // Proxy.Type.HTTP, never SOCKS. Whether a Java SOCKS proxy resolves the
-                    // hostname locally before connecting — which would leak it to the local
-                    // resolver while appearing to fetch through the tunnel (§5.2) — is not
-                    // verified (research §8: "Not verified. Do not treat as fact.", §10.5). HTTP
-                    // sidesteps the question rather than answering it: an HTTP proxy receives the
-                    // hostname in absolute-form and resolves it at the far end by construction,
-                    // so there is nothing to verify for this path regardless. A fresh client is
-                    // already built per attempt (the timeout chain above is per-request), so
-                    // there is no pool to share by caching one per port here.
-                    request.proxyPort?.let { port ->
-                        proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", port)))
-                    }
-                }
-                .build()
-                .newCall(request.toOkHttpRequest())
+            clientFor(request).newCall(request.toOkHttpRequest())
         }.getOrNull() ?: return FetchOutcome.Failed(FetchFailure.NotFound)
 
         return try {
@@ -233,6 +214,39 @@ constructor(
         }
     }
 
+    internal fun clientFor(request: SubscriptionRequest): OkHttpClient =
+        baseClient.newBuilder()
+            .callTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .connectTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .readTimeout(request.timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .addInterceptor { chain -> chain.proceedWithSafeRedirects() }
+            .apply {
+                // Proxy.Type.HTTP, never SOCKS. Whether a Java SOCKS proxy resolves the
+                // hostname locally before connecting — which would leak it to the local
+                // resolver while appearing to fetch through the tunnel (§5.2) — is not
+                // verified (research §8: "Not verified. Do not treat as fact.", §10.5). HTTP
+                // sidesteps the question rather than answering it: an HTTP proxy receives the
+                // hostname in absolute-form and resolves it at the far end by construction,
+                // so there is nothing to verify for this path regardless. A fresh client is
+                // already built per attempt (the timeout chain above is per-request), so
+                // there is no pool to share by caching one per port here.
+                request.proxyPort?.let { port ->
+                    proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", port)))
+                }
+                // Plan ruling P1: through the tunnel's proxy, the proxy resolves the host and splitting
+                // bytes to a loopback proxy never reaches the wire; the tunnel fragments with M9-A's mask.
+                if (request.proxyPort == null) {
+                    request.route.resolveAddress?.let { address ->
+                        // Direct, not via an OS-level proxy: a system proxy would resolve the URL host itself
+                        // and ignore the chosen address.
+                        proxy(Proxy.NO_PROXY)
+                        dns { _ -> Dns.SYSTEM.lookup(address) }
+                    }
+                    request.route.fragment?.let { spec -> socketFactory(FragmentingSocketFactory(spec)) }
+                }
+            }
+            .build()
+
     private fun SubscriptionRequest.toOkHttpRequest(): Request =
         Request.Builder()
             .url(url)
@@ -242,6 +256,8 @@ constructor(
             .header("x-device-model", deviceInfo.model)
             .header("x-app-version", appVersion)
             .apply { if (hwidEnabled) header("x-hwid", hwidProvider.hwid()) }
+            // M9-B spec §1.1: fronting. OkHttp also uses an explicit Host as HTTP/2's :authority.
+            .apply { route.hostHeader?.let { header("Host", it) } }
             .get()
             .build()
 }

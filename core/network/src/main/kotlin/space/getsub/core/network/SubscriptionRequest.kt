@@ -15,6 +15,7 @@ package space.getsub.core.network
  * @property proxyPort the tunnel's loopback HTTP proxy, or null to fetch
  *   directly. Defaults to null so every pre-existing call site keeps the old
  *   behaviour unchanged.
+ * @property route M9-B: fronting and fetch fragmentation; see [FetchRoute].
  */
 public data class SubscriptionRequest(
     val url: String,
@@ -22,6 +23,7 @@ public data class SubscriptionRequest(
     val userAgentOverride: String?,
     val timeoutSeconds: Int,
     val proxyPort: Int? = null,
+    val route: FetchRoute = FetchRoute(),
 ) {
     // ARCHITECTURE.md §5.6: url is a secret. The generated data-class toString() would print
     // it verbatim, which is exactly the "reaches a log line" failure mode
