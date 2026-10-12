@@ -1921,10 +1921,18 @@ your DNS setting"* while the profile's routing rules still apply.
 These are the ones that matter most in practice and are worth prioritizing
 above cosmetic parity:
 
-- [ ] **Fragmentation**: `fragmentation-packets` (e.g. `tlshello`),
-      `-length`, `-interval`, `-maxsplit`
+- [x] **Fragmentation**: `fragmentation-packets` (e.g. `tlshello`),
+      `-length`, `-interval`, `-maxsplit` — **M9-A.** A Finalmask `fragment`
+      mask; the user's setting overrides the directive, which overrides
+      nothing the config already sets. Verified on hardware (Pixel 8,
+      2026-10-12): the ClientHello leaves split with the configured sizes and
+      gaps, for typed, subscription-directive and raw-JSON servers, and for
+      `proxy-head` latency probes.
 - [ ] **Noises**: `noises-packet-type` (array/str/hex/base64), `-packet`,
-      `-delay`, `-rand`, `-rand-range`
+      `-delay`, `-rand`, `-rand-range` — **M9-A implemented, not verified.**
+      Noise is a UDP mask, and this build runs no UDP transport (raw JSON
+      imports VLESS only; mKCP is gated). Verified when sub-project D adds
+      Hysteria2.
 - [ ] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
 - [ ] **Fallback URL**: switch to a backup subscription URL if the primary
