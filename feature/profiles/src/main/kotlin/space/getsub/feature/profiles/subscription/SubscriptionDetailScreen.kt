@@ -30,10 +30,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -56,7 +58,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import space.getsub.core.data.FetchVia
+import space.getsub.core.data.RedirectIssue
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.isDirectiveEnabled
+import space.getsub.core.parser.RedirectRejection
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.HubRow
 import space.getsub.core.ui.component.QuotaBar
@@ -120,13 +126,18 @@ fun SubscriptionDetailScreen(
             onHwidEnabledChanged = viewModel::onHwidEnabledChanged,
             onUserAgentOverrideChanged = viewModel::onUserAgentOverrideChanged,
             onDeleteConfirmed = viewModel::onDelete,
+            onAllowRedirects = viewModel::onAllowRedirects,
+            onDenyRedirects = viewModel::onDenyRedirects,
+            onRedirectsAllowedChanged = viewModel::onRedirectsAllowedChanged,
+            onFrontingSaved = viewModel::onFrontingSaved,
+            onLinkFragmentSaved = viewModel::onLinkFragmentSaved,
         ),
         modifier = modifier,
     )
 }
 
 /**
- * [SubscriptionDetailContent]'s eight callbacks, grouped for the same reason
+ * [SubscriptionDetailContent]'s thirteen callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.editor.EditorActions] is.
  */
 internal data class SubscriptionDetailActions(
@@ -138,6 +149,11 @@ internal data class SubscriptionDetailActions(
     val onHwidEnabledChanged: (Boolean) -> Unit,
     val onUserAgentOverrideChanged: (String?) -> Unit,
     val onDeleteConfirmed: () -> Unit,
+    val onAllowRedirects: () -> Unit,
+    val onDenyRedirects: () -> Unit,
+    val onRedirectsAllowedChanged: (Boolean) -> Unit,
+    val onFrontingSaved: (resolveAddress: String?, hostHeader: String?) -> Unit,
+    val onLinkFragmentSaved: (String?) -> Unit,
 )
 
 /**
@@ -234,6 +250,13 @@ private fun DetailBody(
             .padding(horizontal = CONTENT_PADDING)
             .padding(bottom = CONTENT_PADDING),
     ) {
+        if (state.showsRedirectRequest) {
+            RedirectRequestCard(
+                hosts = state.redirectTargetHosts,
+                onAllow = actions.onAllowRedirects,
+                onDeny = actions.onDenyRedirects,
+            )
+        }
         SectionCard(title = stringResource(R.string.subscription_detail_section_subscription)) {
             UrlRow(redactedUrl = state.redactedUrl)
             LastFetchRow(state = state, onRefreshNow = actions.onRefreshNow)
@@ -258,6 +281,7 @@ private fun DetailBody(
                 onSave = actions.onUserAgentOverrideChanged,
             )
         }
+        ReachSection(state = state, actions = actions)
         if (state.rows.isNotEmpty()) {
             DirectivesSection(state = state, actions = actions)
         }
@@ -277,6 +301,173 @@ private fun DetailBody(
         )
     }
 }
+
+@Composable
+private fun RedirectRequestCard(
+    hosts: List<String>,
+    onAllow: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Surface(
+        shape = SubspaceShapeTokens.card,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(top = CONTENT_PADDING),
+    ) {
+        Column(modifier = Modifier.padding(CONTENT_PADDING), verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+            Text(
+                text = stringResource(R.string.subscription_redirect_request, hosts.joinToString(", ")),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                Button(onClick = onAllow) { Text(stringResource(R.string.subscription_redirect_allow)) }
+                OutlinedButton(onClick = onDeny) { Text(stringResource(R.string.subscription_redirect_deny)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReachSection(
+    state: SubscriptionDetailState,
+    actions: SubscriptionDetailActions,
+) {
+    SectionCard(title = stringResource(R.string.subscription_detail_section_reach)) {
+        if (state.redirectTrust != RedirectTrust.Unasked) {
+            SwitchRow(
+                icon = SubspaceIcons.VpnLock,
+                label = stringResource(R.string.subscription_redirect_switch),
+                supporting = null,
+                checked = state.redirectTrust == RedirectTrust.Allowed,
+                onCheckedChange = actions.onRedirectsAllowedChanged,
+            )
+        }
+        FrontingFields(state.resolveAddress, state.hostHeader, onSave = actions.onFrontingSaved)
+        LinkFragmentField(
+            value = state.linkFragment,
+            globalOn = state.globalFragmentationOn,
+            onSave = actions.onLinkFragmentSaved,
+        )
+        ReachLines(state)
+    }
+}
+
+// Machine strings: displayed, never logged (ARCHITECTURE.md §5.6).
+@Composable
+private fun FrontingFields(
+    resolveAddress: String?,
+    hostHeader: String?,
+    onSave: (String?, String?) -> Unit,
+) {
+    var address by remember(resolveAddress) { mutableStateOf(resolveAddress.orEmpty()) }
+    var host by remember(hostHeader) { mutableStateOf(hostHeader.orEmpty()) }
+    OutlinedTextField(
+        value = address,
+        onValueChange = { address = it },
+        label = { Text(stringResource(R.string.subscription_fronting_address_label)) },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.mono(),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = host,
+        onValueChange = { host = it },
+        label = { Text(stringResource(R.string.subscription_fronting_host_label)) },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.mono(),
+        shape = MaterialTheme.shapes.large,
+        trailingIcon = {
+            IconButton(onClick = { onSave(address.ifBlank { null }, host.ifBlank { null }) }) {
+                Icon(
+                    painter = painterResource(SubspaceIcons.Check),
+                    contentDescription = stringResource(R.string.subscription_fronting_save),
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun LinkFragmentField(
+    value: String?,
+    globalOn: Boolean,
+    onSave: (String?) -> Unit,
+) {
+    var draft by remember(value) { mutableStateOf(value.orEmpty()) }
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { draft = it },
+        label = { Text(stringResource(R.string.subscription_fetch_fragment_label)) },
+        supportingText = if (globalOn) {
+            { Text(stringResource(R.string.subscription_fetch_fragment_global)) }
+        } else {
+            null
+        },
+        placeholder = { Text(stringResource(R.string.subscription_fetch_fragment_placeholder)) },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.mono(),
+        shape = MaterialTheme.shapes.large,
+        trailingIcon = {
+            IconButton(onClick = { onSave(draft.ifBlank { null }) }) {
+                Icon(
+                    painter = painterResource(SubspaceIcons.Check),
+                    contentDescription = stringResource(R.string.subscription_fetch_fragment_save),
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** What the last refresh did to reach the subscription. Hosts only, never full URLs (ARCHITECTURE.md §5.6). */
+@Composable
+private fun ReachLines(state: SubscriptionDetailState) {
+    state.movedFromHost?.let { host ->
+        val whenMoved = state.movedAt?.let { relativeTime(it) }.orEmpty()
+        ReachFact(stringResource(R.string.subscription_moved_from, host, whenMoved))
+    }
+    when (state.lastFetchVia) {
+        FetchVia.Fallback -> ReachFact(stringResource(R.string.subscription_via_fallback))
+        FetchVia.FallbackFailed -> ReachFact(stringResource(R.string.subscription_fallback_failed))
+        FetchVia.Main, null -> Unit
+    }
+    if (state.insecureIgnored) IgnoredDirectiveText(stringResource(R.string.subscription_insecure_ignored))
+    state.linkFragmentProblem?.let { problem ->
+        val reason = stringResource(problem.textRes())
+        IgnoredDirectiveText(stringResource(R.string.subscription_fetch_fragment_invalid, reason))
+    }
+    state.redirectIssues.forEach { issue -> IgnoredDirectiveText(redirectIssueText(issue)) }
+}
+
+@Composable
+private fun ReachFact(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = ROW_GAP),
+    )
+}
+
+@Composable
+private fun redirectIssueText(issue: RedirectIssue): String =
+    if (issue.collides) {
+        stringResource(R.string.subscription_redirect_collides, issue.key)
+    } else {
+        val reason = issue.reason?.let { stringResource(it.textRes()) }.orEmpty()
+        stringResource(R.string.subscription_redirect_ignored, issue.key, reason)
+    }
+
+private fun RedirectRejection.textRes(): Int =
+    when (this) {
+        RedirectRejection.Malformed -> R.string.redirect_rejection_malformed
+        RedirectRejection.NotHttps -> R.string.redirect_rejection_not_https
+        RedirectRejection.HasUserInfo -> R.string.redirect_rejection_user_info
+        RedirectRejection.IpLiteral -> R.string.redirect_rejection_ip_literal
+        RedirectRejection.LocalHost -> R.string.redirect_rejection_local
+        RedirectRejection.NotABareHost -> R.string.redirect_rejection_bare_host
+    }
 
 @Composable
 private fun DirectivesSection(

@@ -6,6 +6,8 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.data.FetchVia
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.profiles.R
@@ -18,7 +20,7 @@ import space.getsub.feature.profiles.add.UserMessage
  */
 class SubscriptionDetailSnapshotTest {
     @get:Rule
-    val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_5.copy(screenHeight = 2600))
+    val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_5.copy(screenHeight = 3400))
 
     private val noActions =
         SubscriptionDetailActions(
@@ -30,6 +32,11 @@ class SubscriptionDetailSnapshotTest {
             onHwidEnabledChanged = {},
             onUserAgentOverrideChanged = {},
             onDeleteConfirmed = {},
+            onAllowRedirects = {},
+            onDenyRedirects = {},
+            onRedirectsAllowedChanged = {},
+            onFrontingSaved = { _, _ -> },
+            onLinkFragmentSaved = {},
         )
 
     private val fetched =
@@ -71,6 +78,22 @@ class SubscriptionDetailSnapshotTest {
             lastFetchState = LastFetchState.NeverFetched,
         )
 
+    private val reach =
+        // Without the refresh banner and the directive rows, so the whole new section fits above the fold.
+        fetched.copy(
+            refreshResult = null,
+            rows = emptyList(),
+            redirectTrust = RedirectTrust.Unasked,
+            redirectTargetHosts = listOf("new.example"),
+            resolveAddress = "front.example",
+            hostHeader = "real.example",
+            linkFragment = "80-250,10-100,tlshello",
+            lastFetchVia = FetchVia.Fallback,
+            insecureIgnored = true,
+            movedFromHost = "old.example",
+            movedAt = System.currentTimeMillis() - TWO_AND_A_HALF_HOURS_MS,
+        )
+
     private fun shoot(
         name: String,
         state: SubscriptionDetailState,
@@ -87,6 +110,9 @@ class SubscriptionDetailSnapshotTest {
 
     @Test
     fun neverFetched() = shoot("subscription-never-fetched", neverFetched)
+
+    @Test
+    fun reachingTheSubscription() = shoot("subscription-reach", reach)
 
     private companion object {
         // DateUtils floors to whole hours, so 2.5 h renders "2 hours ago" for

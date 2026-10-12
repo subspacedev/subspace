@@ -70,9 +70,43 @@ class SubscriptionDetailScreenTest {
         unpinnedKey shouldBe "profile-update-interval"
     }
 
+    @Test
+    fun theRedirectRequestNamesTheHostAndAllowInvokesTheAction() {
+        var allowCalls = 0
+        setContent(
+            state = detailState().copy(redirectTargetHosts = listOf("new.example")),
+            actions = noOpActions(onAllowRedirects = { allowCalls++ }),
+        )
+
+        composeRule
+            .onNodeWithText(
+                "Your provider wants permission to move or redirect this subscription — to new.example",
+            ).assertExists()
+        composeRule.onNodeWithText("Allow").performClick()
+        allowCalls shouldBe 1
+    }
+
+    @Test
+    fun anIgnoredInsecureFlagIsExplained() {
+        setContent(state = detailState().copy(insecureIgnored = true))
+
+        composeRule
+            .onNodeWithText("Certificate checks stay on — insecure in the link was ignored")
+            .performScrollTo()
+            .assertExists()
+    }
+
+    @Test
+    fun aGlobalFragmentationSettingIsNamedUnderTheFetchField() {
+        setContent(state = detailState().copy(globalFragmentationOn = true))
+
+        composeRule.onNodeWithText("Your Fragmentation settings apply").performScrollTo().assertExists()
+    }
+
     private fun noOpActions(
         onDeleteConfirmed: () -> Unit = {},
         onUnpinRow: (String) -> Unit = {},
+        onAllowRedirects: () -> Unit = {},
     ) =
         SubscriptionDetailActions(
             onBack = {},
@@ -83,6 +117,11 @@ class SubscriptionDetailScreenTest {
             onHwidEnabledChanged = {},
             onUserAgentOverrideChanged = {},
             onDeleteConfirmed = onDeleteConfirmed,
+            onAllowRedirects = onAllowRedirects,
+            onDenyRedirects = {},
+            onRedirectsAllowedChanged = {},
+            onFrontingSaved = { _, _ -> },
+            onLinkFragmentSaved = {},
         )
 
     private fun detailState() =
