@@ -5,6 +5,7 @@ package space.getsub.core.data.db
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
+import space.getsub.core.data.StoredSubscription
 
 /**
  * Pins ARCHITECTURE.md §5.6: [SubscriptionEntity.url], [SubscriptionDirectiveEntity.value] and
@@ -52,7 +53,46 @@ class SubscriptionEntityTest {
             "SubscriptionEntity(id=1, groupId=1, url=<redacted>, " +
             "userAgentOverride=null, hwidEnabled=true, " +
             "lastFetchedAt=12345, lastAttemptedAt=23456, lastFetchStatus=OK, " +
-            "lastFetchDetail=null, createdAt=100)"
+            "lastFetchDetail=null, createdAt=100, " +
+            "resolveAddress=none, hostHeader=none, linkFragment=none, " +
+            "insecureIgnored=false, redirectTrust=UNASKED, " +
+            "movedFromHost=none, movedAt=null, lastFetchVia=null)"
+    }
+
+    // M9-B spec §5: the route and the origin a subscription moved from are as secret as the URL.
+    private val routeSecrets = listOf("front.example", "real.example", "80-250,10-100,tlshello", "old.example")
+
+    @Test
+    fun `toString keeps the route and the moved-from host out`() {
+        val text =
+            subscription()
+                .copy(
+                    resolveAddress = "front.example",
+                    hostHeader = "real.example",
+                    linkFragment = "80-250,10-100,tlshello",
+                    movedFromHost = "old.example",
+                ).toString()
+        routeSecrets.forEach { text shouldNotContain it }
+    }
+
+    @Test
+    fun `stored subscription toString keeps the url, the route and the moved-from host out`() {
+        val text =
+            StoredSubscription(
+                id = 1,
+                groupId = 1,
+                url = secretUrl,
+                userAgentOverride = null,
+                hwidEnabled = true,
+                lastFetchedAt = null,
+                lastFetchStatus = null,
+                lastFetchDetail = null,
+                resolveAddress = "front.example",
+                hostHeader = "real.example",
+                linkFragment = "80-250,10-100,tlshello",
+                movedFromHost = "old.example",
+            ).toString()
+        (routeSecrets + secretUrl).forEach { text shouldNotContain it }
     }
 
     @Test
