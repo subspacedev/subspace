@@ -105,11 +105,15 @@ internal interface SubscriptionDao {
     suspend fun setLinkFragment(id: Long, fragment: String?)
 
     /**
-     * M9-B spec §3.4 step 4. Route columns are left alone: they are the user's. Conditional on the
-     * stored trust so a revocation that lands after the syncer's own check still wins (M9-B spec §1.2).
+     * M9-B spec §3.4 step 4. Clears `resolveAddress` and `hostHeader`: they describe the old host's
+     * network position and would misroute the new one, the same reason the fallback drops them
+     * (M9-B spec §3.3). `linkFragment` stays — it is about the network path, not the host. Conditional
+     * on the stored trust so a revocation that lands after the syncer's own check still wins
+     * (M9-B spec §1.2).
      */
     @Query(
-        "UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at " +
+        "UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at, " +
+            "resolveAddress = NULL, hostHeader = NULL " +
             "WHERE id = :id AND redirectTrust = 'ALLOWED'",
     )
     suspend fun applyMove(id: Long, url: String, fromHost: String, at: Long)

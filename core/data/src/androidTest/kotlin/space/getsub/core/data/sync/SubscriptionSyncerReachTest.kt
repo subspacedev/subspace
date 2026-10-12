@@ -301,4 +301,42 @@ class SubscriptionSyncerReachTest {
 
         requests.size shouldBe 1
     }
+
+    @Test
+    fun aRevocationDuringTheFallbackFetchDiscardsItsResponse() = runTest {
+        val id = allowedWithFallback()
+        responseForRequest = { r ->
+            requests += r
+            if (r.url == "https://example.com/sub") {
+                FetchOutcome.Failed(FetchFailure.TimedOut)
+            } else {
+                subscriptions.setRedirectTrust(id, RedirectTrust.Denied)
+                FetchOutcome.Success(link("Osaka"), emptyMap())
+            }
+        }
+
+        syncer().sync(id).shouldBeInstanceOf<SyncResult.Failed>()
+
+        requests.size shouldBe 2
+        subscriptions.observeSubscriptions().first().single().let {
+            it.lastFetchStatus shouldBe FetchFailure.TimedOut.name
+            it.lastFetchVia shouldBe FetchVia.Main
+        }
+    }
+
+    @Test
+    fun aMoveClearsTheFrontingButKeepsTheLinkFragment() = runTest {
+        val id = subscriptions.add(FRONTED_LINK, "p").id
+        subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
+        response = ok(mapOf("new-domain" to "moved.example"))
+
+        syncer().sync(id)
+
+        subscriptions.observeSubscriptions().first().single().let {
+            it.url shouldBe "https://moved.example/sub"
+            it.resolveAddress shouldBe null
+            it.hostHeader shouldBe null
+            it.linkFragment shouldBe "80-250,10-100,tlshello"
+        }
+    }
 }

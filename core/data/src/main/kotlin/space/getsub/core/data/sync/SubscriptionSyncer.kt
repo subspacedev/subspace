@@ -157,7 +157,18 @@ internal constructor(
             source.fetch(
                 request.copy(url = target, route = request.route.copy(resolveAddress = null, hostHeader = null)),
             )
-        return if (fallback is FetchOutcome.Success) fallback to FetchVia.Fallback else main to FetchVia.FallbackFailed
+        // Trust is re-read once the fallback answers: a revocation during that fetch must still win.
+        return when {
+            !isRedirectAllowed(subscription.id) -> main to FetchVia.Main
+            fallback is FetchOutcome.Failed -> {
+                Log.i(TAG, "subscription ${subscription.id} fallback failed reason=${fallback.reason.name}")
+                main to FetchVia.FallbackFailed
+            }
+            else -> {
+                Log.i(TAG, "subscription ${subscription.id} fallback ok")
+                fallback to FetchVia.Fallback
+            }
+        }
     }
 
     /** The fetch can outlive a consent change, so trust is read fresh, never from the pre-fetch row. */
