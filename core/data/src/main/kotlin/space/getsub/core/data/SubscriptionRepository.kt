@@ -6,6 +6,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -299,6 +300,17 @@ internal constructor(
     ): Unit = dao.setUserAgentOverride(id, userAgent?.takeIf(String::isNotBlank))
 
     /** M9-B spec §1.2. */
+    /** M9-B spec §4: recomposes on any directive or subscription change, so the card never goes stale. */
+    public fun observeRedirectStatus(id: Long): Flow<RedirectStatus> =
+        combine(dao.observeDirectives(id), dao.observeSubscriptions()) { directives, rows ->
+            val self = rows.firstOrNull { it.id == id } ?: return@combine RedirectStatus.NONE
+            redirectStatusOf(
+                currentUrl = self.url,
+                directives = directives.associate { it.key to it.value },
+                otherUrls = rows.filter { it.id != id }.mapTo(mutableSetOf()) { it.url },
+            )
+        }.distinctUntilChanged()
+
     public suspend fun setRedirectTrust(id: Long, trust: RedirectTrust): Unit = dao.setRedirectTrust(id, trust.stored)
 
     /** M9-B spec §4: the user edits fronting in subscription details. */
