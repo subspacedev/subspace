@@ -16,6 +16,8 @@ import org.junit.Test
 import space.getsub.core.model.FragmentPackets
 import space.getsub.core.model.FragmentSpec
 import space.getsub.core.model.XrayRange
+import java.net.InetSocketAddress
+import java.net.Proxy
 
 class SubscriptionFetcherRouteTest {
     private lateinit var server: MockWebServer
@@ -71,13 +73,38 @@ class SubscriptionFetcherRouteTest {
     }
 
     @Test
-    fun throughTheTunnelProxyTheRouteDnsAndFactoryAreSkippedButHostStays() {
+    fun throughTheTunnelProxyTheRouteDnsAndFactoryAreSkipped() {
         // Plan ruling P1.
         val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(5, 5), XrayRange(0, 0), null)
         val proxied = request(FetchRoute("203.0.113.1", "real.example", spec)).copy(proxyPort = 1)
         val client = fetcher.clientFor(proxied)
         (client.socketFactory is FragmentingSocketFactory) shouldBe false
         client.dns shouldBe Dns.SYSTEM
+        client.proxy shouldBe Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 1))
+    }
+
+    @Test
+    fun throughTheTunnelProxyTheHostHeaderStillApplies() = runTest {
+        // Plan ruling P1. The mock server stands in for the tunnel's HTTP proxy, so it sees the proxied request.
+        server.enqueue(MockResponse(code = 200, body = "ok"))
+        val proxied =
+            request(FetchRoute(hostHeader = "real.example"), host = "sub.invalid").copy(proxyPort = server.port)
+
+        fetcher.fetch(proxied).shouldBeInstanceOf<FetchOutcome.Success>()
+
+        server.takeRequest().headers["Host"] shouldBe "real.example"
+    }
+
+    @Test
+    fun aResolveAddressBypassesAnOsProxy() {
+        // A system proxy would resolve the URL host itself and ignore the chosen address.
+        fetcher.clientFor(request(FetchRoute(resolveAddress = "127.0.0.1"))).proxy shouldBe Proxy.NO_PROXY
+    }
+
+    @Test
+    fun aFragmentOnlyRouteKeepsTheDefaultProxySelection() {
+        val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(5, 5), XrayRange(0, 0), null)
+        fetcher.clientFor(request(FetchRoute(fragment = spec))).proxy shouldBe null
     }
 
     @Test
