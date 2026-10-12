@@ -1945,12 +1945,10 @@ above cosmetic parity:
       switch); verified on device before ticking.
 - [ ] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
-      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
-      switch); verified on device before ticking.
+      — M9-B: implemented under the per-subscription trust grant; verified on device before ticking.
 - [ ] **`new-url` / `new-domain`**: provider-initiated migration when the
       primary domain gets blocked
-      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
-      switch); verified on device before ticking.
+      — M9-B: implemented under the per-subscription trust grant; verified on device before ticking.
 - [ ] **Domain pre-resolution**: resolve the server domain over a specified
       DoH server before connecting, pick the lowest-latency IP
 - [ ] **User-Agent override** for subscription fetch and for geo file
