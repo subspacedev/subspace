@@ -26,6 +26,8 @@ import space.getsub.core.data.MaskResolution
 import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.data.RedirectStatus
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
@@ -335,6 +337,20 @@ class ServersViewModelTest {
             id: Long,
             userAgent: String?,
         ) = Unit
+
+        /** Redirect status by subscription id; absent means [RedirectStatus.NONE]. */
+        val redirectStatusById: MutableMap<Long, RedirectStatus> = mutableMapOf()
+        val trustWrites = mutableListOf<Pair<Long, RedirectTrust>>()
+
+        override fun observeRedirectStatus(id: Long): Flow<RedirectStatus> =
+            MutableStateFlow(redirectStatusById[id] ?: RedirectStatus.NONE)
+
+        override suspend fun setRedirectTrust(
+            id: Long,
+            trust: RedirectTrust,
+        ) {
+            trustWrites += id to trust
+        }
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
 
@@ -807,7 +823,10 @@ class ServersViewModelTest {
 
     // ── M4.5: latency and per-group sort ────────────────────────────────────
 
-    private fun subscriptionFor(id: Long = 9L) =
+    private fun subscriptionFor(
+        id: Long = 9L,
+        trust: RedirectTrust = RedirectTrust.Unasked,
+    ): StoredSubscription =
         StoredSubscription(
             id = id,
             groupId = group.id,
@@ -817,6 +836,7 @@ class ServersViewModelTest {
             lastFetchedAt = null,
             lastFetchStatus = null,
             lastFetchDetail = null,
+            redirectTrust = trust,
         )
 
     private fun rowsOf(model: ServersViewModel) = model.state.value.groups.flatMap { it.profiles }
@@ -917,6 +937,43 @@ class ServersViewModelTest {
             val visible = viewModel.state.value.groups.single()
             visible.sort shouldBe SortOrder.Alphabetical
             visible.sortFromProvider shouldBe false
+        }
+
+    @Test
+    fun `an unasked subscription with targets carries the request hosts`() =
+        runTest {
+            val subscribedSource =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            subscribedSource.redirectStatusById[9L] = RedirectStatus(listOf("new.example"), emptyList())
+            val model = ServersViewModel(subscribedSource, tester)
+            advanceUntilIdle()
+
+            model.state.value.groups.single().redirectRequestHosts shouldBe listOf("new.example")
+        }
+
+    @Test
+    fun `an answered subscription carries no request`() =
+        runTest {
+            val subscribedSource =
+                FakeProfileSource(
+                    allGroups = listOf(group),
+                    subscriptions = listOf(subscriptionFor(trust = RedirectTrust.Allowed)),
+                )
+            subscribedSource.redirectStatusById[9L] = RedirectStatus(listOf("new.example"), emptyList())
+            val model = ServersViewModel(subscribedSource, tester)
+            advanceUntilIdle()
+
+            model.state.value.groups.single().redirectRequestHosts shouldBe emptyList()
+        }
+
+    @Test
+    fun `allow and deny write the trust for that subscription`() =
+        runTest {
+            viewModel.onAllowRedirects(subscriptionId = 7L)
+            viewModel.onDenyRedirects(subscriptionId = 8L)
+            advanceUntilIdle()
+
+            source.trustWrites shouldBe listOf(7L to RedirectTrust.Allowed, 8L to RedirectTrust.Denied)
         }
 
     @Test

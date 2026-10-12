@@ -40,10 +40,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
 import space.getsub.core.ui.component.GroupCard
-import space.getsub.core.ui.component.GroupCardUpdateRow
 import space.getsub.core.ui.component.MenuItem
 import space.getsub.core.ui.component.NoteTone
-import space.getsub.core.ui.component.QuotaBar
 import space.getsub.core.ui.component.ServerRow
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.profiles.R
@@ -52,7 +50,6 @@ import space.getsub.core.ui.R as CoreR
 private val LIST_TOP_PADDING = 8.dp
 private val GROUP_GAP = 8.dp
 private val MEASURE_BAR_GAP = 8.dp
-private val GROUP_HEADER_GAP = 8.dp
 private val ROW_GAP = 8.dp
 private val MARKER_GAP = 4.dp
 private val SMALL_ICON_SIZE = 18.dp
@@ -81,6 +78,10 @@ internal data class ServersGroupListActions(
      * `onUpdate` lambda in that case.
      */
     val onUpdateSubscription: (Long) -> Unit,
+    /** The redirect request's Allow, for the subscription id [ServersGroup.subscriptionId] names. */
+    val onAllowRedirects: (Long) -> Unit,
+    /** The redirect request's Don't allow, for the same subscription id. */
+    val onDenyRedirects: (Long) -> Unit,
     /**
      * Task 15: `GroupCard`'s "Subscription details" overflow item — opens
      * `SubscriptionDetail(subscriptionId)`. Same "only ever invoked for a
@@ -145,20 +146,7 @@ internal fun ServersGroupList(
                 expanded = group.id in expandedGroups,
                 onToggle = { actions.onToggleExpand(group.id) },
                 menuItems = menuItems,
-                header = {
-                    QuotaBar(
-                        usedBytes = group.quotaUsedBytes,
-                        totalBytes = group.quotaTotalBytes,
-                        modifier = Modifier.padding(top = GROUP_HEADER_GAP),
-                    )
-                    // onUpdate is null for a MANUAL group (subscriptionId is null there) —
-                    // no Update affordance without an id to sync.
-                    GroupCardUpdateRow(
-                        groupName = group.name,
-                        lastFetchedAtEpochMillis = group.lastFetchedAtEpochMillis,
-                        onUpdate = group.subscriptionId?.let { id -> { actions.onUpdateSubscription(id) } },
-                    )
-                },
+                header = { GroupCardHeader(group, actions) },
             ) {
                 // Nothing to test or sort when the filter leaves this group without rows.
                 if (group.profiles.isNotEmpty()) {

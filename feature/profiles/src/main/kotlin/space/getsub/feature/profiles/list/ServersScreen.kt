@@ -154,6 +154,8 @@ fun ServersScreen(
                 onAddProfile = { showAddSheet = true },
                 onProfileEdit = onEditProfile,
                 onUpdateSubscription = viewModel::onUpdateSubscription,
+                onAllowRedirects = viewModel::onAllowRedirects,
+                onDenyRedirects = viewModel::onDenyRedirects,
                 onDismissUpdateResult = viewModel::onDismissUpdateResult,
                 onOpenSubscriptionDetail = onOpenSubscriptionDetail,
                 onTestProfile = viewModel::onTestProfile,
@@ -192,6 +194,10 @@ internal data class ServersActions(
     val onProfileEdit: (Long) -> Unit,
     /** Fix round, Important 1: forwarded to [ServersGroupListActions.onUpdateSubscription]. */
     val onUpdateSubscription: (Long) -> Unit,
+    /** Forwarded to [ServersGroupListActions.onAllowRedirects]. */
+    val onAllowRedirects: (Long) -> Unit,
+    /** Forwarded to [ServersGroupListActions.onDenyRedirects]. */
+    val onDenyRedirects: (Long) -> Unit,
     /** Dismisses [ServersState.updateResult] once read. */
     val onDismissUpdateResult: () -> Unit,
     /** Task 15: forwarded to [ServersGroupListActions.onOpenSubscriptionDetail]. */
@@ -264,6 +270,8 @@ internal fun ServersScreenContent(
                 onProfileSelected = actions.onProfileSelected,
                 onProfileEdit = actions.onProfileEdit,
                 onUpdateSubscription = actions.onUpdateSubscription,
+                onAllowRedirects = actions.onAllowRedirects,
+                onDenyRedirects = actions.onDenyRedirects,
                 onOpenSubscriptionDetail = actions.onOpenSubscriptionDetail,
                 onTestProfile = actions.onTestProfile,
                 onTestGroup = actions.onTestGroup,
