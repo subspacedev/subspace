@@ -1658,6 +1658,12 @@ Mandatory rules:
   `RoutingRepository.decideFor`, so "would this change anything" has one
   definition rather than one per caller.
 
+  **M9-B adds the second.** `new-url`, `new-domain` and `fallback-url` share one grant per
+  subscription: the first fetch carrying any of them raises a request naming the target hosts, on the
+  Servers card and in subscription details. Until the user allows it, nothing is followed; once
+  allowed, a fallback is tried when the main address fails and a move applies at most once per
+  refresh. Targets must be public `https` hosts.
+
 ---
 
 ## A.2 Tier 1 — table stakes (MVP)
@@ -1935,10 +1941,16 @@ above cosmetic parity:
       Hysteria2.
 - [ ] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
+      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
+      switch); verified on device before ticking.
 - [ ] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
+      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
+      switch); verified on device before ticking.
 - [ ] **`new-url` / `new-domain`**: provider-initiated migration when the
       primary domain gets blocked
+      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
+      switch); verified on device before ticking.
 - [ ] **Domain pre-resolution**: resolve the server domain over a specified
       DoH server before connecting, pick the lowest-latency IP
 - [ ] **User-Agent override** for subscription fetch and for geo file
