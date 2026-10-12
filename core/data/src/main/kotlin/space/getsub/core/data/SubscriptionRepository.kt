@@ -305,6 +305,9 @@ internal constructor(
         return resolveEffective(key, providerValue, pinned, default)
     }
 
+    /** The subscription that owns [groupId], or null for a manual group. */
+    public suspend fun subscriptionIdForGroup(groupId: Long): Long? = dao.subscriptionByGroup(groupId)?.id
+
     /**
      * Every subscription's provider-sent value for [key], keyed by subscription
      * id, recomposing on any directive change.

@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Profile
 import java.io.File
 import java.io.IOException
@@ -48,13 +49,21 @@ public class ProxyHeadProbe(
     public suspend fun measure(
         profile: Profile,
         options: LatencyOptions,
+        // M9-A spec §3.4: without it, a server reachable only fragmented pings as dead.
+        obfuscation: Obfuscation? = null,
     ): LatencyResult =
         withContext(io) {
             val port =
                 allocatePortWithOneRetry()
                     ?: return@withContext LatencyResult.failed(LatencyOutcome.UNREACHABLE)
 
-            val settings = TunnelSettings(socksPort = port, dnsServer = PING_DNS, enableSniffing = false)
+            val settings =
+                TunnelSettings(
+                    socksPort = port,
+                    dnsServer = PING_DNS,
+                    enableSniffing = false,
+                    obfuscation = obfuscation,
+                )
             // Resolved before any file is written: an unsupported protocol must
             // cost nothing, not a config write we immediately delete.
             val json =

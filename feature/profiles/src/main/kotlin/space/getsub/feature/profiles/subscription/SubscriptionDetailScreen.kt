@@ -65,6 +65,7 @@ import space.getsub.core.ui.component.SubspaceDialog
 import space.getsub.core.ui.component.SwitchRow
 import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.core.ui.textRes
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
@@ -258,11 +259,7 @@ private fun DetailBody(
             )
         }
         if (state.rows.isNotEmpty()) {
-            SectionCard(title = stringResource(R.string.subscription_detail_section_directives)) {
-                state.rows.forEach { row ->
-                    DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
-                }
-            }
+            DirectivesSection(state = state, actions = actions)
         }
 
         DeleteButton(onClick = { deleteRequested = true }, modifier = Modifier.padding(top = CONTENT_PADDING))
@@ -279,6 +276,36 @@ private fun DetailBody(
             onDismiss = { deleteRequested = false },
         )
     }
+}
+
+@Composable
+private fun DirectivesSection(
+    state: SubscriptionDetailState,
+    actions: SubscriptionDetailActions,
+) {
+    SectionCard(title = stringResource(R.string.subscription_detail_section_directives)) {
+        state.fragmentIgnored?.let { problem ->
+            val reason = stringResource(problem.textRes())
+            IgnoredDirectiveText(stringResource(R.string.subscription_fragment_ignored, reason))
+        }
+        state.noiseIgnored?.let { problem ->
+            val reason = stringResource(problem.textRes())
+            IgnoredDirectiveText(stringResource(R.string.subscription_noise_ignored, reason))
+        }
+        state.rows.forEach { row ->
+            DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
+        }
+    }
+}
+
+@Composable
+private fun IgnoredDirectiveText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier.padding(vertical = FIELD_GAP),
+    )
 }
 
 /** A [SectionTitle] over a `surfaceContainer` card — the same shape the server editor's sections use. */

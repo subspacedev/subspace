@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import space.getsub.core.data.GeoInstallRequest
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.ThemePreference
@@ -23,8 +25,10 @@ import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.DnsValidation
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.isGeoFileName
 import javax.inject.Inject
@@ -64,6 +68,9 @@ constructor(
     private var dnsRevision = 0L
     private var editableDnsRevision: Long? = null
     private var latestPersistedDnsResolver = DnsResolver.DEFAULT
+
+    /** Serialises fragmentation and noise patches (see [onFragmentSettingsChanged]). */
+    private val obfuscationWrites = Mutex()
 
     init {
         settingsSource.theme
@@ -154,6 +161,14 @@ constructor(
             .onEach { enabled -> _state.update { it.copy(dynamicColor = enabled) } }
             .launchIn(viewModelScope)
 
+        settingsSource.fragmentSettings
+            .onEach { value -> _state.update { it.copy(fragment = value) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.noiseSettings
+            .onEach { value -> _state.update { it.copy(noise = value) } }
+            .launchIn(viewModelScope)
+
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)
         // purely so SettingsState.perTagBreakdownSessionNoticeVisible has something to derive
         // from — see that property's own KDoc for why this plain mirror, with no latch of what
@@ -226,6 +241,28 @@ constructor(
     /** Applied at once: MainActivity reads the same setting through the theme source. */
     fun onDynamicColorChanged(enabled: Boolean) {
         viewModelScope.launch { settingsSource.setDynamicColor(enabled) }
+    }
+
+    /**
+     * Applies [patch] to the **latest stored** value, never to the page's snapshot. A field's dispose
+     * commit runs after the switch, mode or type change that removed it; written as a whole object it
+     * would put the old switch back. Writes are serialised so two patches cannot read the same value.
+     */
+    fun onFragmentSettingsChanged(patch: (FragmentSettings) -> FragmentSettings) {
+        viewModelScope.launch {
+            obfuscationWrites.withLock {
+                settingsSource.setFragmentSettings(patch(settingsSource.fragmentSettings.first()))
+            }
+        }
+    }
+
+    /** As [onFragmentSettingsChanged]. */
+    fun onNoiseSettingsChanged(patch: (NoiseSettings) -> NoiseSettings) {
+        viewModelScope.launch {
+            obfuscationWrites.withLock {
+                settingsSource.setNoiseSettings(patch(settingsSource.noiseSettings.first()))
+            }
+        }
     }
 
     /**

@@ -487,6 +487,15 @@ adapted to. A shipping libXray client resolves the same constraint the same
 way (Appendix C.2, OneXray); that is corroboration, not the reason — the
 reasoning stands on §10.6 and on tun2socks dialling a port this app allocated.
 
+**One exception, since M9-A: fragment and noise.** The composer may add a Finalmask `fragment` or
+`noise` mask to the config's outermost proxy outbounds. A subscription directive is only added where
+the config has none of its own; the user's Fragmentation or Noise setting, when On, replaces the
+config's own (including cutting a `dialerProxy` link to a freedom fragmenter, never deleting that
+outbound). A cut link takes the freedom outbound's other mask with it: when the user's override of one
+type cuts a chain that also carries the other type, the config's own chained mask of that other type is
+lost unless a subscription directive supplies it. Everything else is untouched apart from the rewrites
+below. See §14.6.
+
 `RawConfigComposer` (`:core:xray`) does the rewriting, working on parsed JSON
 rather than a typed model precisely so it preserves whatever the config
 carries that this design does not name — `burstObservatory`, `reverse`, an
@@ -1442,13 +1451,17 @@ external tunnel first keeps the packet path in §3 explicit and debuggable.
 v2.16.0 ships prebuilt Android binaries for all four ABIs, which is a useful
 fallback, but the source build is preferred so the tunnel is reproducible.
 
-### 14.6 Finalmask exposure — DEFERRED, not open
+### 14.6 Finalmask exposure — RESOLVED
 
-Leave Finalmask (`header-custom`, `Sudoku`, `fragment`, `noise`) to raw-JSON
-profiles for now. Revisit in the censorship-resistance milestone, where it is
-evaluated alongside the §A.3.3 fragmentation and noise directives rather than
-in isolation — they overlap, and picking a UI for both at once avoids shipping
-two competing controls for the same job.
+Fragment and noise are exposed as Finalmask (`fragment` TCP mask, `noise` UDP mask), through two
+global settings and the `fragmentation-*`/`noises-*` directives; the user's setting, when On,
+overrides every provider source. The server-paired masks (`header-custom`, `sudoku`, `salamander`,
+`xdns`, `xicmp`, `xmc`, `realm`, `mkcp-*`) are not offered: they only work when they match the
+server, so they pass through when a raw config carries them and are never added or removed. The
+freedom-outbound `fragment`/`noises` chain is not generated; a raw config's own chain is detected,
+and the user's override cuts its link. Design: M9-A spec
+(`docs/agent/specs/2026-10-12-m9a-fragment-noise-design.md`, gitignored); upstream facts:
+`docs/agent/research/2026-10-11-m9a-fragment-noise-finalmask.md`.
 
 ### 14.7 Distribution target — RESOLVED
 
@@ -1908,10 +1921,18 @@ your DNS setting"* while the profile's routing rules still apply.
 These are the ones that matter most in practice and are worth prioritizing
 above cosmetic parity:
 
-- [ ] **Fragmentation**: `fragmentation-packets` (e.g. `tlshello`),
-      `-length`, `-interval`, `-maxsplit`
+- [x] **Fragmentation**: `fragmentation-packets` (e.g. `tlshello`),
+      `-length`, `-interval`, `-maxsplit` — **M9-A.** A Finalmask `fragment`
+      mask; the user's setting overrides the directive, which overrides
+      nothing the config already sets. Verified on hardware (Pixel 8,
+      2026-10-12): the ClientHello leaves split with the configured sizes and
+      gaps, for typed, subscription-directive and raw-JSON servers, and for
+      `proxy-head` latency probes.
 - [ ] **Noises**: `noises-packet-type` (array/str/hex/base64), `-packet`,
-      `-delay`, `-rand`, `-rand-range`
+      `-delay`, `-rand`, `-rand-range` — **M9-A implemented, not verified.**
+      Noise is a UDP mask, and this build runs no UDP transport (raw JSON
+      imports VLESS only; mKCP is gated). Verified when sub-project D adds
+      Hysteria2.
 - [ ] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
 - [ ] **Fallback URL**: switch to a backup subscription URL if the primary
@@ -1923,8 +1944,8 @@ above cosmetic parity:
 - [ ] **User-Agent override** for subscription fetch and for geo file
       downloads (`safari-mac`, `chrome-win`, `chrome-android`, ...)
 - [ ] **Configurable request timeout** (Happ: 5–15s, default 9)
-- [ ] Consider exposing Xray's **Finalmask** (§6) — newer than anything in
-      this list and arguably more important now
+- [ ] Consider exposing Xray's **Finalmask** (§6) — decided in §14.6: fragment
+      and noise only, as above; the server-paired masks pass through
 
 ### A.3.4 Tunnel and core tuning
 

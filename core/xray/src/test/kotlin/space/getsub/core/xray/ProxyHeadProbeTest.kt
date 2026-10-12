@@ -9,14 +9,20 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import space.getsub.core.model.Applied
+import space.getsub.core.model.FragmentPackets
+import space.getsub.core.model.FragmentSpec
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.XrayRange
+import java.io.File
 
 private val OPTIONS =
     LatencyOptions(
@@ -35,6 +41,7 @@ private class FakePingApi(
     private val delay: Int = 42,
     private val failedAllocations: Int = 0,
     private val pingFails: Boolean = false,
+    private val onPing: (String) -> Unit = {},
 ) : XrayPingApi {
     var seenConfigPath: String? = null
     var seenProxy: String? = null
@@ -54,6 +61,7 @@ private class FakePingApi(
         proxy: String,
     ): Int {
         seenConfigPath = configPath
+        onPing(configPath)
         seenProxy = proxy
         seenTimeoutSeconds = timeoutSeconds
         if (pingFails) throw XrayException("ping failed")
@@ -84,6 +92,23 @@ class ProxyHeadProbeTest {
         val outbound = TrojanOutbound(address = "example.com", port = 443, password = "pw", stream = stream)
         return Profile(id = "p2", name = "trojan", outbound = outbound)
     }
+
+    @Test
+    fun `the probe config carries the obfuscation it is given - M9-A spec 3_4`() =
+        runTest {
+            var seen = ""
+            val api = FakePingApi(onPing = { path -> seen = File(path).readText() })
+            val obf =
+                Obfuscation(
+                    Applied(
+                        FragmentSpec(FragmentPackets.TlsHello, XrayRange(1, 2), XrayRange(1, 1), null),
+                        replaceOwn = false,
+                    ),
+                    null,
+                )
+            ProxyHeadProbe(api, temp.root).measure(vlessProfile(), OPTIONS, obf)
+            seen.contains("\"finalmask\"") shouldBe true
+        }
 
     @Test
     fun `a successful ping returns OK with the reported delay`() =

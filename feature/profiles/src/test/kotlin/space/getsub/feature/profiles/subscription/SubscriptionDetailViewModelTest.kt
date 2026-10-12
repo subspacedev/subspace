@@ -20,10 +20,14 @@ import org.junit.Before
 import org.junit.Test
 import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.feature.profiles.ProfileSource
@@ -110,6 +114,20 @@ class SubscriptionDetailViewModelTest {
         override suspend fun setUserAgentOverride(id: Long, userAgent: String?) {
             userAgentOverride = userAgent
         }
+
+        val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
+        override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        /** When set, the issues follow the pins the way the real resolver follows `effective`. */
+        var issuesFromPins: ((Map<String, String>) -> ResolvedObfuscation)? = null
+        var issuesFailure: Exception? = null
+
+        override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation {
+            issuesFailure?.let { throw it }
+            return issuesFromPins?.invoke(pins.value)
+                ?: directiveIssues[subscriptionId]
+                ?: ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
+        }
     }
 
     private lateinit var source: FakeProfileSource
@@ -126,6 +144,85 @@ class SubscriptionDetailViewModelTest {
     fun tearDown() {
         Dispatchers.resetMain()
     }
+
+    @Test
+    fun `an invalid directive surfaces its reason`() =
+        runTest {
+            source.directiveIssues[SUBSCRIPTION_ID] =
+                ResolvedObfuscation(MaskResolution.Ignored(ObfuscationProblem.LengthFromZero), MaskResolution.Absent)
+
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.LengthFromZero
+            viewModel.state.value.noiseIgnored shouldBe null
+        }
+
+    @Test
+    fun `directive issues are read again after a refresh completes`() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.state.value.noiseIgnored shouldBe null
+
+            source.directiveIssues[SUBSCRIPTION_ID] =
+                ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Ignored(ObfuscationProblem.LengthFromZero))
+            viewModel.onRefreshNow()
+            advanceUntilIdle()
+
+            viewModel.state.value.noiseIgnored shouldBe ObfuscationProblem.LengthFromZero
+        }
+
+    @Test
+    fun `pinning a fixing value clears the ignored reason without a refresh`() =
+        runTest {
+            // The provider sent two packets entries; a pin of one fixes it.
+            source.issuesFromPins = { pins ->
+                if (pins["fragmentation-packets"] == null) {
+                    ResolvedObfuscation(
+                        MaskResolution.Ignored(ObfuscationProblem.MultiplePackets),
+                        MaskResolution.Absent,
+                    )
+                } else {
+                    ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
+                }
+            }
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.MultiplePackets
+
+            viewModel.onPinRow("fragmentation-packets", "tlshello")
+            advanceUntilIdle()
+
+            source.pinned shouldBe Triple(SUBSCRIPTION_ID, "fragmentation-packets", "tlshello")
+            source.syncCalls shouldBe 0
+            viewModel.state.value.fragmentIgnored shouldBe null
+
+            viewModel.onUnpinRow("fragmentation-packets")
+            advanceUntilIdle()
+            viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.MultiplePackets
+        }
+
+    @Test
+    fun `a failed issues read shows no ignored line and the screen still loads`() =
+        runTest {
+            source.issuesFailure = IllegalStateException("database closed")
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.loading shouldBe false
+            viewModel.state.value.fragmentIgnored shouldBe null
+            viewModel.state.value.noiseIgnored shouldBe null
+
+            // The combine survived: a later directive change is still read.
+            source.issuesFailure = null
+            source.issuesFromPins = {
+                ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Ignored(ObfuscationProblem.LengthFromZero))
+            }
+            viewModel.onPinRow("fragmentation-packets", "tlshello")
+            advanceUntilIdle()
+            viewModel.state.value.noiseIgnored shouldBe ObfuscationProblem.LengthFromZero
+        }
 
     @Test
     fun pinShowsTheProviderSuggestionAlongsideThePinnedValue() =

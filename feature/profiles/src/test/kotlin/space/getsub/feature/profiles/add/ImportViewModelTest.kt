@@ -20,8 +20,11 @@ import org.junit.Before
 import org.junit.Test
 import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.sync.SubscriptionSyncFailure
@@ -261,6 +264,11 @@ class ImportViewModelTest {
             id: Long,
             userAgent: String?,
         ) = Unit
+
+        override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
+            ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
     }
 
     @Before

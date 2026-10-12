@@ -119,9 +119,14 @@ public object RawConfigComposer {
         val outbounds = root["outbounds"] as? JsonArray
         if (outbounds.isNullOrEmpty()) return ComposeResult.Failed(ComposeFailure.NoOutbounds)
 
+        // M9-A spec §3.3: both branches. Applied to the config's own outbounds only; the
+        // override's direct/block/dns-out extras are never eligible.
+        val ownOutbounds = ObfuscationInjector.apply(outbounds, settings.obfuscation)
+
         val kept =
             root.filterKeys { it !in STRIPPED }
                 .toMutableMap()
+        kept["outbounds"] = ownOutbounds
 
         kept["log"] = buildJsonObject {
             put("access", "none")
@@ -145,7 +150,7 @@ public object RawConfigComposer {
 
             kept["routing"] = withDeclaredBalancers(parsedOverride.routing, root["routing"])
             kept["dns"] = parsedOverride.dns
-            kept["outbounds"] = JsonArray(outbounds + parsedOverride.extraOutbounds)
+            kept["outbounds"] = JsonArray(ownOutbounds + parsedOverride.extraOutbounds)
 
             // M8.5 spec §2.4: only the override branch may carry these — it already
             // replaces `routing`/`dns` wholesale, so three more blocks change

@@ -449,4 +449,13 @@
     <string name="subscription_row_pin_action">Pin</string>
     <string name="subscription_row_unpin_action">Use provider value</string>
     <string name="subscription_row_edit_dialog_cancel">Cancel</string>
+    <string name="editor_fragment_line">Fragmentation: %1$s</string>
+    <string name="editor_noise_line">Noise: %1$s</string>
+    <string name="obfuscation_origin_yours">yours</string>
+    <string name="obfuscation_origin_subscription">from subscription</string>
+    <string name="obfuscation_origin_config">from config</string>
+    <string name="obfuscation_origin_none">none</string>
+    <string name="obfuscation_origin_none_ignored">none (subscription value ignored: %1$s)</string>
+    <string name="subscription_fragment_ignored">Fragmentation directive ignored: %1$s</string>
+    <string name="subscription_noise_ignored">Noise directive ignored: %1$s</string>
 </resources>

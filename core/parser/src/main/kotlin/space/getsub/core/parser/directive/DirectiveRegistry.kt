@@ -168,6 +168,8 @@ public object DirectiveRegistry {
                 Consumer.LatencySorting,
             ),
             accept("dont-use-filter", DirectiveKind.Bool, Danger.Benign, Consumer.Release),
+            // Consumed since M9-A by `:core:data`'s DirectiveObfuscation (Finalmask fragment/noise).
+            // The user's Censorship resistance setting, when On, overrides all of these.
             accept("fragmentation-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.CensorshipResistance),
             accept("fragmentation-packets", DirectiveKind.Csv, Danger.Sensitive, Consumer.CensorshipResistance),
             accept("fragmentation-length", textNoBase64(32), Danger.Sensitive, Consumer.CensorshipResistance),

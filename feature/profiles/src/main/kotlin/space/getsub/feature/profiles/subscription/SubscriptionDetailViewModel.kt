@@ -5,17 +5,22 @@ package space.getsub.feature.profiles.subscription
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import space.getsub.core.data.MaskResolution
+import space.getsub.core.data.OBFUSCATION_DIRECTIVE_KEYS
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.parser.directive.DirectiveRegistry
 import space.getsub.core.parser.directive.KindResult
@@ -42,6 +47,28 @@ private const val KEY_USER_AGENT = "change-user-agent"
 private const val DEFAULT_INTERVAL_HOURS = "12"
 private const val DEFAULT_TIMEOUT_SECONDS = "9"
 private const val DEFAULT_AUTO_UPDATE = "true"
+
+private val NO_DIRECTIVE_ISSUES = ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
+
+/**
+ * The subscription's obfuscation directive issues, re-read whenever any obfuscation directive's
+ * effective value changes — a sync, a pin or an unpin — and on every [refreshes] emission, so the
+ * "directive ignored" lines never go stale (M9-A spec §2.4).
+ */
+private fun ProfileSource.observeDirectiveIssues(
+    id: Long,
+    refreshes: Flow<Int>,
+): Flow<ResolvedObfuscation> {
+    val directives =
+        combine(OBFUSCATION_DIRECTIVE_KEYS.map { observeEffective(id, it, null) }) { it.toList() }
+            .distinctUntilChanged()
+    return combine(directives, refreshes) { _, _ ->
+        // A failed read shows no "ignored" line; it must never end the combine that drives the screen.
+        runCatching { obfuscationDirectiveIssues(id) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrDefault(NO_DIRECTIVE_ISSUES)
+    }
+}
 
 private fun canonicalUserAgent(raw: String): String? {
     val canonical =
@@ -74,6 +101,13 @@ constructor(
      */
     private val ephemeral = MutableStateFlow(Ephemeral())
 
+    /**
+     * Bumped when a refresh completes. The obfuscation directives' own flows already re-read the
+     * issues whenever a sync writes them; this is the belt to that, for a sync whose write the
+     * flows do not see (another process's Room instance).
+     */
+    private val issuesTick = MutableStateFlow(0)
+
     private var loadedId: Long? = null
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
@@ -84,6 +118,7 @@ constructor(
         loadJob?.cancel()
         _state.value = SubscriptionDetailState(subscriptionId = subscriptionId)
         ephemeral.value = Ephemeral()
+        issuesTick.value = 0
 
         val subscriptionFlow =
             profileSource.observeSubscriptions().map { subs ->
@@ -98,11 +133,13 @@ constructor(
                 rowsFlow,
                 profileSource.observeEffective(subscriptionId, KEY_USER_AGENT, default = null),
                 profileSource.globalHwidEnabled,
-            ) { rows, userAgent, globalHwidEnabled ->
+                profileSource.observeDirectiveIssues(subscriptionId, refreshes = issuesTick),
+            ) { rows, userAgent, globalHwidEnabled, issues ->
                 DetailSettings(
                     rows = rows,
                     providerUserAgent = userAgent.providerValue,
                     globalHwidEnabled = globalHwidEnabled,
+                    issues = issues,
                 )
             }
 
@@ -123,6 +160,7 @@ constructor(
                         rows = settings.rows,
                         providerUserAgent = settings.providerUserAgent,
                         globalHwidEnabled = settings.globalHwidEnabled,
+                        issues = settings.issues,
                         ephemeral = eph,
                     ),
                 )
@@ -193,6 +231,8 @@ constructor(
             isRefreshing = inputs.ephemeral.isRefreshing,
             refreshResult = inputs.ephemeral.refreshResult,
             deleted = inputs.ephemeral.deleted,
+            fragmentIgnored = (inputs.issues.fragment as? MaskResolution.Ignored)?.problem,
+            noiseIgnored = (inputs.issues.noise as? MaskResolution.Ignored)?.problem,
         )
     }
 
@@ -204,6 +244,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
+        val issues: ResolvedObfuscation,
         val ephemeral: Ephemeral,
     )
 
@@ -211,6 +252,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
+        val issues: ResolvedObfuscation,
     )
 
     /**
@@ -223,6 +265,7 @@ constructor(
         refreshJob = viewModelScope.launch {
             ephemeral.value = ephemeral.value.copy(isRefreshing = true, refreshResult = null)
             val result = profileSource.syncSubscription(id)
+            issuesTick.value++
             ephemeral.value = ephemeral.value.copy(isRefreshing = false, refreshResult = result.toUserMessage())
         }
     }

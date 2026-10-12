@@ -28,8 +28,10 @@ import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 
@@ -65,7 +67,7 @@ class SettingsViewModelTest {
      * being given a way to skip [SettingsSource.theme] in the first place,
      * which is the only source `state.theme` is derived from.
      */
-    private class FakeSettingsSource(
+    internal class FakeSettingsSource(
         initial: ThemePreference = ThemePreference.System,
         initialDnsResolver: DnsResolver = DnsResolver.DEFAULT,
     ) : SettingsSource {
@@ -217,6 +219,24 @@ class SettingsViewModelTest {
             _dynamicColor.value = enabled
         }
 
+        val fragment = MutableStateFlow(FragmentSettings.DEFAULT)
+        override val fragmentSettings: Flow<FragmentSettings> = fragment.asStateFlow()
+
+        /** When set, the next fragment write suspends until it completes, so two writes can overlap. */
+        var fragmentWriteGate: CompletableDeferred<Unit>? = null
+
+        override suspend fun setFragmentSettings(settings: FragmentSettings) {
+            fragmentWriteGate?.also { fragmentWriteGate = null }?.await()
+            fragment.value = settings
+        }
+
+        val noise = MutableStateFlow(NoiseSettings.DEFAULT)
+        override val noiseSettings: Flow<NoiseSettings> = noise.asStateFlow()
+
+        override suspend fun setNoiseSettings(settings: NoiseSettings) {
+            noise.value = settings
+        }
+
         var ignoringBatteryOptimizations: Boolean = false
 
         override suspend fun isIgnoringBatteryOptimizations(): Boolean = ignoringBatteryOptimizations
@@ -228,11 +248,11 @@ class SettingsViewModelTest {
         }
     }
 
-    private class FakeXraySource(private val result: Result<String> = Result.success("1.8.24")) : XraySource {
+    internal class FakeXraySource(private val result: Result<String> = Result.success("1.8.24")) : XraySource {
         override suspend fun version(): Result<String> = result
     }
 
-    private class FakeAppVersionSource(override val version: String = "0.1.0-alpha01") : AppVersionSource
+    internal class FakeAppVersionSource(override val version: String = "0.1.0-alpha01") : AppVersionSource
 
     /**
      * F2 / ruling R39: a controllable stand-in for [TunnelClient.state][space.getsub.service.TunnelClient.state]
@@ -257,7 +277,7 @@ class SettingsViewModelTest {
      * [BoundGeoAssetSource]: [GeoAssetSource.install]'s KDoc is explicit that "Update now" always
      * runs, so this fake has no cap or metered flag to bypass in the first place.
      */
-    private class FakeGeoAssetSource(
+    internal class FakeGeoAssetSource(
         installed: List<InstalledGeoAsset> = emptyList(),
         private val results: Map<String, GeoInstallResult> = emptyMap(),
         private val defaultResult: GeoInstallResult = GeoInstallResult.Installed,

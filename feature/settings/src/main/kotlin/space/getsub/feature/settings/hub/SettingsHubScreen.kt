@@ -141,6 +141,7 @@ internal fun SettingsHubContent(
         HubSection(R.string.settings_section_connection, SubspaceShapeTokens.card) {
             PageRow(SubspaceIcons.Speed, SettingsPageId.Latency, latencyText(state), open)
             PageRow(SubspaceIcons.Dns, SettingsPageId.Dns, dnsText(state), open)
+            PageRow(SubspaceIcons.Shield, SettingsPageId.Censorship, stringResource(censorshipTextRes(state)), open)
         }
 
         SectionTitle(stringResource(R.string.settings_section_diagnostics), Modifier.padding(horizontal = 4.dp))

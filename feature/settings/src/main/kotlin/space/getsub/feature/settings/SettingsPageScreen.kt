@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.feature.settings.pages.AboutPage
 import space.getsub.feature.settings.pages.AppearancePage
+import space.getsub.feature.settings.pages.CensorshipPage
 import space.getsub.feature.settings.pages.DeviceIdPage
 import space.getsub.feature.settings.pages.DnsPage
 import space.getsub.feature.settings.pages.GeoPage
@@ -35,6 +36,7 @@ enum class SettingsPageId(
     DeviceId(R.string.settings_section_device_id),
     Latency(R.string.settings_latency_section),
     Dns(R.string.settings_dns_title),
+    Censorship(R.string.settings_censorship_title),
     Geo(R.string.settings_section_geo),
     About(R.string.settings_section_about),
 }
@@ -74,6 +76,7 @@ internal fun SettingsPageContent(
         SettingsPageId.DeviceId -> DeviceIdPage(state, actions, onBack, modifier)
         SettingsPageId.Latency -> LatencyPage(state, actions, onBack, modifier)
         SettingsPageId.Dns -> DnsPage(state, actions, onBack, modifier)
+        SettingsPageId.Censorship -> CensorshipPage(state, actions, onBack, modifier)
         SettingsPageId.Geo -> GeoPage(state, actions, onBack, modifier)
         SettingsPageId.About -> AboutPage(state, onBack, modifier)
     }

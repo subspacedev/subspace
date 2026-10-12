@@ -9,8 +9,11 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.ObfuscationReport
+import space.getsub.core.data.ObfuscationResolver
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ProfileRepository
+import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
@@ -245,6 +248,18 @@ internal interface ProfileSource {
         id: Long,
         userAgent: String?,
     )
+
+    /**
+     * Where [id]'s fragmentation and noise come from, or `null` if the row no longer exists —
+     * see [ObfuscationResolver.report]. Origins and ignore reasons only, never directive values.
+     */
+    suspend fun obfuscationReport(id: Long): ObfuscationReport?
+
+    /**
+     * What [subscriptionId]'s fragmentation and noise directives resolve to right now, so the
+     * detail screen can say why one was ignored — see [ObfuscationResolver.directiveIssues].
+     */
+    suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation
 }
 
 /**
@@ -260,7 +275,9 @@ internal fun routingOverridesPassthroughFor(
     resolver: DnsResolver,
 ): Boolean = activeRuleSetId != null || resolver != DnsResolver.DEFAULT
 
-@Suppress("TooManyFunctions") // Implements ProfileSource — see that interface's own identical call.
+// Implements ProfileSource — see that interface's own identical call. Seven constructor
+// dependencies: the seam folds repositories and resolvers on purpose.
+@Suppress("TooManyFunctions", "LongParameterList")
 @Singleton
 internal class BoundProfileSource
 @Inject
@@ -271,6 +288,7 @@ constructor(
     private val subscriptionSyncer: SubscriptionSyncer,
     private val passthroughValidator: PassthroughValidator,
     private val tunnel: TunnelClient,
+    private val obfuscationResolver: ObfuscationResolver,
 ) : ProfileSource {
     override fun observeGroups(
         query: String,
@@ -435,6 +453,11 @@ constructor(
         id: Long,
         userAgent: String?,
     ) = subscriptionRepository.setUserAgentOverride(id, userAgent)
+
+    override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationResolver.report(id)
+
+    override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
+        obfuscationResolver.directiveIssues(subscriptionId)
 
     /**
      * Task 8: runs every [StoredProfile] in [groupId] for which [isCandidate] is true through
