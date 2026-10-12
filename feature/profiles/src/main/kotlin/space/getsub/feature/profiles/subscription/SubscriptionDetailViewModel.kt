@@ -20,8 +20,12 @@ import kotlinx.coroutines.launch
 import space.getsub.core.data.MaskResolution
 import space.getsub.core.data.OBFUSCATION_DIRECTIVE_KEYS
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.RedirectStatus
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.model.Checked
+import space.getsub.core.parser.LinkFragment
 import space.getsub.core.parser.directive.DirectiveRegistry
 import space.getsub.core.parser.directive.KindResult
 import space.getsub.core.parser.directive.UserInfo
@@ -86,6 +90,8 @@ private fun canonicalUserAgent(raw: String): String? {
  * via a constructor argument, so this class stays a plain `hiltViewModel()` with no
  * `SavedStateHandle` wiring.
  */
+// One small action per setting the screen edits; splitting them off would scatter one screen's contract.
+@Suppress("TooManyFunctions")
 @HiltViewModel
 internal class SubscriptionDetailViewModel
 @Inject
@@ -128,18 +134,22 @@ constructor(
         val userInfoFlow =
             profileSource.observeUserInfo(subscriptionId).map { raw -> raw?.let(::parseUserInfo) }
         val rowsFlow = observeDirectiveRows(subscriptionId)
+        val reachFlow = observeReach(subscriptionId)
         val detailsFlow =
             combine(
                 rowsFlow,
                 profileSource.observeEffective(subscriptionId, KEY_USER_AGENT, default = null),
                 profileSource.globalHwidEnabled,
                 profileSource.observeDirectiveIssues(subscriptionId, refreshes = issuesTick),
-            ) { rows, userAgent, globalHwidEnabled, issues ->
+                reachFlow,
+            ) { rows, userAgent, globalHwidEnabled, issues, reach ->
                 DetailSettings(
                     rows = rows,
                     providerUserAgent = userAgent.providerValue,
                     globalHwidEnabled = globalHwidEnabled,
                     issues = issues,
+                    redirect = reach.first,
+                    fragmentationOn = reach.second,
                 )
             }
 
@@ -161,11 +171,20 @@ constructor(
                         providerUserAgent = settings.providerUserAgent,
                         globalHwidEnabled = settings.globalHwidEnabled,
                         issues = settings.issues,
+                        redirect = settings.redirect,
+                        fragmentationOn = settings.fragmentationOn,
                         ephemeral = eph,
                     ),
                 )
             }.onEach { _state.value = it }.launchIn(viewModelScope)
     }
+
+    private fun observeReach(id: Long): Flow<Pair<RedirectStatus, Boolean>> =
+        combine(
+            profileSource.observeRedirectStatus(id),
+            profileSource.globalFragmentationOn,
+            ::Pair,
+        )
 
     private fun observeDirectiveRows(id: Long): Flow<List<DirectiveRow>> =
         combine(
@@ -233,6 +252,19 @@ constructor(
             deleted = inputs.ephemeral.deleted,
             fragmentIgnored = (inputs.issues.fragment as? MaskResolution.Ignored)?.problem,
             noiseIgnored = (inputs.issues.noise as? MaskResolution.Ignored)?.problem,
+            redirectTrust = subscription.redirectTrust,
+            redirectTargetHosts = inputs.redirect.targetHosts,
+            redirectIssues = inputs.redirect.issues,
+            resolveAddress = subscription.resolveAddress,
+            hostHeader = subscription.hostHeader,
+            linkFragment = subscription.linkFragment,
+            linkFragmentProblem =
+            subscription.linkFragment?.let { (LinkFragment.parse(it) as? Checked.Invalid)?.problem },
+            globalFragmentationOn = inputs.fragmentationOn,
+            movedFromHost = subscription.movedFromHost,
+            movedAt = subscription.movedAt,
+            lastFetchVia = subscription.lastFetchVia,
+            insecureIgnored = subscription.insecureIgnored,
         )
     }
 
@@ -245,6 +277,8 @@ constructor(
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
         val issues: ResolvedObfuscation,
+        val redirect: RedirectStatus,
+        val fragmentationOn: Boolean,
         val ephemeral: Ephemeral,
     )
 
@@ -253,6 +287,8 @@ constructor(
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
         val issues: ResolvedObfuscation,
+        val redirect: RedirectStatus,
+        val fragmentationOn: Boolean,
     )
 
     /**
@@ -311,6 +347,35 @@ constructor(
                 canonicalUserAgent(userAgent) ?: return
             }
         viewModelScope.launch { profileSource.setUserAgentOverride(id, canonical) }
+    }
+
+    fun onAllowRedirects() = setTrust(RedirectTrust.Allowed)
+
+    fun onDenyRedirects() = setTrust(RedirectTrust.Denied)
+
+    fun onRedirectsAllowedChanged(allowed: Boolean) =
+        setTrust(if (allowed) RedirectTrust.Allowed else RedirectTrust.Denied)
+
+    private fun setTrust(trust: RedirectTrust) {
+        val id = loadedId ?: return
+        viewModelScope.launch { profileSource.setRedirectTrust(id, trust) }
+    }
+
+    /** Blank values clear the field — see [ProfileSource.setFronting]. */
+    fun onFrontingSaved(
+        resolveAddress: String?,
+        hostHeader: String?,
+    ) {
+        val id = loadedId ?: return
+        val address = resolveAddress?.trim()?.ifEmpty { null }
+        val host = hostHeader?.trim()?.ifEmpty { null }
+        viewModelScope.launch { profileSource.setFronting(id, address, host) }
+    }
+
+    /** A blank [value] clears the link's own fetch fragmentation — see [ProfileSource.setLinkFragment]. */
+    fun onLinkFragmentSaved(value: String?) {
+        val id = loadedId ?: return
+        viewModelScope.launch { profileSource.setLinkFragment(id, value?.trim()?.ifEmpty { null }) }
     }
 
     /**
