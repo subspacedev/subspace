@@ -36,7 +36,7 @@ public object SystemFragmentClock : FragmentClock {
     override fun nextInt(
         from: Int,
         toInclusive: Int,
-    ): Int = Random.nextInt(from, toInclusive + 1)
+    ): Int = Random.nextLong(from.toLong(), toInclusive.toLong() + 1).toInt()
 }
 
 /**

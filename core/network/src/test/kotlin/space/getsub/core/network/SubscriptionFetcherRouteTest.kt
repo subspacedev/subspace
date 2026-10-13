@@ -125,6 +125,21 @@ class SubscriptionFetcherRouteTest {
     }
 
     @Test
+    fun aRuntimeExceptionFromTheSocketFactoryIsAFailureNotAThrow() = runTest {
+        fetcher.fragmentClock = object : FragmentClock {
+            override fun sleepMillis(millis: Long) = Unit
+
+            override fun nextInt(from: Int, toInclusive: Int): Int = throw IllegalArgumentException("boom")
+        }
+        val spec = FragmentSpec(FragmentPackets.Records(XrayRange(1, 1)), XrayRange(5, 5), XrayRange(0, 0), null)
+        server.enqueue(MockResponse(code = 200, body = "ok"))
+
+        val outcome = fetcher.fetch(request(FetchRoute(fragment = spec), host = "127.0.0.1"))
+
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.Unreachable
+    }
+
+    @Test
     fun throughTheTunnelProxyTheRouteDnsAndFactoryAreSkipped() {
         // Plan ruling P1.
         val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(5, 5), XrayRange(0, 0), null)

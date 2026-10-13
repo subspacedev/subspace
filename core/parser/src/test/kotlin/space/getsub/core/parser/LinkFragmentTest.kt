@@ -32,4 +32,10 @@ class LinkFragmentTest {
     fun aZeroLengthIsRefusedLikeTheSettingsPage() {
         LinkFragment.parse("0-5,10,tlshello") shouldBe Checked.Invalid(ObfuscationProblem.LengthFromZero)
     }
+
+    @Test
+    fun anOverCapValueIsRefused() {
+        LinkFragment.parse("1-2147483647,10,tlshello") shouldBe Checked.Invalid(ObfuscationProblem.OutOfBounds)
+        LinkFragment.parse("80-250,2000000000,tlshello") shouldBe Checked.Invalid(ObfuscationProblem.OutOfBounds)
+    }
 }

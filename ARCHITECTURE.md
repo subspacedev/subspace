@@ -1478,7 +1478,9 @@ overrides every provider source. The server-paired masks (`header-custom`, `sudo
 `xdns`, `xicmp`, `xmc`, `realm`, `mkcp-*`) are not offered: they only work when they match the
 server, so they pass through when a raw config carries them and are never added or removed. The
 freedom-outbound `fragment`/`noises` chain is not generated; a raw config's own chain is detected,
-and the user's override cuts its link. Design: M9-A spec
+and the user's override cuts its link. The shared validator bounds fragment `length` (16384),
+`delay` (1000 ms, noise included), `packets` and `maxSplit` (255), since the subscription fetcher
+sleeps those delays on a thread the call timeout cannot interrupt. Design: M9-A spec
 (`docs/agent/specs/2026-10-12-m9a-fragment-noise-design.md`, gitignored); upstream facts:
 `docs/agent/research/2026-10-11-m9a-fragment-noise-finalmask.md`.
 

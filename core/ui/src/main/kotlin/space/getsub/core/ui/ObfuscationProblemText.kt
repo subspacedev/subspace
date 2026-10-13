@@ -13,6 +13,7 @@ fun ObfuscationProblem.textRes(): Int =
         ObfuscationProblem.NotARange -> R.string.obfuscation_problem_not_a_range
         ObfuscationProblem.Reversed -> R.string.obfuscation_problem_reversed
         ObfuscationProblem.TooLarge -> R.string.obfuscation_problem_too_large
+        ObfuscationProblem.OutOfBounds -> R.string.obfuscation_problem_out_of_bounds
         ObfuscationProblem.PacketsFromZero -> R.string.obfuscation_problem_packets_from_zero
         ObfuscationProblem.LengthFromZero -> R.string.obfuscation_problem_length_from_zero
         ObfuscationProblem.RandFromZero -> R.string.obfuscation_problem_rand_from_zero

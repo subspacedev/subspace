@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLException
+import kotlin.coroutines.cancellation.CancellationException
 
 private const val HTTP_NOT_FOUND = 404
 private const val HTTP_SUCCESS_FLOOR = 200
@@ -180,6 +181,10 @@ constructor(
             dial(request)
         }
 
+    /** Test seam: the clock the fetch's fragmenter draws and sleeps with. */
+    internal var fragmentClock: FragmentClock = SystemFragmentClock
+
+    @Suppress("TooGenericExceptionCaught") // Audit finding 5: "never throws" holds for any RuntimeException too.
     private fun dial(request: SubscriptionRequest): FetchOutcome {
         // Client construction (the timeout chain) and call construction
         // (URL parsing) both throw on bad input rather than returning a
@@ -225,6 +230,13 @@ constructor(
             // "the network did not work". §10.4 wants a specific diagnosis
             // where one exists, not an invented one where it does not.
             FetchOutcome.Failed(FetchFailure.Unreachable, io.causeName())
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (unexpected: RuntimeException) {
+            // Audit finding 5: OkHttp only converts IOException, so a RuntimeException from a socket (the
+            // fragmenter's draw, for one) would escape the "never throws" contract. CancellationException
+            // is an IllegalStateException subclass; it is rethrown above, never swallowed.
+            FetchOutcome.Failed(FetchFailure.Unreachable, unexpected.causeName())
         }
     }
 
@@ -256,7 +268,7 @@ constructor(
                         proxy(Proxy.NO_PROXY)
                         dns { _ -> Dns.SYSTEM.lookup(address) }
                     }
-                    request.route.fragment?.let { spec -> socketFactory(FragmentingSocketFactory(spec)) }
+                    request.route.fragment?.let { spec -> socketFactory(FragmentingSocketFactory(spec, fragmentClock)) }
                 }
             }
             .build()
