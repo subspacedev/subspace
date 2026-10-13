@@ -248,12 +248,13 @@ internal constructor(
     /**
      * Resolves [profile] to one row, updating a same-name row rather than duplicating it.
      *
-     * A new row receives the profile's rules and provenance. On collision, only
-     * source ownership moves now: the existing rules, fingerprint, timestamp,
+     * A new row receives the profile's rules and provenance. On collision nothing
+     * is written: the existing rules, ownership, fingerprint, timestamp,
      * generation, and asset state remain live until [commitGeneration] publishes
-     * the replacement atomically. [RoutingRuleSetDao.upsertProfileByName]
-     * resolves the collision and performs that targeted update in one transaction,
-     * preserving the row id and creation time without carrying a stale row snapshot.
+     * the replacement (and the new owner) atomically.
+     * [RoutingRuleSetDao.upsertProfileByName] resolves the collision in one
+     * transaction, preserving the row id and creation time without carrying a
+     * stale row snapshot.
      */
     public suspend fun upsertProfile(
         profile: RoutingProfile,
@@ -264,7 +265,7 @@ internal constructor(
             upsertImportedProfile(profile, sourceKind, subscriptionId, locks)
         }
 
-    /** Claims imported-profile ownership only when [locks] proves this name is serialized. */
+    /** Resolves an imported profile to its row, only when [locks] proves this name is serialized. */
     internal suspend fun upsertImportedProfile(
         profile: RoutingProfile,
         sourceKind: RoutingSourceKind,
@@ -300,11 +301,15 @@ internal constructor(
      * The DAO performs the complete swap in one SQL statement, including
      * `Ready` and clearing the prior failure; splitting it would permit observers
      * to see rule columns and the live generation disagree (M6 spec §7.4).
+     * [sourceKind] and [subscriptionId] are written in that same statement, so a
+     * same-name row changes owner only together with its new rules.
      */
     public suspend fun commitGeneration(
         id: Long,
         profile: RoutingProfile,
         generation: Long,
+        sourceKind: RoutingSourceKind,
+        subscriptionId: Long?,
     ) {
         profile.toRuleSet(id).requireValidEntries()
         dao.commitGeneration(
@@ -324,6 +329,8 @@ internal constructor(
             geoSiteUrl = profile.geoSiteUrl,
             dnsJson = ProfileDnsCodec.encode(profile.dns),
             useChunkFiles = profile.useChunkFiles,
+            sourceKind = sourceKind.wireValue,
+            subscriptionId = subscriptionId,
             generation = generation,
         )
     }

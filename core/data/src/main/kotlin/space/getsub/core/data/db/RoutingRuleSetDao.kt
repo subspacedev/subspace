@@ -90,38 +90,21 @@ internal interface RoutingRuleSetDao {
     )
 
     /**
-     * Inserts a new imported profile or updates only safe provenance on collision.
+     * Inserts a new imported profile, or resolves a same-name collision to the existing id.
      *
      * The lookup and write share one transaction, preserving the unique-name
      * guarantee under concurrent imports. An existing row is deliberately never
-     * passed through [update]: a generation commit can land at any time, and a
-     * stale full entity would restore old rules, metadata, generation, state, and
-     * failure. Rules and profile metadata move only through [commitGeneration].
+     * written here: a generation commit can land at any time, and a stale full
+     * entity would restore old rules, metadata, generation, state, and failure.
+     * Rules, profile metadata and ownership (`sourceKind`/`subscriptionId`) move
+     * only through [commitGeneration], so an import that fails or is cancelled
+     * leaves the previous owner in place.
      */
     @Transaction
     suspend fun upsertProfileByName(entity: RoutingRuleSetEntity): Long {
         val existing = byName(entity.name)
-        return if (existing == null) {
-            insert(entity)
-        } else {
-            updateProfileProvenance(existing.id, entity.sourceKind, entity.subscriptionId)
-            existing.id
-        }
+        return existing?.id ?: insert(entity)
     }
-
-    /** Updates only ownership fields that are safe before generation publication. */
-    @Query(
-        """
-        UPDATE routing_rule_sets
-        SET sourceKind = :sourceKind, subscriptionId = :subscriptionId
-        WHERE id = :id
-        """,
-    )
-    suspend fun updateProfileProvenance(
-        id: Long,
-        sourceKind: String?,
-        subscriptionId: Long?,
-    )
 
     /**
      * Publishes a generation whose rules are already stored — the duplicate path.
@@ -157,7 +140,8 @@ internal interface RoutingRuleSetDao {
      * Rules and [generation] move in one statement, together with the successful
      * state/failure pair, so no observer can see rules referring to a generation
      * that is not live yet. This guarantee is why these columns are deliberately
-     * not split across repository calls.
+     * not split across repository calls. Ownership ([sourceKind], [subscriptionId])
+     * moves in the same statement: it changes hands only with the rules it came with.
      */
     @Query(
         """
@@ -169,6 +153,7 @@ internal interface RoutingRuleSetDao {
             globalProxy = :globalProxy, lastUpdated = :lastUpdated,
             fingerprint = :fingerprint, geoIpUrl = :geoIpUrl, geoSiteUrl = :geoSiteUrl,
             dnsJson = :dnsJson, useChunkFiles = :useChunkFiles,
+            sourceKind = :sourceKind, subscriptionId = :subscriptionId,
             assetGeneration = :generation, assetState = 'Ready', assetFailure = NULL
         WHERE id = :id
         """,
@@ -191,6 +176,8 @@ internal interface RoutingRuleSetDao {
         geoSiteUrl: String?,
         dnsJson: String?,
         useChunkFiles: Boolean?,
+        sourceKind: String?,
+        subscriptionId: Long?,
         generation: Long,
     )
 

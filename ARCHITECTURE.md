@@ -1920,7 +1920,9 @@ your DNS setting"* while the profile's routing rules still apply.
 - On update, geo files download **in the background while the old rules stay
   live**. The core keeps running on the old ruleset. Only when all files
   land do you atomically swap rules and files together. No window where
-  routing is half-applied.
+  routing is half-applied. Ownership (source kind and owning subscription) of
+  a same-name row moves in that same swap, so a failed or cancelled update
+  leaves the previous owner in place.
 - Geo file downloads have a hard timeout (Happ uses 3 minutes). On failure,
   the profile is flagged in the UI with a persistent error marker that
   clears when the download succeeds or the profile is deleted.

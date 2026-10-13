@@ -574,7 +574,7 @@ class RoutingProfileImporterTest {
                     progress,
                     GEO_DOWNLOAD_TIMEOUT_MILLIS,
                 ) { committedId: Long, generation: Long ->
-                    repository.commitGeneration(committedId, update, generation)
+                    repository.commitGeneration(committedId, update, generation, RoutingSourceKind.Header, null)
                     publicationLanded.complete(Unit)
                     neverReturnFromCommit.await()
                 }
@@ -1370,6 +1370,110 @@ class RoutingProfileImporterTest {
             assets.setsRoot().listFiles().orEmpty().shouldBeEmpty()
         }
     }
+
+    private suspend fun seedManualRow(): Long = repository.upsert(RoutingRuleSet(name = sampleProfile().name))
+
+    @Test
+    fun aFailedDownloadLeavesAManualRowsOwnershipUntouched() = runTest {
+        val manualId = seedManualRow()
+        val subscription = addSubscription("https://subscription.example/a")
+        downloadFails = true
+
+        importer
+            .apply(geoIpOnlyProfile(), RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
+            .shouldBeInstanceOf<ImportOutcome.Failed>()
+
+        val stored = repository.stored(manualId).shouldNotBeNull()
+        stored.sourceKind shouldBe null
+        stored.subscriptionId shouldBe null
+        stored.assetState shouldBe RuleSetAssetState.Failed
+    }
+
+    @Test
+    fun aCancelledImportLeavesAManualRowsOwnershipUntouched() {
+        runBlocking {
+            val manualId = seedManualRow()
+            val subscription = addSubscription("https://subscription.example/a")
+            val downloadEntered = CompletableDeferred<Unit>()
+            beforeDownload = { _, _ ->
+                downloadEntered.complete(Unit)
+                CompletableDeferred<Unit>().await()
+            }
+            val running =
+                launch(Dispatchers.Default) {
+                    importer.apply(geoIpOnlyProfile(), RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
+                }
+            downloadEntered.await()
+
+            running.cancelAndJoin()
+
+            val stored = repository.stored(manualId).shouldNotBeNull()
+            stored.sourceKind shouldBe null
+            stored.subscriptionId shouldBe null
+        }
+    }
+
+    @Test
+    fun aFailedImportFromAnotherSubscriptionLeavesTheFirstOwnerInPlace() = runTest {
+        val a = addSubscription("https://subscription.example/a")
+        val b = addSubscription("https://subscription.example/b")
+        val id =
+            importer
+                .apply(geoIpOnlyProfile(), RoutingVerb.Add, RoutingSourceKind.Header, a.id)
+                .shouldBeInstanceOf<ImportOutcome.Activated>()
+                .id
+        downloadFails = true
+        val next =
+            geoIpOnlyProfile().copy(
+                lastUpdated = sampleProfile().lastUpdated.shouldNotBeNull() + 60,
+                geoIpUrl = "https://assets.example/b-geoip.dat",
+            )
+
+        importer
+            .apply(next, RoutingVerb.Add, RoutingSourceKind.Body, b.id)
+            .shouldBeInstanceOf<ImportOutcome.Failed>()
+
+        val stored = repository.stored(id).shouldNotBeNull()
+        stored.sourceKind shouldBe RoutingSourceKind.Header
+        stored.subscriptionId shouldBe a.id
+    }
+
+    @Test
+    fun aSuccessfulImportOverAManualRowMovesOwnershipWithTheCommit() = runTest {
+        val manualId = seedManualRow()
+        val subscription = addSubscription("https://subscription.example/a")
+
+        importer
+            .apply(geoIpOnlyProfile(), RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
+            .shouldBeInstanceOf<ImportOutcome.Activated>()
+            .id shouldBe manualId
+
+        val stored = repository.stored(manualId).shouldNotBeNull()
+        stored.sourceKind shouldBe RoutingSourceKind.Header
+        stored.subscriptionId shouldBe subscription.id
+        stored.assetState shouldBe RuleSetAssetState.Ready
+    }
+
+    @Test
+    fun aSuccessfulOwnGenerationFreeImportOverAManualRowMovesOwnership() = runTest {
+        val manualId = seedManualRow()
+        val subscription = addSubscription("https://subscription.example/a")
+        val literalOnly = sampleProfile().copy(geoIpUrl = null, geoSiteUrl = null)
+
+        importer
+            .apply(literalOnly, RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
+            .shouldBeInstanceOf<ImportOutcome.Activated>()
+
+        repository.stored(manualId).shouldNotBeNull().subscriptionId shouldBe subscription.id
+    }
+
+    private suspend fun addSubscription(url: String) =
+        SubscriptionRepository(
+            database.subscriptionDao(),
+            ProfileRepository(database.profileDao()),
+            database,
+            deletion,
+        ).add(url, "Provider")
 
     private fun sampleProfile(): RoutingProfile =
         RoutingProfile(
