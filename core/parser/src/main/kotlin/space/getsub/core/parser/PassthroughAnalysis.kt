@@ -50,11 +50,13 @@ public enum class PassthroughRejection {
     SeveralServers,
 
     /**
-     * A top-level `reverse` block: the config would let its server open connections
-     * back out of the device, to the internet and to the local network.
+     * A top-level `reverse` block: believed from upstream documentation, not verified
+     * against the pinned Xray-core, to let the config's server open connections back
+     * out of the device, to the internet and to the local network.
      *
-     * Rejected rather than stripped, because stripping leaves rules naming bridge or
-     * portal tags that the core accepts at build and only fails on at match time.
+     * Rejected rather than stripped, because stripping would (same caveat) leave rules
+     * naming bridge or portal tags that the core accepts at build and only fails on at
+     * match time. Rejecting is safe either way.
      */
     CarriesReverseProxy,
 

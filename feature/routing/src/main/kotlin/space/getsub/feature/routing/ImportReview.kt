@@ -418,10 +418,11 @@ private fun failedMessageRes(
 ): Int = if (invalidEntries) R.string.import_review_failed_invalid_entries else failure.sheetMessageRes()
 
 /**
- * A [RuleSetAssetFailure] always accompanies [Stage.Failed] — the importer
- * returns the pair — so null can only be a future state this `when` has not
- * learned. It gets the least specific reason rather than a claim the state
- * cannot support.
+ * A [RuleSetAssetFailure] accompanies [Stage.Failed] except for the invalid-entries
+ * failure, which sets the failure to null and raises the `invalidEntries` flag
+ * instead (handled by [failedMessageRes] before this mapping). A null here with
+ * that flag clear can only be a future state this `when` has not learned. It gets
+ * the least specific reason rather than a claim the state cannot support.
  *
  * Separate from [RuleSetCard]'s mapping of the same enum on purpose: the row
  * reports a set's standing condition ("Update failed — timed out") while the

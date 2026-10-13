@@ -86,9 +86,10 @@ public data class OverrideBlocks(
  *   user reaches into logcat (ARCHITECTURE.md §5.6, found on device during M1).
  * - `stats`/`policy`/`metrics` — a config's own metrics listener is an
  *   unaudited open port, and counters are M8's.
- * - `api` — `api.listen` starts an unauthenticated gRPC control plane on its own
- *   address without needing an inbound, so stripping `inbounds` does not
- *   neutralise it. Nothing in the app reads a config's `api` (its own metrics
+ * - `api` — believed from upstream documentation, not verified against the pinned
+ *   Xray-core, that `api.listen` starts an unauthenticated gRPC control plane on
+ *   its own address without needing an inbound, so stripping `inbounds` would not
+ *   neutralise it; stripping is safe either way. Nothing in the app reads a config's `api` (its own metrics
  *   path is `metrics`). Like `stats`, this is an exception to the pure branch's
  *   "as written" promise. A top-level `reverse` is not stripped here: it is
  *   rejected earlier, by `analysePassthrough`.

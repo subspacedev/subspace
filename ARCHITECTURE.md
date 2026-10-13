@@ -501,9 +501,10 @@ rather than a typed model precisely so it preserves whatever the config
 carries that this design does not name — `burstObservatory`, an opaque
 `fakedns` object. (A top-level `reverse` is not preserved: `analysePassthrough`
 rejects it as `CarriesReverseProxy`, so the row falls back to the typed
-projection. A reverse bridge lets the server open connections out of the
+projection. Believed from upstream documentation, not verified against the
+pinned Xray-core: a reverse bridge lets the server open connections out of the
 device, and stripping it instead would leave rules naming vanished bridge/portal
-tags that fail silently at match time.) Five rewrites apply regardless of which
+tags that fail silently at match time. Rejecting is safe either way.) Five rewrites apply regardless of which
 branch below is taken:
 
 - `inbounds` replaced with the SOCKS + HTTP pair `socksInboundJson`/
@@ -514,9 +515,11 @@ branch below is taken:
   `setenv` (§6's `XrayEnv` note above still applies).
 - `log` forced to `access: "none"`, `loglevel: "warning"` (§5.6 — the device-
   found logcat leak, one line per destination).
-- `api` stripped — `api.listen` starts an unauthenticated gRPC control plane on
-  its own address with no inbound, so stripping `inbounds` does not neutralise
-  it, and nothing in the app reads a config's `api`. Like the `stats` strip
+- `api` stripped — believed from upstream documentation, not verified against
+  the pinned Xray-core, that `api.listen` starts an unauthenticated gRPC control
+  plane on its own address with no inbound, so stripping `inbounds` would not
+  neutralise it; nothing in the app reads a config's `api`, so stripping is safe
+  either way. Like the `stats` strip
   below, this is stripped unconditionally and so is an exception to the pure
   branch's byte-identical promise.
 - `stats`/`policy`/`metrics` stripped — a config's own listener is an
@@ -585,8 +588,8 @@ or carrying a top-level `reverse` block (rejected as `CarriesReverseProxy`),
 keeps today's typed-projection behaviour, with the failed check named in the
 editor rather than left to guess. The structural analysis is also re-run on the
 stored bytes at connect, read-only: a row stored as eligible before a rejection
-rule existed takes the same typed-projection path instead of running as written. A profile that passes and later fails
-`testXray` at connect — the stored bytes or the environment changed since
+rule existed takes the same typed-projection path instead of running as
+written. A profile that passes and later fails `testXray` at connect — the stored bytes or the environment changed since
 import — fails visibly with `FailureReason.PassthroughRejectedAtConnect`
 rather than falling back to the typed projection; a silent fallback would be
 two different tunnels behind one tap.
@@ -789,8 +792,8 @@ named profile resolver loops.
 carries no settings, so it touches neither the legacy nor the rewrite
 generation of `DNSOutboundConfig` and is stable across upstream's deprecation.
 
-When nothing asks for DNS — no profile block and the app-level setting at its
-default — **none of this is emitted**, and the config is byte-identical to the
+When nothing asks for DNS — no profile block, the app-level setting at its
+default, and no rule set active — **none of this is emitted**, and the config is byte-identical to the
 M1 shape that was proven on hardware. That is deliberate: the default resolver
 literal was chosen to make that identity possible.
 

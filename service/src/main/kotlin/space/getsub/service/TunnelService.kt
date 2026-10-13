@@ -214,17 +214,6 @@ internal fun passthroughPlanFor(
     )
 
 /**
- * Which [FailureReason] a core refusal at `xray.validate` names.
- *
- * The backstop two accepted M7 limitations depend on: core validation at
- * import does not run on the periodic subscription-refresh path, and is
- * skipped when geo assets are not yet installed. Both are acceptable only
- * because a stored config the core later refuses fails visibly, with this
- * accurate reason, at connect time — a `ConfigRejected` here would read as
- * "our own generation is broken" instead of "your stored config no longer
- * runs", sending the user looking for the wrong kind of fix.
- */
-/**
  * Whether a stored-eligible row still runs as written. The stored verdict can predate a rule
  * (a row imported before `reverse` was rejected carries none), so the structural analysis is
  * re-run on the stored bytes; a rejection now takes the same typed-projection path a stored
@@ -235,6 +224,17 @@ internal fun runsAsWrittenAtConnect(
     rawJson: String?,
 ): Boolean = storedRunsAsWritten && (rawJson == null || analysePassthrough(rawJson).rejection == null)
 
+/**
+ * Which [FailureReason] a core refusal at `xray.validate` names.
+ *
+ * The backstop two accepted M7 limitations depend on: core validation at
+ * import does not run on the periodic subscription-refresh path, and is
+ * skipped when geo assets are not yet installed. Both are acceptable only
+ * because a stored config the core later refuses fails visibly, with this
+ * accurate reason, at connect time — a `ConfigRejected` here would read as
+ * "our own generation is broken" instead of "your stored config no longer
+ * runs", sending the user looking for the wrong kind of fix.
+ */
 internal fun validationFailureReason(runsAsWritten: Boolean): FailureReason =
     if (runsAsWritten) FailureReason.PassthroughRejectedAtConnect else FailureReason.ConfigRejected
 
