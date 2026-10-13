@@ -580,9 +580,12 @@ same inbound pair a connect would inject — plus a check that the element
 produced exactly one profile or is a `routing.balancers` entry (an
 "auto/best server" document, which collapses into one passthrough row rather
 than being read as several servers to choose from — reading it as several
-would run the same tunnel under every row). A profile failing either check
+would run the same tunnel under every row). A profile failing either check,
+or carrying a top-level `reverse` block (rejected as `CarriesReverseProxy`),
 keeps today's typed-projection behaviour, with the failed check named in the
-editor rather than left to guess. A profile that passes and later fails
+editor rather than left to guess. The structural analysis is also re-run on the
+stored bytes at connect, read-only: a row stored as eligible before a rejection
+rule existed takes the same typed-projection path instead of running as written. A profile that passes and later fails
 `testXray` at connect — the stored bytes or the environment changed since
 import — fails visibly with `FailureReason.PassthroughRejectedAtConnect`
 rather than falling back to the typed projection; a silent fallback would be
