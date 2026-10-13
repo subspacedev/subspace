@@ -456,17 +456,7 @@ class RoutingRepositoryTest {
         // The collision alone wrote nothing: ownership is still the original owner's.
         stored.sourceKind shouldBe RoutingSourceKind.Header
         stored.subscriptionId shouldBe null
-        stored.ruleSet.id shouldBe id
-        stored.ruleSet.name shouldBe committed.name
-        stored.ruleSet.domainStrategy shouldBe committed.domainStrategy
-        stored.ruleSet.bucket(RouteOutcome.DIRECT) shouldBe committed.bucket(RouteOutcome.DIRECT)
-        stored.ruleSet.bucket(RouteOutcome.PROXY) shouldBe committed.bucket(RouteOutcome.PROXY)
-        stored.ruleSet.bucket(RouteOutcome.BLOCK) shouldBe committed.bucket(RouteOutcome.BLOCK)
-        stored.lastUpdated shouldBe committed.lastUpdated
-        stored.fingerprint shouldBe committed.fingerprint()
-        stored.geoIpUrl shouldBe committed.geoIpUrl
-        stored.geoSiteUrl shouldBe committed.geoSiteUrl
-        stored.hasDns shouldBe false
+        assertCommittedRules(stored, id, committed)
         stored.assetGeneration shouldBe 4L
         stored.assetState shouldBe RuleSetAssetState.Ready
         stored.assetFailure shouldBe null
@@ -477,6 +467,26 @@ class RoutingRepositoryTest {
         moved.sourceKind shouldBe RoutingSourceKind.Body
         moved.subscriptionId shouldBe subscription.id
         moved.assetGeneration shouldBe 5L
+    }
+
+    private fun assertCommittedRules(
+        stored: StoredRuleSet,
+        id: Long,
+        committed: RoutingProfile,
+    ) {
+        stored.ruleSet.id shouldBe id
+        stored.ruleSet.name shouldBe committed.name
+        stored.ruleSet.order shouldBe committed.routeOrder
+        stored.ruleSet.domainStrategy shouldBe committed.domainStrategy
+        stored.ruleSet.globalProxy shouldBe committed.globalProxy
+        stored.ruleSet.bucket(RouteOutcome.DIRECT) shouldBe committed.bucket(RouteOutcome.DIRECT)
+        stored.ruleSet.bucket(RouteOutcome.PROXY) shouldBe committed.bucket(RouteOutcome.PROXY)
+        stored.ruleSet.bucket(RouteOutcome.BLOCK) shouldBe committed.bucket(RouteOutcome.BLOCK)
+        stored.lastUpdated shouldBe committed.lastUpdated
+        stored.fingerprint shouldBe committed.fingerprint()
+        stored.geoIpUrl shouldBe committed.geoIpUrl
+        stored.geoSiteUrl shouldBe committed.geoSiteUrl
+        stored.hasDns shouldBe false
     }
 
     @Test

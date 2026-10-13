@@ -1458,13 +1458,53 @@ class RoutingProfileImporterTest {
     fun aSuccessfulOwnGenerationFreeImportOverAManualRowMovesOwnership() = runTest {
         val manualId = seedManualRow()
         val subscription = addSubscription("https://subscription.example/a")
-        val literalOnly = sampleProfile().copy(geoIpUrl = null, geoSiteUrl = null)
+        val literalOnly =
+            sampleProfile().copy(
+                geoIpUrl = null,
+                geoSiteUrl = null,
+                buckets = mapOf(RouteOutcome.DIRECT to RuleBucket(ips = listOf("10.0.0.0/8"))),
+            )
 
         importer
             .apply(literalOnly, RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
             .shouldBeInstanceOf<ImportOutcome.Activated>()
 
-        repository.stored(manualId).shouldNotBeNull().subscriptionId shouldBe subscription.id
+        val stored = repository.stored(manualId).shouldNotBeNull()
+        stored.sourceKind shouldBe RoutingSourceKind.Header
+        stored.subscriptionId shouldBe subscription.id
+        downloads.shouldBeEmpty()
+    }
+
+    @Test
+    fun aSubscriptionDeletedBeforeTheCommitFailsTheImportAndKeepsTheOldRowAndOwner() = runTest {
+        val manualId = seedManualRow()
+        val subscription = addSubscription("https://subscription.example/a")
+        val racing =
+            RoutingProfileImporter(
+                database,
+                repository,
+                assets,
+                geoAssets,
+                settings,
+                validator,
+                downloader,
+                deletion,
+                progress,
+                GEO_DOWNLOAD_TIMEOUT_MILLIS,
+            ) { _: Long, _: Long -> database.subscriptionDao().deleteSubscription(subscription.id) }
+
+        val outcome =
+            racing
+                .apply(geoIpOnlyProfile(), RoutingVerb.Add, RoutingSourceKind.Header, subscription.id)
+                .shouldBeInstanceOf<ImportOutcome.Failed>()
+        outcome.id shouldBe 0L
+        outcome.failure shouldBe RuleSetAssetFailure.Rejected
+
+        val stored = repository.stored(manualId).shouldNotBeNull()
+        stored.sourceKind shouldBe null
+        stored.subscriptionId shouldBe null
+        stored.assetGeneration shouldBe 0L
+        assets.generationDir(manualId, 1).exists() shouldBe false
     }
 
     private suspend fun addSubscription(url: String) =
