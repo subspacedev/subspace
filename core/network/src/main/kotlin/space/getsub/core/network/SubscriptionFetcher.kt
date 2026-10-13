@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -83,6 +84,8 @@ private fun FetchOutcome.isWorthRetrying(): Boolean =
  * value this module has any reason to believe is well-behaved.
  */
 internal const val MAX_SUBSCRIPTION_BODY_BYTES = 2L * 1024 * 1024
+
+private fun FetchRoute.isFronting(): Boolean = resolveAddress != null || hostHeader != null
 
 internal fun safeRedirectTarget(
     currentUrl: HttpUrl,
@@ -166,7 +169,18 @@ constructor(
             attempt(request)
         }
 
-    private fun attempt(request: SubscriptionRequest): FetchOutcome {
+    private fun attempt(request: SubscriptionRequest): FetchOutcome =
+        if (request.route.isFronting() && request.url.toHttpUrlOrNull()?.isHttps != true) {
+            // Audit finding 4 / M9-B spec §1.1: fronting is TLS-SNI based. Over cleartext it would only send
+            // the plaintext request, device headers included, to an address the pasted link chose (the
+            // network security config allows http to 127.0.0.1). Nothing is dialled; NotFound is the
+            // existing "no call could be formed" kind, and a plain http link without fronting is unchanged.
+            FetchOutcome.Failed(FetchFailure.NotFound)
+        } else {
+            dial(request)
+        }
+
+    private fun dial(request: SubscriptionRequest): FetchOutcome {
         // Client construction (the timeout chain) and call construction
         // (URL parsing) both throw on bad input rather than returning a
         // Result — confirmed empirically, not assumed: an out-of-range

@@ -1961,7 +1961,8 @@ above cosmetic parity:
 - [ ] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
       — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
-      switch); verified on device before ticking.
+      switch); https URLs only, an http link with `resolve-address`/`host` fails without dialling;
+      verified on device before ticking.
 - [ ] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
       — M9-B: implemented under the per-subscription trust grant; verified on device before ticking.
