@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.network
 
+import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
@@ -27,12 +28,17 @@ class SubscriptionFetcherRouteTest {
 
     @After fun tearDown() { server.close() }
 
-    private fun request(route: FetchRoute, host: String = "front.invalid", scheme: String = "http") =
+    private fun request(
+        route: FetchRoute,
+        host: String = "front.invalid",
+        scheme: String = "http",
+        timeoutSeconds: Int = 5,
+    ) =
         SubscriptionRequest(
             url = "$scheme://$host:${server.port}/sub",
             hwidEnabled = false,
             userAgentOverride = null,
-            timeoutSeconds = 5,
+            timeoutSeconds = timeoutSeconds,
             route = route,
         )
 
@@ -70,13 +76,26 @@ class SubscriptionFetcherRouteTest {
 
     @Test
     fun resolveAddressOverHttpsIsHonouredAndDials() = runTest {
-        // MockWebServer here speaks plaintext, so the TLS handshake fails or stalls; any outcome but the
-        // cleartext guard's NotFound proves the route was accepted and a connection was attempted.
+        // MockWebServer speaks plaintext, so the TLS handshake fails or stalls. With resolveAddress ignored,
+        // front.invalid would fail to resolve (Unreachable); TlsFailure/TimedOut are only reachable by
+        // actually connecting to the mock at the chosen address.
         val outcome = fetcher.fetch(
-            request(FetchRoute(resolveAddress = "127.0.0.1", hostHeader = "real.example"), scheme = "https"),
+            request(FetchRoute(resolveAddress = "127.0.0.1"), scheme = "https", timeoutSeconds = 1),
         )
 
-        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldNotBe FetchFailure.NotFound
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBeIn
+            setOf(FetchFailure.TlsFailure, FetchFailure.TimedOut)
+    }
+
+    @Test
+    fun aHostOverrideBecomesTheRequestHostHeader(): Unit = with(fetcher) {
+        val http = request(FetchRoute(hostHeader = "real.example"), scheme = "https").toOkHttpRequest()
+        val proxied = request(FetchRoute(hostHeader = "real.example"), scheme = "https")
+            .copy(proxyPort = 1).toOkHttpRequest()
+
+        http.header("Host") shouldBe "real.example"
+        proxied.header("Host") shouldBe "real.example"
+        request(FetchRoute(), scheme = "https").toOkHttpRequest().header("Host") shouldBe null
     }
 
     @Test

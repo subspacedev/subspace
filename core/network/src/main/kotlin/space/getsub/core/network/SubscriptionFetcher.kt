@@ -261,7 +261,7 @@ constructor(
             }
             .build()
 
-    private fun SubscriptionRequest.toOkHttpRequest(): Request =
+    internal fun SubscriptionRequest.toOkHttpRequest(): Request =
         Request.Builder()
             .url(url)
             .header("user-agent", userAgentOverride ?: UserAgent.default(appVersion))
