@@ -140,7 +140,12 @@ public object DnsPlanner {
                 servers = it,
                 hosts = hostsFor(effective, setting),
                 fakeDns = (effective?.fakeDns ?: false) && sniffingEnabled,
-                directMatch = domesticMatch,
+                // Direct only for a domestic server that was emitted scoped to the direct
+                // bucket. Unscoped (domestic-only) it is the sole resolver, so a direct rule
+                // would send all resolution out in the clear; omitted, the rule is dead.
+                // The proxy catch-all carries those cases (ARCHITECTURE.md §5.2, §6; audit
+                // 2026-10-13 finding 2). The collapse below still compares the raw match.
+                directMatch = domesticMatch.takeIf { _ -> it.any { server -> server.domains.isNotEmpty() } },
                 // Collapse when both resolvers are one server: two contradictory
                 // rules on the same match is not a configuration, it is a coin flip.
                 proxyMatch = remoteMatch?.takeIf { match -> match != domesticMatch },

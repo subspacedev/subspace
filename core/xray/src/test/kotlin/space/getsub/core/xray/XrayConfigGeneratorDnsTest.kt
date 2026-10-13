@@ -6,6 +6,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
+import space.getsub.core.model.DnsResolver
+import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.ProfileDns
 import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.RuleBucket
@@ -68,6 +71,27 @@ class XrayConfigGeneratorDnsTest {
         val routing = XrayConfigGenerator.overrideBlocks(overrideSettings, OverrideTarget.ViaBalancer("B")).routingJson
 
         routing shouldContain """"ip": ["8.8.8.8"], "outboundTag": "direct""""
+    }
+
+    @Test
+    fun `a domestic-only plan emits no dns-module direct rule`() {
+        // Audit 2026-10-13 finding 2: the sole resolver must ride the dns-module catch-all.
+        val domesticOnly =
+            requireNotNull(
+                DnsPlanner.plan(
+                    ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8")),
+                    DnsResolver(DnsTransport.DOU, ip = "1.1.1.1"),
+                    whitelist,
+                    sniffingEnabled = true,
+                ),
+            )
+        val routing =
+            XrayConfigGenerator
+                .overrideBlocks(overrideSettings.copy(dns = domesticOnly), OverrideTarget.ViaBalancer("B"))
+                .routingJson
+
+        routing shouldNotContain """"outboundTag": "direct""""
+        routing shouldContain """{ "type": "field", "inboundTag": ["dns-module"], "balancerTag": "B" }"""
     }
 
     @Test

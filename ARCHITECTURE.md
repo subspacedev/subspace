@@ -744,7 +744,7 @@ The DNS rules, when a plan exists, are prepended in this order — the order
 is load-bearing (§5.2):
 
 ```
-[if the plan has a domestic match]
+[if the plan has a *scoped* domestic match]
 { "type": "field", "inboundTag": ["dns-module"], "ip"|"domain": [<domestic>], "outboundTag": "direct" }
 [if the plan has a remote match]
 { "type": "field", "inboundTag": ["dns-module"], "ip"|"domain": [<remote>],   "outboundTag": "proxy"  }
@@ -758,6 +758,13 @@ resolver's own traffic each — matched by address, `ip` for a literal and
 `domain` for a DoH endpoint's hostname — and send the domestic one direct and
 the remote one through the proxy. A plan frequently has neither, which is why
 they cannot be what makes the arrangement loop-safe.
+
+The domestic match exists only when the domestic server was emitted *scoped* to
+the direct bucket, with a remote server behind it. A domestic-only profile's
+sole resolver is unscoped, and an omitted domestic server has nothing to match;
+in both cases there is no direct rule and the catch-all below carries the
+resolver's traffic through the proxy. (The identical-resolver collapse in the
+M6.5 spec §7.2.1 is the documented exception and is unchanged.)
 
 The third is **unconditional**, and it is the one that matters: it claims *all*
 remaining DNS-module traffic before the hijack below it can see it (§5.2).

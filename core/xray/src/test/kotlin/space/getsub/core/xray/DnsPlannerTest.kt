@@ -109,6 +109,45 @@ class DnsPlannerTest {
     }
 
     @Test
+    fun `a domestic-only profile has no direct match so the proxy catch-all carries it`() {
+        // Audit 2026-10-13 finding 2: an unscoped domestic server is the only resolver, so a
+        // direct rule for it would send every lookup on the device out in the clear.
+        val profile = ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+
+        plan.directMatch shouldBe null
+        plan.proxyMatch shouldBe null
+    }
+
+    @Test
+    fun `a domestic server omitted for want of a direct bucket has no direct match`() {
+        val profile =
+            ProfileDns(
+                remote = DnsResolver(DnsTransport.DOU, ip = "1.0.0.1"),
+                domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
+            )
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList()), true))
+
+        plan.directMatch shouldBe null
+    }
+
+    @Test
+    fun `a scoped domestic server keeps its direct match`() {
+        val profile =
+            ProfileDns(
+                remote = DnsResolver(DnsTransport.DOU, ip = "1.0.0.1"),
+                domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
+            )
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+
+        plan.directMatch shouldBe "8.8.8.8"
+        plan.proxyMatch shouldBe "1.0.0.1"
+    }
+
+    @Test
     fun `identical resolvers collapse to a single direct match`() {
         val same = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8")
         val profile = ProfileDns(remote = same, domestic = same)
