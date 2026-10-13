@@ -498,9 +498,13 @@ below. See §14.6.
 
 `RawConfigComposer` (`:core:xray`) does the rewriting, working on parsed JSON
 rather than a typed model precisely so it preserves whatever the config
-carries that this design does not name — `burstObservatory`, `reverse`, an
-opaque `fakedns` object. Four rewrites apply regardless of which branch below
-is taken:
+carries that this design does not name — `burstObservatory`, an opaque
+`fakedns` object. (A top-level `reverse` is not preserved: `analysePassthrough`
+rejects it as `CarriesReverseProxy`, so the row falls back to the typed
+projection. A reverse bridge lets the server open connections out of the
+device, and stripping it instead would leave rules naming vanished bridge/portal
+tags that fail silently at match time.) Five rewrites apply regardless of which
+branch below is taken:
 
 - `inbounds` replaced with the SOCKS + HTTP pair `socksInboundJson`/
   `httpInboundJson` already emit for a typed profile — moved into a shared
@@ -510,6 +514,11 @@ is taken:
   `setenv` (§6's `XrayEnv` note above still applies).
 - `log` forced to `access: "none"`, `loglevel: "warning"` (§5.6 — the device-
   found logcat leak, one line per destination).
+- `api` stripped — `api.listen` starts an unauthenticated gRPC control plane on
+  its own address with no inbound, so stripping `inbounds` does not neutralise
+  it, and nothing in the app reads a config's `api`. Like the `stats` strip
+  below, this is stripped unconditionally and so is an exception to the pure
+  branch's byte-identical promise.
 - `stats`/`policy`/`metrics` stripped — a config's own listener is an
   unaudited open port. **M8.5 exception, this branch only:** with the per-tag
   traffic breakdown switched on (off by default, §14.4), the same three

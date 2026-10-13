@@ -50,6 +50,15 @@ public enum class PassthroughRejection {
     SeveralServers,
 
     /**
+     * A top-level `reverse` block: the config would let its server open connections
+     * back out of the device, to the internet and to the local network.
+     *
+     * Rejected rather than stripped, because stripping leaves rules naming bridge or
+     * portal tags that the core accepts at build and only fails on at match time.
+     */
+    CarriesReverseProxy,
+
+    /**
      * xray-core refused the composed config.
      *
      * Set by `:service`, not by [analysePassthrough] — the analyser is
@@ -363,7 +372,14 @@ private fun analyseOutbounds(
 
     val routing = root["routing"] as? JsonObject
     val isBalancer = routing.arrayOf("balancers").isNotEmpty()
-    val rejection = if (serverCount > 1 && !isBalancer) PassthroughRejection.SeveralServers else null
+    // `"reverse": null` is JsonNull, which the core reads as absent; anything else is a block.
+    val carriesReverse = root["reverse"].let { it != null && it !is JsonNull }
+    val rejection =
+        when {
+            carriesReverse -> PassthroughRejection.CarriesReverseProxy
+            serverCount > 1 && !isBalancer -> PassthroughRejection.SeveralServers
+            else -> null
+        }
 
     return PassthroughAnalysis(
         rejection = rejection,
@@ -409,7 +425,7 @@ private fun advisoriesFor(
         if (wantsFakeDns && "fakedns" !in sniffedDestOverrides) {
             add(PassthroughAdvisory.FakeDnsWithoutSniffingOverride)
         }
-        if (hasDanglingReference(root, routing, outboundTags)) {
+        if (hasDanglingReference(routing, outboundTags)) {
             add(PassthroughAdvisory.DanglingRoutingReference)
         }
     }
@@ -428,29 +444,11 @@ private fun advisoriesFor(
  * tags, so `selector: ["proxy"]` legitimately selects `proxy-auto`,
  * `proxy-auto-2` and so on. Treating its entries as exact references would
  * report a defect that is not there — §10.4.
- *
- * Suppressed entirely when the config carries a `reverse` block: `ARCHITECTURE.md`
- * §"Passthrough execution" (line 331) lists `reverse` among the blocks
- * `RawConfigComposer` deliberately preserves as opaque, so such a config does
- * reach the core through passthrough. In xray's reverse-proxy shape, a rule's
- * `outboundTag` can legitimately name a `reverse` bridge/portal tag, which
- * lives outside `outbounds` — this analyser has no model of that namespace.
- * Widening the outbound-tag set to include reverse tags would need an
- * upstream citation this codebase does not have (§10.5); suppressing instead
- * makes no claim about how `reverse` resolves and fails toward silence
- * rather than toward a false accusation — the same §10.4 reasoning the
- * `selector` carve-out rests on.
  */
 private fun hasDanglingReference(
-    root: JsonObject,
     routing: JsonObject?,
     outboundTags: List<String>,
 ): Boolean {
-    // `root["reverse"]` is a non-null JsonNull for an explicit `"reverse": null`, so this
-    // must check for an actual object, not merely non-null, or that shape would disable the
-    // whole dangling check for free.
-    if ((root["reverse"] as? JsonObject) != null) return false
-
     val rules = routing.arrayOf("rules").filterIsInstance<JsonObject>()
     val balancers = routing.arrayOf("balancers").filterIsInstance<JsonObject>()
     val balancerTags = balancers.mapNotNull { it["tag"].stringOrNull() }.toSet()
