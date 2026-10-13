@@ -27,6 +27,26 @@ class DnsPlannerTest {
     }
 
     @Test
+    fun `an active rule set with the default setting still yields a plan`() {
+        // Audit 2026-10-13 finding 1: a null plan under routing means no dns-out, no
+        // dns-module catch-all and no port-53 hijack, so DNS leaks around the rule set.
+        val plan = requireNotNull(DnsPlanner.plan(null, defaultSetting, ruleSet(emptyList()), sniffingEnabled = true))
+
+        plan.servers.map { it.address } shouldBe listOf("1.1.1.1")
+        plan.directMatch shouldBe null
+        plan.proxyMatch shouldBe null
+        plan.fakeDns shouldBe false
+        plan.hosts shouldBe emptyMap()
+    }
+
+    @Test
+    fun `an active rule set with a profile block that asks for nothing still yields a plan`() {
+        val plan = DnsPlanner.plan(ProfileDns(fakeDns = false), defaultSetting, ruleSet(emptyList()), true)
+
+        requireNotNull(plan).servers.single().address shouldBe "1.1.1.1"
+    }
+
+    @Test
     fun `a non-default setting yields a plan`() {
         val plan = DnsPlanner.plan(null, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null, true)
 
