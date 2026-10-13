@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
+@file:Suppress("TooManyFunctions") // One conversion pipeline; each helper is one named step of it.
+
 package space.getsub.core.parser.routing
 
 import kotlinx.serialization.SerializationException
@@ -8,9 +10,12 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.BucketField
+import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.ProfileDns
 import space.getsub.core.model.RouteOutcome
+import space.getsub.core.model.RoutingEntries
 import space.getsub.core.model.RoutingProfile
 import space.getsub.core.model.RuleBucket
 
@@ -57,6 +62,16 @@ public enum class ConversionDrop {
 
     /** A `dns.hosts` key mapping to several addresses; [ProfileDns.hosts] holds one. */
     MultiAddressHost,
+
+    /**
+     * A `domain`/`ip` entry the app's own entry grammar ([RoutingEntries.problemWith]) rejects —
+     * a backslash `regexp:`, a bare URL, a malformed CIDR. Storage would refuse the whole
+     * profile for one such entry, so it is dropped here and counted instead.
+     */
+    InvalidEntry,
+
+    /** A `dns.hosts` mapping whose value is not an address or hostname; the codec would discard the whole block. */
+    InvalidHost,
 }
 
 /**
@@ -186,12 +201,32 @@ private fun classifyRule(
             null
         }
         else -> {
-            val outcome = resolveOutcome(rule, outcomeByTag, drop) ?: return null
-            domain?.let { sites.getOrPut(outcome, ::mutableListOf) += it.strings() }
-            ip?.let { ips.getOrPut(outcome, ::mutableListOf) += it.strings() }
-            outcome
+            resolveOutcome(rule, outcomeByTag, drop)?.let { outcome ->
+                landEntries(outcome, domain, ip, drop, sites, ips)
+            }
         }
     }
+}
+
+/**
+ * Validates and records one rule's entries; returns [outcome], or null when every entry was
+ * dropped (such a rule has nothing to land, so it must not count toward appearance order).
+ */
+@Suppress("LongParameterList") // The two bucket maps are classifyRule's accumulators, passed through unchanged.
+private fun landEntries(
+    outcome: RouteOutcome,
+    domain: JsonArray?,
+    ip: JsonArray?,
+    drop: (ConversionDrop) -> Unit,
+    sites: MutableMap<RouteOutcome, MutableList<String>>,
+    ips: MutableMap<RouteOutcome, MutableList<String>>,
+): RouteOutcome? {
+    val siteEntries = domain?.validEntries(BucketField.SITES, drop).orEmpty()
+    val ipEntries = ip?.validEntries(BucketField.IPS, drop).orEmpty()
+    if (siteEntries.isEmpty() && ipEntries.isEmpty()) return null
+    sites.getOrPut(outcome, ::mutableListOf) += siteEntries
+    ips.getOrPut(outcome, ::mutableListOf) += ipEntries
+    return outcome
 }
 
 /**
@@ -281,7 +316,12 @@ private fun dnsOf(
         hostsObject
             .mapNotNull { (key, value) ->
                 when (value) {
-                    is JsonPrimitive -> key to value.content
+                    is JsonPrimitive ->
+                        (if (value.isString) DnsValidation.hostEntry(key, value.content) else null)
+                            ?: run {
+                                drop(ConversionDrop.InvalidHost)
+                                null
+                            }
                     else -> {
                         drop(ConversionDrop.MultiAddressHost)
                         null
@@ -293,4 +333,21 @@ private fun dnsOf(
 
 private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
-private fun JsonArray.strings(): List<String> = mapNotNull { (it as? JsonPrimitive)?.content }
+/**
+ * The trimmed string entries [RoutingEntries.problemWith] accepts. Anything else — a
+ * non-string primitive, a nested value, an entry the grammar rejects — is counted as
+ * [ConversionDrop.InvalidEntry] rather than carried into a profile storage would refuse.
+ */
+private fun JsonArray.validEntries(
+    field: BucketField,
+    drop: (ConversionDrop) -> Unit,
+): List<String> =
+    mapNotNull { element ->
+        val entry = (element as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+        if (entry == null || RoutingEntries.problemWith(entry, field) != null) {
+            drop(ConversionDrop.InvalidEntry)
+            null
+        } else {
+            entry
+        }
+    }

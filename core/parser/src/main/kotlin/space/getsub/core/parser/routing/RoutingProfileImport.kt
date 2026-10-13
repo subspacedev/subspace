@@ -146,13 +146,10 @@ private fun JsonObject.dnsHostsOf(): Map<String, String>? {
     val obj = value as? JsonObject ?: return null
     val out = mutableMapOf<String, String>()
     for ((key, element) in obj) {
-        if (key.isBlank()) return null
         val primitive = element as? JsonPrimitive ?: return null
         if (!primitive.isString) return null
-        val mapped = primitive.content.trim()
-        if (mapped.isEmpty()) return null
-        if (!DnsValidation.isAddressLiteral(mapped) && DnsValidation.hostOf("https://$mapped") == null) return null
-        out[key.trim()] = mapped
+        val (host, mapped) = DnsValidation.hostEntry(key, primitive.content) ?: return null
+        out[host] = mapped
     }
     return out
 }

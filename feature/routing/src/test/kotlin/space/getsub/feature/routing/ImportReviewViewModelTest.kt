@@ -177,6 +177,28 @@ class ImportReviewViewModelTest {
         viewModel.state.value.stage shouldBe Stage.Done
     }
 
+    // Deterministic rejection (invalid entries): retrying can never succeed, so the sheet must say so.
+    @Test
+    fun anInvalidEntryApplyEndsInFailedNotASilentReviewing() = runTest {
+        viewModel =
+            ImportReviewViewModel(
+                FakeImportReviewSource(
+                    repository,
+                    settings,
+                    downloads,
+                    failApplyWith = IllegalArgumentException("routing rule set contains an invalid SITES entry"),
+                ),
+            )
+        viewModel.offer(linkFor(sampleProfile()), RoutingSourceKind.Deeplink)
+        viewModel.confirm()
+
+        viewModel.state.value.stage shouldBe Stage.Failed
+        viewModel.state.value.invalidEntries shouldBe true
+        viewModel.retry()
+        viewModel.state.value.stage shouldBe Stage.Reviewing
+        viewModel.state.value.invalidEntries shouldBe false
+    }
+
     @Test
     fun aThrownDisableLeavesTheSheetActionable() = runTest {
         viewModel.offer(linkFor(sampleProfile()), RoutingSourceKind.Deeplink)

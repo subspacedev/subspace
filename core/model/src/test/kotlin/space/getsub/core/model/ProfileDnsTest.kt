@@ -69,4 +69,21 @@ class ProfileDnsTest {
         rendered shouldNotContain "secret-host.test"
         rendered shouldNotContain "9.9.9.9"
     }
+
+    @Test
+    fun hostEntryTrimsAndAcceptsAddressesAndHostnames() {
+        DnsValidation.hostEntry(" a.test ", " 1.1.1.1 ") shouldBe ("a.test" to "1.1.1.1")
+        DnsValidation.hostEntry("a.test", "b.test") shouldBe ("a.test" to "b.test")
+        DnsValidation.hostEntry("domain:googleapis.cn", "googleapis.com") shouldBe
+            ("domain:googleapis.cn" to "googleapis.com")
+    }
+
+    @Test
+    fun hostEntryRejectsBlankKeyBlankValueAndNonHosts() {
+        DnsValidation.hostEntry("", "1.1.1.1") shouldBe null
+        DnsValidation.hostEntry("  ", "1.1.1.1") shouldBe null
+        DnsValidation.hostEntry("a.test", "") shouldBe null
+        DnsValidation.hostEntry("a.test", "a b") shouldBe null
+        DnsValidation.hostEntry("a.test", "#3") shouldBe null
+    }
 }

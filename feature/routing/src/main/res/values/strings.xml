@@ -245,6 +245,7 @@
     <string name="import_review_failed_rejected">The downloaded file was not a geo database.</string>
     <string name="import_review_failed_unsupplied">This profile names no source for a geo file its rules need.</string>
     <string name="import_review_failed_install">The geo files could not be saved.</string>
+    <string name="import_review_failed_invalid_entries">This profile has entries Subspace can\'t use.</string>
     <string name="import_review_failed_cancelled">The download was cancelled.</string>
     <string name="import_review_retry">Try again</string>
     <string name="import_review_cancel_download">Stop download</string>
@@ -264,5 +265,7 @@
     <string name="routing_conversion_drop_unknown_outbound">Rules pointing at a server the file does not define (%1$d).</string>
     <string name="routing_conversion_drop_non_server_outbound">Rules pointing at the file\'s own DNS or loopback handling rather than a server (%1$d). Subspace has no equivalent, so these rules are dropped rather than sent through the proxy.</string>
     <string name="routing_conversion_drop_order">Rule order was simplified (%1$d). Rules are now grouped by what they do, so a domain listed twice may behave differently than before.</string>
+    <string name="routing_conversion_drop_invalid_entry">Rule entries Subspace can\'t use (%1$d), such as patterns with a backslash or malformed addresses.</string>
+    <string name="routing_conversion_drop_invalid_host">DNS entries whose address is not a valid IP or hostname (%1$d).</string>
     <string name="routing_conversion_drop_multi_address_host">DNS entries listing several addresses for one name (%1$d). Subspace keeps only one address per name.</string>
 </resources>
