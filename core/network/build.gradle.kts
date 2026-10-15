@@ -15,6 +15,7 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)
 
     testImplementation(libs.kotest.assertions)
