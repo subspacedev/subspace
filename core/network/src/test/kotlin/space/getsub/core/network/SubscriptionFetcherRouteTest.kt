@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.network
 
+import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
@@ -27,30 +28,81 @@ class SubscriptionFetcherRouteTest {
 
     @After fun tearDown() { server.close() }
 
-    private fun request(route: FetchRoute, host: String = "front.invalid") =
+    private fun request(
+        route: FetchRoute,
+        host: String = "front.invalid",
+        scheme: String = "http",
+        timeoutSeconds: Int = 5,
+    ) =
         SubscriptionRequest(
-            url = "http://$host:${server.port}/sub",
+            url = "$scheme://$host:${server.port}/sub",
             hwidEnabled = false,
             userAgentOverride = null,
-            timeoutSeconds = 5,
+            timeoutSeconds = timeoutSeconds,
             route = route,
         )
 
     @Test
-    fun resolveAddressAnIpSendsTheRequestThereWithTheHostHeader() = runTest {
+    fun resolveAddressOverCleartextFailsWithoutDialling() = runTest {
+        // Audit finding 4: http://127.0.0.1 is allowed cleartext by the network security config, and a
+        // resolve-address would send the plaintext request, device headers included, to another host.
         server.enqueue(MockResponse(code = 200, body = "ok"))
 
-        val outcome = fetcher.fetch(request(FetchRoute(resolveAddress = "127.0.0.1", hostHeader = "real.example")))
+        val outcome = fetcher.fetch(request(FetchRoute(resolveAddress = "127.0.0.1"), host = "127.0.0.1"))
 
-        outcome.shouldBeInstanceOf<FetchOutcome.Success>()
-        server.takeRequest().headers["Host"] shouldBe "real.example"
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.NotFound
+        server.requestCount shouldBe 0
     }
 
     @Test
-    fun resolveAddressADomainGoesThroughTheResolver() = runTest {
+    fun aHostOverrideOverCleartextFailsWithoutDialling() = runTest {
         server.enqueue(MockResponse(code = 200, body = "ok"))
 
-        fetcher.fetch(request(FetchRoute(resolveAddress = "localhost"))).shouldBeInstanceOf<FetchOutcome.Success>()
+        val outcome = fetcher.fetch(request(FetchRoute(hostHeader = "real.example"), host = "127.0.0.1"))
+
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.NotFound
+        server.requestCount shouldBe 0
+    }
+
+    @Test
+    fun frontingOverCleartextFailsEvenThroughTheTunnelProxy() = runTest {
+        server.enqueue(MockResponse(code = 200, body = "ok"))
+        val proxied = request(FetchRoute(hostHeader = "real.example"), host = "sub.invalid")
+            .copy(proxyPort = server.port)
+
+        fetcher.fetch(proxied).shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.NotFound
+        server.requestCount shouldBe 0
+    }
+
+    @Test
+    fun resolveAddressOverHttpsIsHonouredAndDials() = runTest {
+        // MockWebServer speaks plaintext, so the TLS handshake fails or stalls. With resolveAddress ignored,
+        // front.invalid would fail to resolve (Unreachable); TlsFailure/TimedOut are only reachable by
+        // actually connecting to the mock at the chosen address.
+        val outcome = fetcher.fetch(
+            request(FetchRoute(resolveAddress = "127.0.0.1"), scheme = "https", timeoutSeconds = 1),
+        )
+
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBeIn
+            setOf(FetchFailure.TlsFailure, FetchFailure.TimedOut)
+    }
+
+    @Test
+    fun aHostOverrideBecomesTheRequestHostHeader(): Unit = with(fetcher) {
+        val http = request(FetchRoute(hostHeader = "real.example"), scheme = "https").toOkHttpRequest()
+        val proxied = request(FetchRoute(hostHeader = "real.example"), scheme = "https")
+            .copy(proxyPort = 1).toOkHttpRequest()
+
+        http.header("Host") shouldBe "real.example"
+        proxied.header("Host") shouldBe "real.example"
+        request(FetchRoute(), scheme = "https").toOkHttpRequest().header("Host") shouldBe null
+    }
+
+    @Test
+    fun resolveAddressADomainGoesThroughTheResolver() {
+        val client = fetcher.clientFor(request(FetchRoute(resolveAddress = "localhost"), scheme = "https"))
+
+        client.dns.lookup("front.invalid").all { it.isLoopbackAddress } shouldBe true
     }
 
     @Test
@@ -73,6 +125,21 @@ class SubscriptionFetcherRouteTest {
     }
 
     @Test
+    fun aRuntimeExceptionFromTheSocketFactoryIsAFailureNotAThrow() = runTest {
+        fetcher.fragmentClock = object : FragmentClock {
+            override fun sleepMillis(millis: Long) = Unit
+
+            override fun nextInt(from: Int, toInclusive: Int): Int = throw IllegalArgumentException("boom")
+        }
+        val spec = FragmentSpec(FragmentPackets.Records(XrayRange(1, 1)), XrayRange(5, 5), XrayRange(0, 0), null)
+        server.enqueue(MockResponse(code = 200, body = "ok"))
+
+        val outcome = fetcher.fetch(request(FetchRoute(fragment = spec), host = "127.0.0.1"))
+
+        outcome.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.Unreachable
+    }
+
+    @Test
     fun throughTheTunnelProxyTheRouteDnsAndFactoryAreSkipped() {
         // Plan ruling P1.
         val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(5, 5), XrayRange(0, 0), null)
@@ -81,18 +148,6 @@ class SubscriptionFetcherRouteTest {
         (client.socketFactory is FragmentingSocketFactory) shouldBe false
         client.dns shouldBe Dns.SYSTEM
         client.proxy shouldBe Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 1))
-    }
-
-    @Test
-    fun throughTheTunnelProxyTheHostHeaderStillApplies() = runTest {
-        // Plan ruling P1. The mock server stands in for the tunnel's HTTP proxy, so it sees the proxied request.
-        server.enqueue(MockResponse(code = 200, body = "ok"))
-        val proxied =
-            request(FetchRoute(hostHeader = "real.example"), host = "sub.invalid").copy(proxyPort = server.port)
-
-        fetcher.fetch(proxied).shouldBeInstanceOf<FetchOutcome.Success>()
-
-        server.takeRequest().headers["Host"] shouldBe "real.example"
     }
 
     @Test

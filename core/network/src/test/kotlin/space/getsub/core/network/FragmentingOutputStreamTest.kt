@@ -3,6 +3,7 @@
 package space.getsub.core.network
 
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.shouldBe
 import org.junit.Test
 import space.getsub.core.model.FragmentPackets
@@ -151,5 +152,14 @@ class FragmentingOutputStreamTest {
 
         sink.writes.map { it.size } shouldContainExactly listOf(12, 10, 2)
         sink.writes[1].all { it == 2.toByte() } shouldBe true
+    }
+}
+
+class SystemFragmentClockTest {
+    @Test fun `a draw over the whole Int range does not overflow`() {
+        repeat(200) {
+            SystemFragmentClock.nextInt(1, Int.MAX_VALUE) shouldBeInRange (1..Int.MAX_VALUE)
+        }
+        SystemFragmentClock.nextInt(Int.MAX_VALUE, Int.MAX_VALUE) shouldBe Int.MAX_VALUE
     }
 }

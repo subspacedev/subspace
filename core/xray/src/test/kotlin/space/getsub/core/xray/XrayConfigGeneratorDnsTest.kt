@@ -6,6 +6,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
+import space.getsub.core.model.DnsResolver
+import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.ProfileDns
+import space.getsub.core.model.RouteOutcome
+import space.getsub.core.model.RoutingRuleSet
+import space.getsub.core.model.RuleBucket
 import space.getsub.core.parser.OverrideTarget
 
 class XrayConfigGeneratorDnsTest {
@@ -21,6 +27,13 @@ class XrayConfigGeneratorDnsTest {
             fakeDns = false,
             directMatch = "8.8.8.8",
             proxyMatch = "cloudflare-dns.com",
+        )
+
+    private val whitelist =
+        RoutingRuleSet(
+            name = "BlockedOnly",
+            buckets = mapOf(RouteOutcome.PROXY to RuleBucket(sites = listOf("geosite:blocked"))),
+            globalProxy = false,
         )
 
     private val overrideSettings =
@@ -58,6 +71,27 @@ class XrayConfigGeneratorDnsTest {
         val routing = XrayConfigGenerator.overrideBlocks(overrideSettings, OverrideTarget.ViaBalancer("B")).routingJson
 
         routing shouldContain """"ip": ["8.8.8.8"], "outboundTag": "direct""""
+    }
+
+    @Test
+    fun `a domestic-only plan emits no dns-module direct rule`() {
+        // Audit 2026-10-13 finding 2: the sole resolver must ride the dns-module catch-all.
+        val domesticOnly =
+            requireNotNull(
+                DnsPlanner.plan(
+                    ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8")),
+                    DnsResolver(DnsTransport.DOU, ip = "1.1.1.1"),
+                    whitelist,
+                    sniffingEnabled = true,
+                ),
+            )
+        val routing =
+            XrayConfigGenerator
+                .overrideBlocks(overrideSettings.copy(dns = domesticOnly), OverrideTarget.ViaBalancer("B"))
+                .routingJson
+
+        routing shouldNotContain """"outboundTag": "direct""""
+        routing shouldContain """{ "type": "field", "inboundTag": ["dns-module"], "balancerTag": "B" }"""
     }
 
     @Test
@@ -100,6 +134,39 @@ class XrayConfigGeneratorDnsTest {
 
         (directRule in 0 until hijack) shouldBe true
         (proxyRule in 0 until hijack) shouldBe true
+    }
+
+    @Test
+    fun `a whitelist rule set with the default-setting plan hijacks dns ahead of every rule and the catch-all`() {
+        // Audit 2026-10-13 finding 1: dns-module -> proxy and port 53 -> dns-out must come
+        // before the rule-set lines and catchAllDirect, or device DNS leaves in plaintext.
+        val defaultPlan =
+            requireNotNull(
+                DnsPlanner.plan(null, DnsPlanner.DEFAULT_SETTING, whitelist, sniffingEnabled = true),
+            )
+        val settings =
+            TunnelSettings(
+                socksPort = 10808,
+                dnsServer = "1.1.1.1",
+                enableSniffing = true,
+                routing = whitelist,
+                dns = defaultPlan,
+            )
+        val result = XrayConfigGenerator.generate(GOLDEN_PROFILE, settings)
+        check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
+        val json = result.json
+
+        val dnsModule = json.indexOf(""""inboundTag": ["dns-module"]""")
+        val hijack = json.indexOf(""""outboundTag": "dns-out"""")
+        val ruleSetLine = json.indexOf("geosite:blocked")
+        val catchAllDirect = json.indexOf(""""network": "tcp,udp", "outboundTag": "direct"""")
+
+        (dnsModule >= 0) shouldBe true
+        (dnsModule < hijack) shouldBe true
+        (hijack < ruleSetLine) shouldBe true
+        (ruleSetLine < catchAllDirect) shouldBe true
+        json shouldContain """{ "tag": "dns-out", "protocol": "dns" }"""
+        json shouldContain """"tag": "dns-module""""
     }
 
     @Test

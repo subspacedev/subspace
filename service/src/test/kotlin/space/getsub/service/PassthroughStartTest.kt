@@ -228,4 +228,17 @@ class PassthroughStartTest {
         validationFailureReason(runsAsWritten = true) shouldBe FailureReason.PassthroughRejectedAtConnect
         validationFailureReason(runsAsWritten = false) shouldBe FailureReason.ConfigRejected
     }
+
+    // Audit 2026-10-13 finding 3.3: a row stored as eligible before `reverse` was rejected
+    // carries a null verdict; connect must re-check rather than trust it.
+    @Test
+    fun `a stored-eligible row carrying reverse does not run as written at connect`() {
+        val withReverse =
+            """{"outbounds":[{"tag":"p","protocol":"vless"}],"reverse":{"bridges":[{"tag":"b","domain":"x.test"}]}}"""
+        val plain = """{"outbounds":[{"tag":"p","protocol":"vless"}]}"""
+
+        runsAsWrittenAtConnect(storedRunsAsWritten = true, rawJson = withReverse) shouldBe false
+        runsAsWrittenAtConnect(storedRunsAsWritten = true, rawJson = plain) shouldBe true
+        runsAsWrittenAtConnect(storedRunsAsWritten = false, rawJson = plain) shouldBe false
+    }
 }

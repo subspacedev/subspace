@@ -7,9 +7,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import space.getsub.core.data.serialization.ProfileDnsCodec
 import space.getsub.core.model.RoutingProfile
 import space.getsub.core.parser.routing.ConversionDrop
 import space.getsub.core.parser.routing.RoutingConversion
+import space.getsub.core.parser.routing.convertXrayRouting
 
 /**
  * Task 15: the in-memory channel the editor's "Use this config's routing rules" action hands a
@@ -63,4 +65,21 @@ class PendingRoutingConversionTest {
 
             pending.conversion.first() shouldBe null
         }
+
+    // Audit finding 8: a converted dns block must survive storage; INVALID would drop the hosts at connect.
+    @Test
+    fun aConvertedDnsBlockSurvivesTheStoredRoundTrip() {
+        val json =
+            """
+            {
+              "dns": { "hosts": { "a.test": "", "b.test": "a b", "": "1.1.1.1", "c.test": "1.1.1.1" } },
+              "routing": { "rules": [ { "domain": ["a.com"], "outboundTag": "direct" } ] },
+              "outbounds": [ { "tag": "direct", "protocol": "freedom" } ]
+            }
+            """.trimIndent()
+
+        val dns = convertXrayRouting(json, "Pasted")!!.profile.dns
+
+        ProfileDnsCodec.decode(ProfileDnsCodec.encode(dns)) shouldBe dns
+    }
 }

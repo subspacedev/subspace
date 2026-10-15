@@ -253,7 +253,7 @@ internal constructor(
         val requested = profile.requestedGeoFiles()
 
         if (requested.isEmpty()) {
-            return publishWithoutOwnGeneration(id, profile, stored, verb)
+            return publishWithoutOwnGeneration(id, profile, stored, verb, sourceKind, subscriptionId)
         }
 
         if (requested.any { it.fileName !in suppliedFileNames }) {
@@ -267,7 +267,7 @@ internal constructor(
                 repository.markAssets(id, RuleSetAssetState.Failed, RuleSetAssetFailure.Unsupplied)
                 return ImportOutcome.Failed(id, RuleSetAssetFailure.Unsupplied)
             }
-            return publishWithoutOwnGeneration(id, profile, stored, verb)
+            return publishWithoutOwnGeneration(id, profile, stored, verb, sourceKind, subscriptionId)
         }
 
         val nextGeneration = stored.assetGeneration + 1
@@ -297,7 +297,10 @@ internal constructor(
             }
 
             beforeGenerationCommit(id, nextGeneration)
-            repository.commitGeneration(id, profile, nextGeneration)
+            if (!commitOwned(id, profile, nextGeneration, sourceKind, subscriptionId)) {
+                removeUnpublishedGenerations(id, stored.assetGeneration)
+                return ImportOutcome.Failed(MISSING_SUBSCRIPTION_RULE_SET_ID, RuleSetAssetFailure.Rejected)
+            }
             publicationCommitted = true
         } catch (error: CancellationException) {
             withContext(NonCancellable) {
@@ -314,6 +317,29 @@ internal constructor(
         assets.sweepExcept(id, keep = nextGeneration)
         return activationOutcome(id, verb)
     }
+
+    /**
+     * Commits [profile] together with its owner. Returns false when the owning subscription
+     * vanished (another process deleted it) between the pre-row check and the commit;
+     * ownership lands here, so that is where the foreign-key failure now surfaces.
+     */
+    private suspend fun commitOwned(
+        id: Long,
+        profile: RoutingProfile,
+        generation: Long,
+        sourceKind: RoutingSourceKind,
+        subscriptionId: Long?,
+    ): Boolean =
+        try {
+            repository.commitGeneration(id, profile, generation, sourceKind, subscriptionId)
+            true
+        } catch (error: SQLiteConstraintException) {
+            if (subscriptionId != null && database.subscriptionDao().subscription(subscriptionId) == null) {
+                false
+            } else {
+                throw error
+            }
+        }
 
     /**
      * Publishes a profile that reads from the shared catalogue, and reclaims any
@@ -336,8 +362,12 @@ internal constructor(
         profile: RoutingProfile,
         stored: StoredRuleSet,
         verb: RoutingVerb,
+        sourceKind: RoutingSourceKind,
+        subscriptionId: Long?,
     ): ImportOutcome {
-        repository.commitGeneration(id, profile, NO_OWN_GENERATION)
+        if (!commitOwned(id, profile, NO_OWN_GENERATION, sourceKind, subscriptionId)) {
+            return ImportOutcome.Failed(MISSING_SUBSCRIPTION_RULE_SET_ID, RuleSetAssetFailure.Rejected)
+        }
         if (stored.assetGeneration > NO_OWN_GENERATION) assets.removeSet(id)
         return activationOutcome(id, verb)
     }

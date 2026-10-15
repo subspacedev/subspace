@@ -207,7 +207,7 @@ class RoutingRepositoryTest {
      */
     private suspend fun publish(profile: RoutingProfile) {
         val id = stack.repository.upsertProfile(profile, RoutingSourceKind.Header, subscriptionId = null)
-        stack.repository.commitGeneration(id, profile, generation = 0L)
+        stack.repository.commitGeneration(id, profile, generation = 0L, RoutingSourceKind.Header, subscriptionId = null)
     }
 
     @Test
@@ -378,7 +378,7 @@ class RoutingRepositoryTest {
     }
 
     @Test
-    fun aStaleCollisionSnapshotCannotRestoreAnOlderGeneration() = runTest {
+    fun aStaleCollisionSnapshotCannotRestoreAnOlderGenerationOrMoveOwnership() = runTest {
         val database = inMemoryDatabase()
         try {
             val dao = database.routingRuleSetDao()
@@ -402,20 +402,19 @@ class RoutingRepositoryTest {
                     useChunkFiles = false,
                 )
             repository.markAssets(id, RuleSetAssetState.Failed, RuleSetAssetFailure.TimedOut)
-            repository.commitGeneration(id, committed, generation = 9)
+            repository.commitGeneration(id, committed, generation = 9, RoutingSourceKind.Header, subscriptionId = null)
             val published = dao.byId(id).shouldNotBeNull()
 
             dao.upsertProfileByName(staleSnapshot)
 
-            dao.byId(id).shouldNotBeNull() shouldBe
-                published.copy(sourceKind = RoutingSourceKind.Body.wireValue)
+            dao.byId(id).shouldNotBeNull() shouldBe published
         } finally {
             database.close()
         }
     }
 
     @Test
-    fun aCollisionAfterCommitChangesOnlySourceProvenance() = runTest {
+    fun aCollisionMovesOwnershipOnlyWhenTheGenerationCommits() = runTest {
         val initial = sampleProfile()
         val id = stack.repository.upsertProfile(initial, RoutingSourceKind.Header, null)
         val committed =
@@ -430,7 +429,13 @@ class RoutingRepositoryTest {
                 dns = null,
                 useChunkFiles = false,
             )
-        stack.repository.commitGeneration(id, committed, generation = 4)
+        stack.repository.commitGeneration(
+            id,
+            committed,
+            generation = 4,
+            sourceKind = RoutingSourceKind.Header,
+            subscriptionId = null,
+        )
         val subscription =
             stack.subscriptionRepository.add(
                 url = "https://provider.example/subscription",
@@ -448,8 +453,27 @@ class RoutingRepositoryTest {
         stack.repository.upsertProfile(laterCollision, RoutingSourceKind.Body, subscription.id) shouldBe id
 
         val stored = stack.repository.stored(id).shouldNotBeNull()
-        stored.sourceKind shouldBe RoutingSourceKind.Body
-        stored.subscriptionId shouldBe subscription.id
+        // The collision alone wrote nothing: ownership is still the original owner's.
+        stored.sourceKind shouldBe RoutingSourceKind.Header
+        stored.subscriptionId shouldBe null
+        assertCommittedRules(stored, id, committed)
+        stored.assetGeneration shouldBe 4L
+        stored.assetState shouldBe RuleSetAssetState.Ready
+        stored.assetFailure shouldBe null
+
+        stack.repository.commitGeneration(id, laterCollision, generation = 5, RoutingSourceKind.Body, subscription.id)
+
+        val moved = stack.repository.stored(id).shouldNotBeNull()
+        moved.sourceKind shouldBe RoutingSourceKind.Body
+        moved.subscriptionId shouldBe subscription.id
+        moved.assetGeneration shouldBe 5L
+    }
+
+    private fun assertCommittedRules(
+        stored: StoredRuleSet,
+        id: Long,
+        committed: RoutingProfile,
+    ) {
         stored.ruleSet.id shouldBe id
         stored.ruleSet.name shouldBe committed.name
         stored.ruleSet.order shouldBe committed.routeOrder
@@ -463,9 +487,6 @@ class RoutingRepositoryTest {
         stored.geoIpUrl shouldBe committed.geoIpUrl
         stored.geoSiteUrl shouldBe committed.geoSiteUrl
         stored.hasDns shouldBe false
-        stored.assetGeneration shouldBe 4L
-        stored.assetState shouldBe RuleSetAssetState.Ready
-        stored.assetFailure shouldBe null
     }
 
     @Test
@@ -660,7 +681,7 @@ class RoutingRepositoryTest {
                 useChunkFiles = false,
             )
 
-        stack.repository.commitGeneration(id, updated, generation = 1)
+        stack.repository.commitGeneration(id, updated, generation = 1, RoutingSourceKind.Qr, subscriptionId = null)
 
         val stored = stack.repository.stored(id).shouldNotBeNull()
         stored.assetGeneration shouldBe 1L
@@ -757,6 +778,8 @@ class RoutingRepositoryEditorSaveTest {
                 geoSiteUrl = seeded.entity.geoSiteUrl,
                 dnsJson = seeded.entity.dnsJson,
                 useChunkFiles = seeded.entity.useChunkFiles,
+                sourceKind = seeded.entity.sourceKind,
+                subscriptionId = seeded.entity.subscriptionId,
                 generation = seeded.entity.assetGeneration,
             )
 

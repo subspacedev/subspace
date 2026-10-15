@@ -291,6 +291,11 @@
         This file describes several servers without a rule for choosing between them, so it cannot
         be run as written. Each server was imported separately instead.
     </string>
+    <string name="editor_raw_json_rejected_reverse">
+        This file sets up a reverse proxy, which would let its server open connections out of this
+        device, so it cannot be run as written. The server details below were recovered from it and
+        are used instead.
+    </string>
     <string name="editor_raw_json_rejected_core_rejected">
         Xray rejected this file, so it cannot be run as written. The server details below were
         recovered from it and are used instead.

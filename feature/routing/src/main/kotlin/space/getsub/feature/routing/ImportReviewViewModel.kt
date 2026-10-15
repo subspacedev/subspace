@@ -246,6 +246,9 @@ constructor(
             _state.update { it.copy(stage = Stage.Done) }
         } catch (error: CancellationException) {
             throw error
+        } catch (_: IllegalArgumentException) {
+            // Storage's entry validation: deterministic, so a silent return to Reviewing would loop forever.
+            _state.update { it.copy(stage = Stage.Failed, failure = null, invalidEntries = true) }
         } catch (_: Exception) {
             _state.update { it.copy(stage = Stage.Reviewing) }
         }
@@ -254,7 +257,7 @@ constructor(
     /** Returns a failed import to its reviewable state so confirm can be pressed again. */
     fun retry() {
         if (_state.value.stage != Stage.Failed) return
-        _state.update { it.copy(stage = Stage.Reviewing, failure = null) }
+        _state.update { it.copy(stage = Stage.Reviewing, failure = null, invalidEntries = false) }
     }
 
     fun dismiss() {

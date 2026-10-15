@@ -93,8 +93,8 @@ public object ProfileDnsCodec {
      * `content.orEmpty()` and drop the empties. An array value — legal upstream
      * per research §1.2, and observed on a real panel — coerced to `""` and
      * vanished, leaving the rest of the block applied. That is a half-applied
-     * block, which spec §5 makes all-or-nothing. The rules here are
-     * `RoutingProfileImport.dnsHostsOf`'s, one for one.
+     * block, which spec §5 makes all-or-nothing. The per-entry rule is
+     * [DnsValidation.hostEntry], shared with `RoutingProfileImport.dnsHostsOf`.
      */
     @Suppress("ReturnCount") // Each early return names one distinct malformed shape.
     private fun JsonObject.storedHosts(): Map<String, String>? {
@@ -102,15 +102,10 @@ public object ProfileDnsCodec {
         val obj = value as? JsonObject ?: return null
         val out = mutableMapOf<String, String>()
         for ((key, element) in obj) {
-            if (key.isBlank()) return null
             val primitive = element as? JsonPrimitive ?: return null
             if (!primitive.isString) return null
-            val mapped = primitive.content.trim()
-            if (mapped.isEmpty()) return null
-            if (!DnsValidation.isAddressLiteral(mapped) && DnsValidation.hostOf("https://$mapped") == null) {
-                return null
-            }
-            out[key.trim()] = mapped
+            val (host, mapped) = DnsValidation.hostEntry(key, primitive.content) ?: return null
+            out[host] = mapped
         }
         return out
     }

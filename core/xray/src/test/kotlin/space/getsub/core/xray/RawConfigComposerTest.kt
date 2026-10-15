@@ -253,6 +253,37 @@ class RawConfigComposerTest {
         out["policy"] shouldBe null
     }
 
+    // Audit 2026-10-13 finding 3.3: `api` can open a gRPC control listener of its own
+    // (`api.listen`) with no inbound, so stripping `inbounds` does not neutralise it.
+    private fun withApi(raw: String = panelLike): String =
+        raw.replaceFirst(
+            "\"stats\": {},",
+            """"stats": {}, "api": { "tag": "api", "listen": "0.0.0.0:10085", "services": ["HandlerService"] },""",
+        )
+
+    @Test
+    fun `api is stripped on the pure branch`() {
+        val raw = withApi()
+        (Json.parseToJsonElement(raw) as JsonObject).containsKey("api") shouldBe true
+
+        composed(raw).containsKey("api") shouldBe false
+    }
+
+    @Test
+    fun `api is stripped on the override branch even with breakdown metrics injected`() {
+        val result =
+            RawConfigComposer.compose(
+                withApi(),
+                settings.copy(metricsPort = 41234),
+                "/data/geo",
+                override,
+            )
+        val out = Json.parseToJsonElement((result as ComposeResult.Ok).json) as JsonObject
+
+        out.containsKey("api") shouldBe false
+        out.containsKey("metrics") shouldBe true
+    }
+
     @Test
     fun `output is deterministic`() {
         val first = RawConfigComposer.compose(panelLike, settings, "/data/geo", null)

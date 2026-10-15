@@ -214,6 +214,17 @@ internal fun passthroughPlanFor(
     )
 
 /**
+ * Whether a stored-eligible row still runs as written. The stored verdict can predate a rule
+ * (a row imported before `reverse` was rejected carries none), so the structural analysis is
+ * re-run on the stored bytes; a rejection now takes the same typed-projection path a stored
+ * rejection does. Read-only: nothing is written back.
+ */
+internal fun runsAsWrittenAtConnect(
+    storedRunsAsWritten: Boolean,
+    rawJson: String?,
+): Boolean = storedRunsAsWritten && (rawJson == null || analysePassthrough(rawJson).rejection == null)
+
+/**
  * Which [FailureReason] a core refusal at `xray.validate` names.
  *
  * The backstop two accepted M7 limitations depend on: core validation at
@@ -1944,7 +1955,7 @@ class TunnelService : VpnService() {
                 FailureReason.ConfigGenerationFailed,
                 IllegalStateException("profile row is gone"),
             )
-        if (stored.runsAsWritten) {
+        if (runsAsWrittenAtConnect(stored.runsAsWritten, stored.rawJson)) {
             // Invariant, not expected to be reachable: `runsAsWritten` only
             // reads true for a RAW_JSON row (StoredProfile.runsAsWritten),
             // which always carries its bytes. Fail loudly rather than fall

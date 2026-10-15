@@ -220,15 +220,11 @@ class PassthroughAnalysisTest {
             listOf(PassthroughAdvisory.DanglingRoutingReference)
     }
 
-    // Fix round 1, Minor 3 (promoted): ARCHITECTURE.md's "Passthrough execution" section (line
-    // 331) lists `reverse` among the blocks RawConfigComposer deliberately preserves as opaque —
-    // such a config reaches the core through passthrough. In xray's reverse-proxy shape, a rule's
-    // `outboundTag` can legitimately name a `reverse` bridge/portal tag outside `outbounds`; this
-    // analyser has no model of that namespace and no upstream citation to widen into it (§10.5),
-    // so it suppresses the whole check rather than risk telling the user a working config is
-    // broken (§10.4) — the same reasoning the `selector` carve-out rests on.
+    // Audit 2026-10-13 finding 3.3: a top-level `reverse` lets the server side dial connections
+    // back out of the phone (to the internet and the LAN). Rejected rather than stripped:
+    // stripping would leave rules naming bridge/portal tags that fail silently at match time.
     @Test
-    fun `a config with a reverse block raises no dangling advisory even with an unresolved outboundTag`() {
+    fun `a top-level reverse block is rejected`() {
         val json =
             """
             {
@@ -238,13 +234,39 @@ class PassthroughAnalysisTest {
             }
             """.trimIndent()
 
-        analysePassthrough(json).advisories shouldContainExactly emptyList()
+        analysePassthrough(json).rejection shouldBe PassthroughRejection.CarriesReverseProxy
     }
 
-    // Minor 4: `root["reverse"]` is `JsonNull` — a non-null `JsonElement` — for an explicit
-    // `"reverse": null`, so a bare `!= null` check would suppress the whole dangling-reference
-    // check for this shape too. It must not: there is no reverse block here, so the check stays
-    // live and the dangling outboundTag below is still reported.
+    @Test
+    fun `a reverse block is rejected even alongside several servers`() {
+        val json =
+            """
+            {
+              "outbounds": [
+                { "tag": "a", "protocol": "vless" },
+                { "tag": "b", "protocol": "vless" }
+              ],
+              "reverse": { "portals": [ { "tag": "portal", "domain": "test.local" } ] }
+            }
+            """.trimIndent()
+
+        analysePassthrough(json).rejection shouldBe PassthroughRejection.CarriesReverseProxy
+    }
+
+    // `"reverse": null` is not a reverse block: the core reads it as absent.
+    @Test
+    fun `an explicit reverse null is not rejected`() {
+        val json =
+            """
+            {
+              "outbounds": [ { "tag": "proxy", "protocol": "vless" } ],
+              "reverse": null
+            }
+            """.trimIndent()
+
+        analysePassthrough(json).rejection shouldBe null
+    }
+
     @Test
     fun `an explicit reverse null does not suppress the dangling reference check`() {
         val json =

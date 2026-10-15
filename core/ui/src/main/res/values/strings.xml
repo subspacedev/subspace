@@ -105,6 +105,7 @@
     <string name="obfuscation_problem_not_a_range">Use a number or a range like 10-20</string>
     <string name="obfuscation_problem_reversed">The first number must not be larger than the second</string>
     <string name="obfuscation_problem_too_large">Number too large</string>
+    <string name="obfuscation_problem_out_of_bounds">Outside the allowed range (length up to 16384, delay up to 1000 ms, counts up to 255)</string>
     <string name="obfuscation_problem_packets_from_zero">Packets start at 1</string>
     <string name="obfuscation_problem_length_from_zero">The minimum length must be at least 1</string>
     <string name="obfuscation_problem_rand_from_zero">The minimum must be at least 1 byte</string>

@@ -114,6 +114,8 @@ internal data class ImportReviewState(
     val problem: ImportProblem? = null,
     /** Why a confirmed import did not land. Non-null only with [Stage.Failed]. */
     val failure: RuleSetAssetFailure? = null,
+    /** With [Stage.Failed]: storage refused the profile's entries. Retrying cannot succeed. */
+    val invalidEntries: Boolean = false,
     /**
      * The profile under review, for callers that need more than [bucketCounts].
      *
@@ -197,7 +199,7 @@ internal fun ImportReviewSheetContent(
         )
         when {
             state.stage == Stage.Rejected -> RejectedBody(state.problem)
-            state.stage == Stage.Failed -> FailedBody(state.name, state.failure)
+            state.stage == Stage.Failed -> FailedBody(state.name, state.failure, state.invalidEntries)
             state.isDisableRouting -> {
                 Text(
                     text = stringResource(R.string.import_review_disable_body),
@@ -307,6 +309,8 @@ private fun ConversionDrop.messageRes(): Int =
         ConversionDrop.NonServerOutbound -> R.string.routing_conversion_drop_non_server_outbound
         ConversionDrop.OrderNotRepresentable -> R.string.routing_conversion_drop_order
         ConversionDrop.MultiAddressHost -> R.string.routing_conversion_drop_multi_address_host
+        ConversionDrop.InvalidEntry -> R.string.routing_conversion_drop_invalid_entry
+        ConversionDrop.InvalidHost -> R.string.routing_conversion_drop_invalid_host
     }
 
 /**
@@ -398,20 +402,27 @@ private fun GeoRow(download: GeoDownloadPreview) {
 private fun FailedBody(
     name: String,
     failure: RuleSetAssetFailure?,
+    invalidEntries: Boolean,
 ) {
     Text(text = name, style = MaterialTheme.typography.titleMedium)
     TonalBanner(
         icon = SubspaceIcons.Warning,
-        text = stringResource(failure.sheetMessageRes()),
+        text = stringResource(failedMessageRes(failure, invalidEntries)),
         tone = BannerTone.Blocked,
     )
 }
 
+private fun failedMessageRes(
+    failure: RuleSetAssetFailure?,
+    invalidEntries: Boolean,
+): Int = if (invalidEntries) R.string.import_review_failed_invalid_entries else failure.sheetMessageRes()
+
 /**
- * A [RuleSetAssetFailure] always accompanies [Stage.Failed] — the importer
- * returns the pair — so null can only be a future state this `when` has not
- * learned. It gets the least specific reason rather than a claim the state
- * cannot support.
+ * A [RuleSetAssetFailure] accompanies [Stage.Failed] except for the invalid-entries
+ * failure, which sets the failure to null and raises the `invalidEntries` flag
+ * instead (handled by [failedMessageRes] before this mapping). A null here with
+ * that flag clear can only be a future state this `when` has not learned. It gets
+ * the least specific reason rather than a claim the state cannot support.
  *
  * Separate from [RuleSetCard]'s mapping of the same enum on purpose: the row
  * reports a set's standing condition ("Update failed — timed out") while the

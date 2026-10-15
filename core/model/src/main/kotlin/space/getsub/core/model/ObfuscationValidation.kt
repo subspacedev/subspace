@@ -8,6 +8,7 @@ public enum class ObfuscationProblem {
     NotARange,
     Reversed,
     TooLarge,
+    OutOfBounds,
     PacketsFromZero,
     LengthFromZero,
     RandFromZero,
@@ -39,6 +40,15 @@ public object ObfuscationValidation {
     private val HEX = Regex("^(?:[0-9a-fA-F]{2})+$")
     private val BASE64 = Regex("^[A-Za-z0-9+/]*={0,2}$")
     private const val MAX_BYTE = 255
+
+    // Audit finding 5 (2026-10-13): Xray's own ceiling is Int32, but a delay near it parks the fetch
+    // thread for weeks (Thread.sleep is not interruptible by the call timeout) and a length or count
+    // past these is meaningless: a TLS record is at most 16384 bytes, and `packets` and `maxSplit` count
+    // writes and pieces. Noise shares `delay()`, so its delay is capped the same way (1 s is far above
+    // M9-A's 10-16 ms default).
+    private const val MAX_LENGTH = 16_384
+    private const val MAX_DELAY_MS = 1_000
+    private const val MAX_COUNT = 255
     private const val BASE64_QUANTUM = 4
 
     public fun range(text: String): Checked<XrayRange> {
@@ -66,14 +76,21 @@ public object ObfuscationValidation {
 
     public fun packets(text: String): Checked<FragmentPackets> {
         if (text.trim().equals("tlshello", ignoreCase = true)) return Checked.Ok(FragmentPackets.TlsHello)
-        return range(text).requireFrom(1, ObfuscationProblem.PacketsFromZero).map(FragmentPackets::Records)
+        return range(text)
+            .requireFrom(1, ObfuscationProblem.PacketsFromZero)
+            .requireAtMost(MAX_COUNT)
+            .map(FragmentPackets::Records)
     }
 
-    public fun length(text: String): Checked<XrayRange> = range(text).requireFrom(1, ObfuscationProblem.LengthFromZero)
+    public fun length(text: String): Checked<XrayRange> =
+        range(text).requireFrom(1, ObfuscationProblem.LengthFromZero).requireAtMost(MAX_LENGTH)
 
-    public fun delay(text: String): Checked<XrayRange> = range(text)
+    public fun delay(text: String): Checked<XrayRange> = range(text).requireAtMost(MAX_DELAY_MS)
 
-    public fun maxSplit(text: String): Checked<XrayRange?> = if (text.isBlank()) Checked.Ok(null) else range(text)
+    public fun maxSplit(text: String): Checked<XrayRange?> {
+        if (text.isBlank()) return Checked.Ok(null)
+        return range(text).requireAtMost(MAX_COUNT)
+    }
 
     public fun rand(text: String): Checked<XrayRange> = range(text).requireFrom(1, ObfuscationProblem.RandFromZero)
 
@@ -174,6 +191,12 @@ public object ObfuscationValidation {
         when (this) {
             is Checked.Invalid -> this
             is Checked.Ok -> if (value.from < min) Checked.Invalid(problem) else this
+        }
+
+    private fun Checked<XrayRange>.requireAtMost(max: Int): Checked<XrayRange> =
+        when (this) {
+            is Checked.Invalid -> this
+            is Checked.Ok -> if (value.to > max) Checked.Invalid(ObfuscationProblem.OutOfBounds) else this
         }
 
     private inline fun <T, R> Checked<T>.map(transform: (T) -> R): Checked<R> =

@@ -128,6 +128,27 @@ public object DnsValidation {
         return IPV4.matches(trimmed) || isIpv6Literal(trimmed)
     }
 
+    /**
+     * The one rule for a `DnsHosts` / `dns.hosts` mapping: [key] non-blank, [value] trimmed
+     * non-empty and either an address literal or a hostname. Returns the trimmed pair, or
+     * null when the mapping is unusable.
+     *
+     * Shared by the deeplink parser, the profile DNS codec and the config conversion so a
+     * mapping one accepts is never one another later discards. The JSON "is a string
+     * primitive" check stays with each caller; this module carries no JSON.
+     */
+    public fun hostEntry(
+        key: String,
+        value: String,
+    ): Pair<String, String>? {
+        val mapped = value.trim()
+        val valid =
+            key.isNotBlank() &&
+                mapped.isNotEmpty() &&
+                (isAddressLiteral(mapped) || hostOf("https://$mapped") != null)
+        return if (valid) key.trim() to mapped else null
+    }
+
     /** True when [value] parses as an absolute `https://` URL with a host. */
     public fun isHttpsUrl(value: String): Boolean = hostOf(value) != null
 

@@ -831,6 +831,7 @@ private fun PassthroughRejection.messageRes(): Int =
         PassthroughRejection.NotJson -> R.string.editor_raw_json_rejected_not_json
         PassthroughRejection.NoOutbounds -> R.string.editor_raw_json_rejected_no_outbounds
         PassthroughRejection.SeveralServers -> R.string.editor_raw_json_rejected_several_servers
+        PassthroughRejection.CarriesReverseProxy -> R.string.editor_raw_json_rejected_reverse
         PassthroughRejection.CoreRejected -> R.string.editor_raw_json_rejected_core_rejected
     }
 

@@ -80,7 +80,8 @@ public data class DnsPlan(
  */
 public object DnsPlanner {
     /**
-     * The resolver the app ships with, and the value that makes [plan] return null.
+     * The resolver the app ships with. With no routing and no profile block, this
+     * setting is what makes [plan] return null; once a rule set is active it does not.
      *
      * An alias for [DnsResolver.DEFAULT], which is where the literal actually
      * lives: `:core:data`'s `SettingsRepository` needs the same default and may
@@ -90,9 +91,16 @@ public object DnsPlanner {
     public val DEFAULT_SETTING: DnsResolver = DnsResolver.DEFAULT
 
     /**
-     * Null when nothing asks for DNS — no profile block, and the setting at its
-     * default. M6.5 spec §7.4: that null is what keeps the M1 config byte-identical,
-     * and the M1 config is the one proven on hardware.
+     * Null only when nothing asks for DNS *and* no routing is active — no profile
+     * block, the setting at its default, and [routing] null. M6.5 spec §7.4: that null
+     * is what keeps the M1 config byte-identical, and the M1 config has no routing.
+     *
+     * With a rule set active the plan always exists, even at the default setting:
+     * a null plan emits no `dns-out`, no dns-module catch-all and no port-53 hijack,
+     * so device DNS would meet the rule set's DIRECT rules (or `catchAllDirect` in
+     * whitelist mode) and leave in plaintext (ARCHITECTURE.md §5.2; audit 2026-10-13
+     * finding 1). The default-setting plan carries just the default server and no
+     * domestic/proxy matches, so in whitelist mode every name resolves through the proxy.
      *
      * Controller ruling R2: a *present* profile block that asks for nothing —
      * no resolver, no hosts, and `fakeDns` not explicitly `true` — is treated as
@@ -117,7 +125,7 @@ public object DnsPlanner {
                 candidate.hosts.isEmpty() &&
                 candidate.fakeDns != true
         val effective = candidate?.takeUnless { asksForNothing }
-        val nothingToDo = effective == null && setting == DEFAULT_SETTING
+        val nothingToDo = effective == null && setting == DEFAULT_SETTING && routing == null
         if (nothingToDo) return null
 
         val directSites = routing?.bucket(RouteOutcome.DIRECT)?.sites.orEmpty()
@@ -132,7 +140,12 @@ public object DnsPlanner {
                 servers = it,
                 hosts = hostsFor(effective, setting),
                 fakeDns = (effective?.fakeDns ?: false) && sniffingEnabled,
-                directMatch = domesticMatch,
+                // Direct only for a domestic server that was emitted scoped to the direct
+                // bucket. Unscoped (domestic-only) it is the sole resolver, so a direct rule
+                // would send all resolution out in the clear; omitted, the rule is dead.
+                // The proxy catch-all carries those cases (ARCHITECTURE.md §5.2, §6; audit
+                // 2026-10-13 finding 2). The collapse below still compares the raw match.
+                directMatch = domesticMatch.takeIf { _ -> it.any { server -> server.domains.isNotEmpty() } },
                 // Collapse when both resolvers are one server: two contradictory
                 // rules on the same match is not a configuration, it is a coin flip.
                 proxyMatch = remoteMatch?.takeIf { match -> match != domesticMatch },

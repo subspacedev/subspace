@@ -7,6 +7,7 @@ import org.junit.Test
 import space.getsub.core.model.ObfuscationProblem.Blank
 import space.getsub.core.model.ObfuscationProblem.LengthFromZero
 import space.getsub.core.model.ObfuscationProblem.NotARange
+import space.getsub.core.model.ObfuscationProblem.OutOfBounds
 import space.getsub.core.model.ObfuscationProblem.PacketUndecodable
 import space.getsub.core.model.ObfuscationProblem.PacketsFromZero
 import space.getsub.core.model.ObfuscationProblem.RandFromZero
@@ -32,6 +33,26 @@ class ObfuscationValidationTest {
         V.range("-5") shouldBe bad(NotARange)
         V.range("9-3") shouldBe bad(Reversed)
         V.range("1-2147483648") shouldBe bad(TooLarge)
+    }
+
+    @Test fun `fetch-relevant fields refuse values past their caps and accept the caps`() {
+        V.length("1-16384") shouldBe ok(XrayRange(1, 16384))
+        V.length("1-16385") shouldBe bad(OutOfBounds)
+        V.length("1-2147483647") shouldBe bad(OutOfBounds)
+        V.delay("0-1000") shouldBe ok(XrayRange(0, 1000))
+        V.delay("0-1001") shouldBe bad(OutOfBounds)
+        V.delay("2147483647") shouldBe bad(OutOfBounds)
+        V.maxSplit("255") shouldBe ok(XrayRange(255, 255))
+        V.maxSplit("1-256") shouldBe bad(OutOfBounds)
+        V.packets("1-255") shouldBe ok(FragmentPackets.Records(XrayRange(1, 255)))
+        V.packets("1-256") shouldBe bad(OutOfBounds)
+        V.packets("tlshello") shouldBe ok(FragmentPackets.TlsHello)
+    }
+
+    @Test fun `an out-of-bounds field is repaired to its default, never thrown`() {
+        val spec = V.fragmentOrDefault(FragmentSettings.DEFAULT.copy(delay = "2147483647", length = "1-99999"))
+        spec.delay shouldBe (V.delay(FragmentSettings.DEFAULT.delay) as Checked.Ok).value
+        spec.length shouldBe (V.length(FragmentSettings.DEFAULT.length) as Checked.Ok).value
     }
 
     @Test fun `packets is tlshello in any case, or a range starting at 1`() {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLException
+import kotlin.coroutines.cancellation.CancellationException
 
 private const val HTTP_NOT_FOUND = 404
 private const val HTTP_SUCCESS_FLOOR = 200
@@ -83,6 +85,8 @@ private fun FetchOutcome.isWorthRetrying(): Boolean =
  * value this module has any reason to believe is well-behaved.
  */
 internal const val MAX_SUBSCRIPTION_BODY_BYTES = 2L * 1024 * 1024
+
+private fun FetchRoute.isFronting(): Boolean = resolveAddress != null || hostHeader != null
 
 internal fun safeRedirectTarget(
     currentUrl: HttpUrl,
@@ -166,7 +170,22 @@ constructor(
             attempt(request)
         }
 
-    private fun attempt(request: SubscriptionRequest): FetchOutcome {
+    private fun attempt(request: SubscriptionRequest): FetchOutcome =
+        if (request.route.isFronting() && request.url.toHttpUrlOrNull()?.isHttps != true) {
+            // Audit finding 4 / M9-B spec §1.1: fronting is TLS-SNI based. Over cleartext it would only send
+            // the plaintext request, device headers included, to an address the pasted link chose (the
+            // network security config allows http to 127.0.0.1). Nothing is dialled; NotFound is the
+            // existing "no call could be formed" kind, and a plain http link without fronting is unchanged.
+            FetchOutcome.Failed(FetchFailure.NotFound)
+        } else {
+            dial(request)
+        }
+
+    /** Test seam: the clock the fetch's fragmenter draws and sleeps with. */
+    internal var fragmentClock: FragmentClock = SystemFragmentClock
+
+    @Suppress("TooGenericExceptionCaught") // Audit finding 5: "never throws" holds for any RuntimeException too.
+    private fun dial(request: SubscriptionRequest): FetchOutcome {
         // Client construction (the timeout chain) and call construction
         // (URL parsing) both throw on bad input rather than returning a
         // Result — confirmed empirically, not assumed: an out-of-range
@@ -211,6 +230,13 @@ constructor(
             // "the network did not work". §10.4 wants a specific diagnosis
             // where one exists, not an invented one where it does not.
             FetchOutcome.Failed(FetchFailure.Unreachable, io.causeName())
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (unexpected: RuntimeException) {
+            // Audit finding 5: OkHttp only converts IOException, so a RuntimeException from a socket (the
+            // fragmenter's draw, for one) would escape the "never throws" contract. CancellationException
+            // is an IllegalStateException subclass; it is rethrown above, never swallowed.
+            FetchOutcome.Failed(FetchFailure.Unreachable, unexpected.causeName())
         }
     }
 
@@ -242,12 +268,12 @@ constructor(
                         proxy(Proxy.NO_PROXY)
                         dns { _ -> Dns.SYSTEM.lookup(address) }
                     }
-                    request.route.fragment?.let { spec -> socketFactory(FragmentingSocketFactory(spec)) }
+                    request.route.fragment?.let { spec -> socketFactory(FragmentingSocketFactory(spec, fragmentClock)) }
                 }
             }
             .build()
 
-    private fun SubscriptionRequest.toOkHttpRequest(): Request =
+    internal fun SubscriptionRequest.toOkHttpRequest(): Request =
         Request.Builder()
             .url(url)
             .header("user-agent", userAgentOverride ?: UserAgent.default(appVersion))

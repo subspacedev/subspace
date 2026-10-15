@@ -6,8 +6,11 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.Test
+import space.getsub.core.model.BucketField
+import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.RouteOutcome
+import space.getsub.core.model.RoutingEntries
 
 class XrayRoutingConversionTest {
     private fun convert(json: String) = convertXrayRouting(json, name = "Pasted config")
@@ -293,6 +296,106 @@ class XrayRoutingConversionTest {
 
         result.drops[ConversionDrop.MultiAddressHost] shouldBe 1
         result.profile.dns!!.hosts shouldBe mapOf("domain:googleapis.cn" to "googleapis.com")
+    }
+
+    private fun routingWith(domain: String) =
+        """
+        {
+          "routing": { "rules": [ { "domain": $domain, "outboundTag": "direct" } ] },
+          "outbounds": [ { "tag": "direct", "protocol": "freedom" } ]
+        }
+        """.trimIndent()
+
+    @Test
+    fun `an entry the app grammar rejects is dropped and counted`() {
+        val result = convert(routingWith("""["regexp:\\.ru${'$'}", "a b", "good.com", ""]"""))!!
+
+        result.profile.bucket(RouteOutcome.DIRECT).sites shouldContainExactly listOf("good.com")
+        result.drops[ConversionDrop.InvalidEntry] shouldBe 3
+    }
+
+    @Test
+    fun `an ip entry the app grammar rejects is dropped and counted`() {
+        val json =
+            """
+            {
+              "routing": { "rules": [ { "ip": ["not-an-ip", "10.0.0.0/33", "1.1.1.1:53", "10.0.0.0/8"], "outboundTag": "direct" } ] },
+              "outbounds": [ { "tag": "direct", "protocol": "freedom" } ]
+            }
+            """.trimIndent()
+
+        val result = convert(json)!!
+
+        result.profile.bucket(RouteOutcome.DIRECT).ips shouldContainExactly listOf("10.0.0.0/8")
+        result.drops[ConversionDrop.InvalidEntry] shouldBe 3
+    }
+
+    @Test
+    fun `entries are trimmed and only string primitives are taken`() {
+        val result = convert(routingWith("""["  good.com  ", null, 5]"""))!!
+
+        result.profile.bucket(RouteOutcome.DIRECT).sites shouldContainExactly listOf("good.com")
+        result.drops[ConversionDrop.InvalidEntry] shouldBe 2
+    }
+
+    @Test
+    fun `a rule whose entries are all invalid does not land`() {
+        val json =
+            """
+            {
+              "routing": { "rules": [
+                { "domain": ["a b"], "outboundTag": "block" },
+                { "domain": ["good.com"], "outboundTag": "direct" }
+              ] },
+              "outbounds": [ { "tag": "direct", "protocol": "freedom" }, { "tag": "block", "protocol": "blackhole" } ]
+            }
+            """.trimIndent()
+
+        val result = convert(json)!!
+
+        result.profile.bucket(RouteOutcome.BLOCK).isEmpty shouldBe true
+        result.profile.routeOrder.first() shouldBe RouteOutcome.DIRECT
+        result.drops[ConversionDrop.InvalidEntry] shouldBe 1
+    }
+
+    @Test
+    fun `invalid dns hosts are dropped and counted`() {
+        val json =
+            """
+            {
+              "dns": { "hosts": { "a.test": "", "b.test": "a b", "c.test": "#3", "": "1.1.1.1",
+                                  "d.test": " 1.1.1.1 ", "e.test": 5 } },
+              "routing": { "rules": [ { "domain": ["a.com"], "outboundTag": "direct" } ] },
+              "outbounds": [ { "tag": "direct", "protocol": "freedom" } ]
+            }
+            """.trimIndent()
+
+        val result = convert(json)!!
+
+        result.profile.dns!!.hosts shouldBe mapOf("d.test" to "1.1.1.1")
+        result.drops[ConversionDrop.InvalidHost] shouldBe 5
+    }
+
+    @Test
+    fun `every converted profile survives storage validation`() {
+        val json =
+            """
+            {
+              "dns": { "hosts": { "a.test": "", "d.test": "1.1.1.1" } },
+              "routing": { "rules": [
+                { "domain": ["regexp:\\.ru${'$'}", "ok.com", "a b"], "outboundTag": "direct" },
+                { "ip": ["nope", "10.0.0.0/8"], "outboundTag": "direct" } ] },
+              "outbounds": [ { "tag": "direct", "protocol": "freedom" } ]
+            }
+            """.trimIndent()
+
+        val profile = convert(json)!!.profile
+
+        RouteOutcome.entries.forEach { outcome ->
+            profile.bucket(outcome).sites.forEach { RoutingEntries.problemWith(it, BucketField.SITES) shouldBe null }
+            profile.bucket(outcome).ips.forEach { RoutingEntries.problemWith(it, BucketField.IPS) shouldBe null }
+        }
+        profile.dns!!.hosts.forEach { (k, v) -> DnsValidation.hostEntry(k, v) shouldNotBe null }
     }
 
     @Test

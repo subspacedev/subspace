@@ -27,6 +27,26 @@ class DnsPlannerTest {
     }
 
     @Test
+    fun `an active rule set with the default setting still yields a plan`() {
+        // Audit 2026-10-13 finding 1: a null plan under routing means no dns-out, no
+        // dns-module catch-all and no port-53 hijack, so DNS leaks around the rule set.
+        val plan = requireNotNull(DnsPlanner.plan(null, defaultSetting, ruleSet(emptyList()), sniffingEnabled = true))
+
+        plan.servers.map { it.address } shouldBe listOf("1.1.1.1")
+        plan.directMatch shouldBe null
+        plan.proxyMatch shouldBe null
+        plan.fakeDns shouldBe false
+        plan.hosts shouldBe emptyMap()
+    }
+
+    @Test
+    fun `an active rule set with a profile block that asks for nothing still yields a plan`() {
+        val plan = DnsPlanner.plan(ProfileDns(fakeDns = false), defaultSetting, ruleSet(emptyList()), true)
+
+        requireNotNull(plan).servers.single().address shouldBe "1.1.1.1"
+    }
+
+    @Test
     fun `a non-default setting yields a plan`() {
         val plan = DnsPlanner.plan(null, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null, true)
 
@@ -86,6 +106,45 @@ class DnsPlannerTest {
 
         plan.servers.map { it.address } shouldBe listOf("8.8.8.8")
         plan.servers.single().domains shouldBe emptyList()
+    }
+
+    @Test
+    fun `a domestic-only profile has no direct match so the proxy catch-all carries it`() {
+        // Audit 2026-10-13 finding 2: an unscoped domestic server is the only resolver, so a
+        // direct rule for it would send every lookup on the device out in the clear.
+        val profile = ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+
+        plan.directMatch shouldBe null
+        plan.proxyMatch shouldBe null
+    }
+
+    @Test
+    fun `a domestic server omitted for want of a direct bucket has no direct match`() {
+        val profile =
+            ProfileDns(
+                remote = DnsResolver(DnsTransport.DOU, ip = "1.0.0.1"),
+                domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
+            )
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList()), true))
+
+        plan.directMatch shouldBe null
+    }
+
+    @Test
+    fun `a scoped domestic server keeps its direct match`() {
+        val profile =
+            ProfileDns(
+                remote = DnsResolver(DnsTransport.DOU, ip = "1.0.0.1"),
+                domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
+            )
+
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+
+        plan.directMatch shouldBe "8.8.8.8"
+        plan.proxyMatch shouldBe "1.0.0.1"
     }
 
     @Test

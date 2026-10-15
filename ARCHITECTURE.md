@@ -498,9 +498,14 @@ below. See §14.6.
 
 `RawConfigComposer` (`:core:xray`) does the rewriting, working on parsed JSON
 rather than a typed model precisely so it preserves whatever the config
-carries that this design does not name — `burstObservatory`, `reverse`, an
-opaque `fakedns` object. Four rewrites apply regardless of which branch below
-is taken:
+carries that this design does not name — `burstObservatory`, an opaque
+`fakedns` object. (A top-level `reverse` is not preserved: `analysePassthrough`
+rejects it as `CarriesReverseProxy`, so the row falls back to the typed
+projection. Believed from upstream documentation, not verified against the
+pinned Xray-core: a reverse bridge lets the server open connections out of the
+device, and stripping it instead would leave rules naming vanished bridge/portal
+tags that fail silently at match time. Rejecting is safe either way.) Five rewrites apply regardless of which
+branch below is taken:
 
 - `inbounds` replaced with the SOCKS + HTTP pair `socksInboundJson`/
   `httpInboundJson` already emit for a typed profile — moved into a shared
@@ -510,6 +515,13 @@ is taken:
   `setenv` (§6's `XrayEnv` note above still applies).
 - `log` forced to `access: "none"`, `loglevel: "warning"` (§5.6 — the device-
   found logcat leak, one line per destination).
+- `api` stripped — believed from upstream documentation, not verified against
+  the pinned Xray-core, that `api.listen` starts an unauthenticated gRPC control
+  plane on its own address with no inbound, so stripping `inbounds` would not
+  neutralise it; nothing in the app reads a config's `api`, so stripping is safe
+  either way. Like the `stats` strip
+  below, this is stripped unconditionally and so is an exception to the pure
+  branch's byte-identical promise.
 - `stats`/`policy`/`metrics` stripped — a config's own listener is an
   unaudited open port. **M8.5 exception, this branch only:** with the per-tag
   traffic breakdown switched on (off by default, §14.4), the same three
@@ -571,10 +583,13 @@ same inbound pair a connect would inject — plus a check that the element
 produced exactly one profile or is a `routing.balancers` entry (an
 "auto/best server" document, which collapses into one passthrough row rather
 than being read as several servers to choose from — reading it as several
-would run the same tunnel under every row). A profile failing either check
+would run the same tunnel under every row). A profile failing either check,
+or carrying a top-level `reverse` block (rejected as `CarriesReverseProxy`),
 keeps today's typed-projection behaviour, with the failed check named in the
-editor rather than left to guess. A profile that passes and later fails
-`testXray` at connect — the stored bytes or the environment changed since
+editor rather than left to guess. The structural analysis is also re-run on the
+stored bytes at connect, read-only: a row stored as eligible before a rejection
+rule existed takes the same typed-projection path instead of running as
+written. A profile that passes and later fails `testXray` at connect — the stored bytes or the environment changed since
 import — fails visibly with `FailureReason.PassthroughRejectedAtConnect`
 rather than falling back to the typed projection; a silent fallback would be
 two different tunnels behind one tap.
@@ -744,7 +759,7 @@ The DNS rules, when a plan exists, are prepended in this order — the order
 is load-bearing (§5.2):
 
 ```
-[if the plan has a domestic match]
+[if the plan has a *scoped* domestic match]
 { "type": "field", "inboundTag": ["dns-module"], "ip"|"domain": [<domestic>], "outboundTag": "direct" }
 [if the plan has a remote match]
 { "type": "field", "inboundTag": ["dns-module"], "ip"|"domain": [<remote>],   "outboundTag": "proxy"  }
@@ -759,6 +774,13 @@ resolver's own traffic each — matched by address, `ip` for a literal and
 the remote one through the proxy. A plan frequently has neither, which is why
 they cannot be what makes the arrangement loop-safe.
 
+The domestic match exists only when the domestic server was emitted *scoped* to
+the direct bucket, with a remote server behind it. A domestic-only profile's
+sole resolver is unscoped, and an omitted domestic server has nothing to match;
+in both cases there is no direct rule and the catch-all below carries the
+resolver's traffic through the proxy. (The identical-resolver collapse in the
+M6.5 spec §7.2.1 is the documented exception and is unchanged.)
+
 The third is **unconditional**, and it is the one that matters: it claims *all*
 remaining DNS-module traffic before the hijack below it can see it (§5.2).
 Its target is `proxy`, never `direct` — a resolver query sent `direct` leaves
@@ -770,8 +792,8 @@ named profile resolver loops.
 carries no settings, so it touches neither the legacy nor the rewrite
 generation of `DNSOutboundConfig` and is stable across upstream's deprecation.
 
-When nothing asks for DNS — no profile block and the app-level setting at its
-default — **none of this is emitted**, and the config is byte-identical to the
+When nothing asks for DNS — no profile block, the app-level setting at its
+default, and no rule set active — **none of this is emitted**, and the config is byte-identical to the
 M1 shape that was proven on hardware. That is deliberate: the default resolver
 literal was chosen to make that identity possible.
 
@@ -1459,7 +1481,9 @@ overrides every provider source. The server-paired masks (`header-custom`, `sudo
 `xdns`, `xicmp`, `xmc`, `realm`, `mkcp-*`) are not offered: they only work when they match the
 server, so they pass through when a raw config carries them and are never added or removed. The
 freedom-outbound `fragment`/`noises` chain is not generated; a raw config's own chain is detected,
-and the user's override cuts its link. Design: M9-A spec
+and the user's override cuts its link. The shared validator bounds fragment `length` (16384),
+`delay` (1000 ms, noise included), `packets` and `maxSplit` (255), since the subscription fetcher
+sleeps those delays on a thread the call timeout cannot interrupt. Design: M9-A spec
 (`docs/agent/specs/2026-10-12-m9a-fragment-noise-design.md`, gitignored); upstream facts:
 `docs/agent/research/2026-10-11-m9a-fragment-noise-finalmask.md`.
 
@@ -1899,7 +1923,9 @@ your DNS setting"* while the profile's routing rules still apply.
 - On update, geo files download **in the background while the old rules stay
   live**. The core keeps running on the old ruleset. Only when all files
   land do you atomically swap rules and files together. No window where
-  routing is half-applied.
+  routing is half-applied. Ownership (source kind and owning subscription) of
+  a same-name row moves in that same swap, so a failed or cancelled update
+  leaves the previous owner in place.
 - Geo file downloads have a hard timeout (Happ uses 3 minutes). On failure,
   the profile is flagged in the UI with a persistent error marker that
   clears when the download succeeds or the profile is deleted.
@@ -1942,7 +1968,8 @@ above cosmetic parity:
 - [x] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
       — M9-B, with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
-      switch). Verified on device 2026-10-15 against the owner's own front, not a CDN edge.
+      switch); https URLs only, an http link with `resolve-address`/`host` fails without dialling.
+      Verified on device 2026-10-15 against the owner's own front, not a CDN edge.
 - [x] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
       — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
