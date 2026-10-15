@@ -125,9 +125,19 @@ public object DirectiveRegistry {
             reject("subscription-always-hwid-enable", CUT_RESTRICTS_OWNER),
             accept("notification-subs-expire", DirectiveKind.Bool, Danger.Benign, Consumer.Release),
             reject("hide-settings", CUT_RESTRICTS_OWNER),
-            accept("server-address-resolve-enable", DirectiveKind.Bool, Danger.Dangerous, Consumer.None),
-            accept("server-address-resolve-dns-domain", DirectiveKind.Url, Danger.Dangerous, Consumer.None),
-            accept("server-address-resolve-dns-ip", textNoBase64(45), Danger.Dangerous, Consumer.None),
+            accept(
+                "server-address-resolve-enable",
+                DirectiveKind.Bool,
+                Danger.Dangerous,
+                Consumer.CensorshipResistance,
+            ),
+            accept(
+                "server-address-resolve-dns-domain",
+                DirectiveKind.Url,
+                Danger.Dangerous,
+                Consumer.CensorshipResistance,
+            ),
+            accept("server-address-resolve-dns-ip", textNoBase64(45), Danger.Dangerous, Consumer.CensorshipResistance),
             // ---- App settings group: Provider ID required upstream (does not bind Subspace) ----
             accept("subscription-autoconnect", DirectiveKind.Bool, Danger.Sensitive, Consumer.Release),
             accept(

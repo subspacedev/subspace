@@ -18,6 +18,7 @@ import space.getsub.core.data.db.MIGRATION_2_3
 import space.getsub.core.data.db.MIGRATION_3_4
 import space.getsub.core.data.db.MIGRATION_4_5
 import space.getsub.core.data.db.MIGRATION_5_6
+import space.getsub.core.data.db.MIGRATION_6_7
 import space.getsub.core.data.db.ProfileDao
 import space.getsub.core.data.db.RoutingRuleSetDao
 import space.getsub.core.data.db.SettingDao
@@ -70,7 +71,7 @@ internal fun subspaceDatabase(
     Room
         .databaseBuilder(context.applicationContext, SubspaceDatabase::class.java, name)
         .enableMultiInstanceInvalidation()
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         .build()
 
 /**
