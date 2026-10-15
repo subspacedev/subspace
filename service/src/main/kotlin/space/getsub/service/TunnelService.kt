@@ -60,13 +60,10 @@ import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.failure
 import space.getsub.core.model.retryability
-import space.getsub.core.network.preresolve.OkHttpDohLookupFactory
-import space.getsub.core.network.preresolve.ServerAddressResolver
-import space.getsub.core.network.preresolve.SocketProtect
-import space.getsub.core.network.preresolve.TcpConnectRacer
 import space.getsub.core.parser.OverrideTarget
 import space.getsub.core.parser.analysePassthrough
 import space.getsub.core.parser.resolveOverrideTarget
+import space.getsub.core.xray.AddressPinInjector
 import space.getsub.core.xray.ComposeFailure
 import space.getsub.core.xray.ComposeResult
 import space.getsub.core.xray.ConfigResult
@@ -88,7 +85,6 @@ import space.getsub.service.log.LogCapture
 import space.getsub.service.log.LogRing
 import space.getsub.service.log.TeardownStep
 import space.getsub.service.log.teardownOrder
-import space.getsub.service.preresolve.PreResolveStep
 import java.io.File
 import javax.inject.Inject
 
@@ -798,19 +794,6 @@ class TunnelService : VpnService() {
             // a Room or libXray message can quote a stored config value (ARCHITECTURE.md §5.6).
             onMeasurementError = { name -> Log.w(TAG, "measurement failed: $name") },
         )
-    }
-
-    /**
-     * M9-C spec §3.1's connect-time step. Its DoH query and its TCP probes are sockets to the
-     * outside world, so they go through the same `protect(socket)` [measureTcp] uses
-     * (ARCHITECTURE.md §5.1): on a reconnect with the kill switch holding the TUN open, an
-     * unprotected socket would be routed into the blackhole. `by lazy` because
-     * [serverPreResolution] is field-injected during `super.onCreate()`.
-     */
-    private val preResolveStep by lazy {
-        val protect = SocketProtect { socket -> protect(socket) }
-        val resolver = ServerAddressResolver(OkHttpDohLookupFactory(protect), TcpConnectRacer(protect))
-        PreResolveStep(serverPreResolution::decide, resolver::resolve) { line -> Log.i(TAG, line) }
     }
 
     // All guarded by `lock`.
@@ -1945,19 +1928,29 @@ class TunnelService : VpnService() {
      * [startCore]'s `ResolvingServer` stage. Plan ruling R4: the host is the typed outbound's
      * address, and the raw bytes ride along only when this row will run as written — the same
      * verdict [resolveConfigJson] reaches — so a config that never names that domain is skipped
-     * before any DoH query. No catch here: [PreResolveStep] never throws, and cancellation must
-     * propagate (ARCHITECTURE.md §10.4).
+     * before any DoH query. No catch here: [ServerPreResolution.run] never throws, and cancellation
+     * must propagate (ARCHITECTURE.md §10.4). Its DoH query and TCP probes go through the same
+     * `protect(socket)` [measureTcp] uses (ARCHITECTURE.md §5.1): on a reconnect with the kill switch
+     * holding the TUN open, an unprotected socket would be routed into the blackhole. The log line
+     * carries outcome, source, reason, counts and millis only (ARCHITECTURE.md §5.6).
      */
     private suspend fun preResolve(
         profile: Profile,
         rowId: Long,
-    ): ServerAddressPin? =
-        preResolveStep.run(
-            rowId = rowId,
-            host = profile.outbound.address,
-            port = profile.outbound.port,
-            rawJsonRunsAsWritten = rawJsonRunsAsWritten(rowId),
-        )
+    ): ServerAddressPin? {
+        val host = profile.outbound.address
+        val outcome =
+            serverPreResolution.run(
+                rowId = rowId,
+                host = host,
+                port = profile.outbound.port,
+                rawJsonRunsAsWritten = rawJsonRunsAsWritten(rowId),
+                configNamesHost = AddressPinInjector::matches,
+                protect = { socket -> protect(socket) },
+            )
+        outcome.logLine?.let { Log.i(TAG, it) }
+        return outcome.ip?.let { ServerAddressPin(domain = host, ip = it) }
+    }
 
     /**
      * The row's raw bytes when it will run as written, else null — read from Room by the same

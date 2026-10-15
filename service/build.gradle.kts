@@ -122,9 +122,6 @@ dependencies {
     implementation(project(":core:parser"))
     implementation(project(":core:xray"))
     implementation(project(":core:data"))
-    // M9-C spec §2: PreResolveDecision.Run carries :core:network's ResolverConfig, and the service
-    // builds the ServerAddressResolver itself so its sockets go through VpnService.protect.
-    implementation(project(":core:network"))
 
     // MetricsClient parses xray's JSON metrics endpoint using just JsonElement
     // navigation (no @Serializable class) — already an implementation dependency of

@@ -13,12 +13,12 @@ import space.getsub.core.parser.RedirectTargets
 
 public enum class PreResolveSource { User, Provider }
 
-public sealed interface PreResolveDecision {
-    public data class Off(
+internal sealed interface PreResolveDecision {
+    data class Off(
         val reason: PreResolveReason,
     ) : PreResolveDecision
 
-    public data class Run(
+    data class Run(
         val config: ResolverConfig,
         val source: PreResolveSource,
     ) : PreResolveDecision
@@ -33,7 +33,7 @@ public data class ResolverStatus(
 /** M9-C spec §1.1: user switch, else an allowed and valid provider resolver, else off. */
 public object PreResolvePolicy {
     @Suppress("ReturnCount") // User branch, provider branch, off.
-    public fun decide(
+    internal fun decide(
         user: PreResolveSettings,
         userFragment: FragmentSpec?,
         provider: ProviderResolver,
