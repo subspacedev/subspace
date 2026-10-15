@@ -131,6 +131,10 @@ public enum class Health {
  */
 public enum class StartupStage {
     AllocatingPort,
+
+    // M9-C spec §3.1: the optional DoH lookup of the server domain. Shown even when it does nothing,
+    // so the step count stays the same on every connect.
+    ResolvingServer,
     GeneratingConfig,
     ValidatingConfig,
     StartingCore,

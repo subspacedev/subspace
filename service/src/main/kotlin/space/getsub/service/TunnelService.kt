@@ -46,6 +46,7 @@ import space.getsub.core.data.RoutingRepository
 import space.getsub.core.data.RuleSetAssets
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.data.preresolve.ServerPreResolution
 import space.getsub.core.data.toProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
@@ -59,6 +60,10 @@ import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.failure
 import space.getsub.core.model.retryability
+import space.getsub.core.network.preresolve.OkHttpDohLookupFactory
+import space.getsub.core.network.preresolve.ServerAddressResolver
+import space.getsub.core.network.preresolve.SocketProtect
+import space.getsub.core.network.preresolve.TcpConnectRacer
 import space.getsub.core.parser.OverrideTarget
 import space.getsub.core.parser.analysePassthrough
 import space.getsub.core.parser.resolveOverrideTarget
@@ -71,6 +76,7 @@ import space.getsub.core.xray.LibXrayPingApi
 import space.getsub.core.xray.METRICS_RESERVED_TAG
 import space.getsub.core.xray.ProxyHeadProbe
 import space.getsub.core.xray.RawConfigComposer
+import space.getsub.core.xray.ServerAddressPin
 import space.getsub.core.xray.SocketProtector
 import space.getsub.core.xray.TcpProbe
 import space.getsub.core.xray.TcpSocketProtector
@@ -82,6 +88,7 @@ import space.getsub.service.log.LogCapture
 import space.getsub.service.log.LogRing
 import space.getsub.service.log.TeardownStep
 import space.getsub.service.log.teardownOrder
+import space.getsub.service.preresolve.PreResolveStep
 import java.io.File
 import javax.inject.Inject
 
@@ -569,6 +576,9 @@ class TunnelService : VpnService() {
     @Inject
     lateinit var obfuscationResolver: ObfuscationResolver
 
+    @Inject
+    lateinit var serverPreResolution: ServerPreResolution
+
     // Built in onCreate, once profileRepository is injected. Wraps the
     // repository's two spec-D4 methods as plain suspend lambdas rather than
     // handing ConnectionRecorder the repository itself — see ConnectionRecorder's
@@ -788,6 +798,19 @@ class TunnelService : VpnService() {
             // a Room or libXray message can quote a stored config value (ARCHITECTURE.md §5.6).
             onMeasurementError = { name -> Log.w(TAG, "measurement failed: $name") },
         )
+    }
+
+    /**
+     * M9-C spec §3.1's connect-time step. Its DoH query and its TCP probes are sockets to the
+     * outside world, so they go through the same `protect(socket)` [measureTcp] uses
+     * (ARCHITECTURE.md §5.1): on a reconnect with the kill switch holding the TUN open, an
+     * unprotected socket would be routed into the blackhole. `by lazy` because
+     * [serverPreResolution] is field-injected during `super.onCreate()`.
+     */
+    private val preResolveStep by lazy {
+        val protect = SocketProtect { socket -> protect(socket) }
+        val resolver = ServerAddressResolver(OkHttpDohLookupFactory(protect), TcpConnectRacer(protect))
+        PreResolveStep(serverPreResolution::decide, resolver::resolve) { line -> Log.i(TAG, line) }
     }
 
     // All guarded by `lock`.
@@ -1845,6 +1868,11 @@ class TunnelService : VpnService() {
         val socksPort = allocated.socksPort
         val httpPort = allocated.httpPort
 
+        if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.ResolvingServer))) return null
+        // M9-C spec §3.1: never fails the start; a null pin is today's config.
+        val addressPin = preResolve(profile, rowId)
+        // The guard after the resolve: a Disconnect or a newer start during the DoH step bumps the
+        // generation, and this publish refuses, exactly like every other stage boundary here.
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.GeneratingConfig))) return null
         val settings =
             TunnelSettings(
@@ -1857,6 +1885,7 @@ class TunnelService : VpnService() {
                 metricsPort = allocated.metricsPort,
                 // M9-A spec §3.1: resolved once per start, from the same row this session connects.
                 obfuscation = obfuscationResolver.forConfig(rowId),
+                addressPin = addressPin,
             )
         // §10.4/failStart's cleanup applies here too, not just to the try/catch
         // below: an early return that only published a state (skipping
@@ -1911,6 +1940,34 @@ class TunnelService : VpnService() {
 
         return StartedPorts(socksPort, httpPort)
     }
+
+    /**
+     * [startCore]'s `ResolvingServer` stage. Plan ruling R4: the host is the typed outbound's
+     * address, and the raw bytes ride along only when this row will run as written — the same
+     * verdict [resolveConfigJson] reaches — so a config that never names that domain is skipped
+     * before any DoH query. No catch here: [PreResolveStep] never throws, and cancellation must
+     * propagate (ARCHITECTURE.md §10.4).
+     */
+    private suspend fun preResolve(
+        profile: Profile,
+        rowId: Long,
+    ): ServerAddressPin? =
+        preResolveStep.run(
+            rowId = rowId,
+            host = profile.outbound.address,
+            port = profile.outbound.port,
+            rawJsonRunsAsWritten = rawJsonRunsAsWritten(rowId),
+        )
+
+    /**
+     * The row's raw bytes when it will run as written, else null — read from Room by the same
+     * lookup and decided by the same [runsAsWrittenAtConnect] call [resolveConfigJson] makes. A row
+     * that is gone reads null here; [resolveConfigJson] is what names that failure.
+     */
+    private suspend fun rawJsonRunsAsWritten(rowId: Long): String? =
+        profileRepository.profile(rowId)
+            ?.takeIf { stored -> runsAsWrittenAtConnect(stored.runsAsWritten, stored.rawJson) }
+            ?.rawJson
 
     /** [resolveConfigJson]'s outcome — a JSON string ready for [writeConfig], or a named failure. */
     private sealed interface ConfigJsonOutcome {

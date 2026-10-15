@@ -30,6 +30,7 @@
     <string name="home_state_stalled">Not responding</string>
 
     <string name="stage_allocating_port">Allocating port…</string>
+    <string name="stage_resolving_server">Resolving server…</string>
     <string name="stage_generating_config">Generating config…</string>
     <string name="stage_validating_config">Validating config…</string>
     <string name="stage_starting_core">Starting core…</string>
