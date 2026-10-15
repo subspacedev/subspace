@@ -95,6 +95,32 @@ internal interface SubscriptionDao {
         value: String?,
     )
 
+    @Query("UPDATE subscriptions SET redirectTrust = :trust WHERE id = :id")
+    suspend fun setRedirectTrust(id: Long, trust: String)
+
+    @Query("UPDATE subscriptions SET resolveAddress = :resolveAddress, hostHeader = :hostHeader WHERE id = :id")
+    suspend fun setFronting(id: Long, resolveAddress: String?, hostHeader: String?)
+
+    @Query("UPDATE subscriptions SET linkFragment = :fragment WHERE id = :id")
+    suspend fun setLinkFragment(id: Long, fragment: String?)
+
+    /**
+     * M9-B spec §3.4 step 4. Clears `resolveAddress` and `hostHeader`: they describe the old host's
+     * network position and would misroute the new one, the same reason the fallback drops them
+     * (M9-B spec §3.3). `linkFragment` stays — it is about the network path, not the host. Conditional
+     * on the stored trust so a revocation that lands after the syncer's own check still wins
+     * (M9-B spec §1.2).
+     */
+    @Query(
+        "UPDATE subscriptions SET url = :url, movedFromHost = :fromHost, movedAt = :at, " +
+            "resolveAddress = NULL, hostHeader = NULL " +
+            "WHERE id = :id AND redirectTrust = 'ALLOWED'",
+    )
+    suspend fun applyMove(id: Long, url: String, fromHost: String, at: Long)
+
+    @Query("UPDATE subscriptions SET lastFetchVia = :via WHERE id = :id")
+    suspend fun setLastFetchVia(id: Long, via: String?)
+
     @Query("DELETE FROM subscriptions WHERE id = :id")
     suspend fun deleteSubscription(id: Long)
 

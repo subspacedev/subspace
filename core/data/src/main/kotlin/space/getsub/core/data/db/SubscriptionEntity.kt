@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -54,6 +55,15 @@ internal data class SubscriptionEntity(
     val lastFetchStatus: String?,
     val lastFetchDetail: String?,
     val createdAt: Long,
+    // M9-B spec §2.1. The link's own parameters, split out of `url` (§1.6), and the redirect state.
+    val resolveAddress: String? = null,
+    val hostHeader: String? = null,
+    val linkFragment: String? = null,
+    @ColumnInfo(defaultValue = "0") val insecureIgnored: Boolean = false,
+    @ColumnInfo(defaultValue = "'UNASKED'") val redirectTrust: String = "UNASKED",
+    val movedFromHost: String? = null,
+    val movedAt: Long? = null,
+    val lastFetchVia: String? = null,
 ) {
     // ARCHITECTURE.md §5.6: url is a secret. The generated data-class toString() would print
     // it verbatim, which is exactly the "reaches a log line" failure mode
@@ -66,7 +76,13 @@ internal data class SubscriptionEntity(
         "SubscriptionEntity(id=$id, groupId=$groupId, url=<redacted>, " +
             "userAgentOverride=$userAgentOverride, hwidEnabled=$hwidEnabled, " +
             "lastFetchedAt=$lastFetchedAt, lastAttemptedAt=$lastAttemptedAt, lastFetchStatus=$lastFetchStatus, " +
-            "lastFetchDetail=$lastFetchDetail, createdAt=$createdAt)"
+            "lastFetchDetail=$lastFetchDetail, createdAt=$createdAt, " +
+            "resolveAddress=${if (resolveAddress == null) "none" else "<redacted>"}, " +
+            "hostHeader=${if (hostHeader == null) "none" else "<redacted>"}, " +
+            "linkFragment=${if (linkFragment == null) "none" else "<redacted>"}, " +
+            "insecureIgnored=$insecureIgnored, redirectTrust=$redirectTrust, " +
+            "movedFromHost=${if (movedFromHost == null) "none" else "<redacted>"}, " +
+            "movedAt=$movedAt, lastFetchVia=$lastFetchVia)"
 }
 
 /**

@@ -129,6 +129,12 @@ internal data class ServersGroup(
      * card renders a marker for it; a user override clears it.
      */
     val sortFromProvider: Boolean = false,
+    /**
+     * Hosts the provider asked to move or redirect this subscription to, while the user has not
+     * answered. Empty once answered (or when nothing was asked); the card shows Allow / Don't
+     * allow while it is not.
+     */
+    val redirectRequestHosts: List<String> = emptyList(),
 )
 
 /**

@@ -458,4 +458,35 @@
     <string name="obfuscation_origin_none_ignored">none (subscription value ignored: %1$s)</string>
     <string name="subscription_fragment_ignored">Fragmentation directive ignored: %1$s</string>
     <string name="subscription_noise_ignored">Noise directive ignored: %1$s</string>
+
+    <!-- M9-B: reaching the subscription -->
+    <string name="subscription_detail_section_reach">Reaching the subscription</string>
+    <string name="subscription_redirect_request">Your provider wants permission to move or redirect this subscription — to %1$s</string>
+    <string name="subscription_redirect_allow">Allow</string>
+    <string name="subscription_redirect_deny">Don\'t allow</string>
+    <string name="subscription_redirect_switch">Allow provider to move or redirect</string>
+    <string name="subscription_redirect_switch_unasked">Not asked yet</string>
+    <string name="subscription_fronting_address_label">Connection address (optional)</string>
+    <string name="subscription_fronting_host_label">Host header (optional)</string>
+    <string name="subscription_fronting_save">Save fronting</string>
+    <string name="subscription_fetch_fragment_label">Fetch fragmentation</string>
+    <string name="subscription_fetch_fragment_placeholder">length,interval,packets — e.g. 80-250,10-100,tlshello</string>
+    <string name="subscription_fetch_fragment_global">Your Fragmentation settings apply</string>
+    <string name="subscription_fetch_fragment_save">Save fetch fragmentation</string>
+    <string name="subscription_fetch_fragment_invalid">Link fragmentation ignored: %1$s</string>
+    <string name="subscription_moved_from">Moved from %1$s %2$s</string>
+    <string name="subscription_moved_from_no_time">Moved from %1$s</string>
+    <string name="subscription_via_fallback">Last update came from the fallback address</string>
+    <string name="subscription_fallback_failed">The fallback address failed too</string>
+    <string name="subscription_insecure_ignored">Certificate checks stay on — insecure in the link was ignored</string>
+    <string name="subscription_redirect_ignored">%1$s ignored: %2$s</string>
+    <string name="subscription_redirect_collides">%1$s ignored: already added as another subscription</string>
+    <string name="subscription_redirect_superseded">%1$s ignored: new-url takes precedence</string>
+    <string name="subscription_redirects_denied">Your provider\'s redirects are not followed — you didn\'t allow them</string>
+    <string name="redirect_rejection_malformed">not a valid address</string>
+    <string name="redirect_rejection_not_https">only https addresses are followed</string>
+    <string name="redirect_rejection_user_info">addresses with a user name are not followed</string>
+    <string name="redirect_rejection_ip_literal">IP addresses are not followed</string>
+    <string name="redirect_rejection_local">local addresses are not followed</string>
+    <string name="redirect_rejection_bare_host">new-domain must be a host name only</string>
 </resources>

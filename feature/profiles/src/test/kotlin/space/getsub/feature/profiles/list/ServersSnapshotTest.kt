@@ -32,6 +32,8 @@ class ServersSnapshotTest {
             onAddProfile = {},
             onProfileEdit = {},
             onUpdateSubscription = {},
+            onAllowRedirects = {},
+            onDenyRedirects = {},
             onDismissUpdateResult = {},
             onOpenSubscriptionDetail = {},
             onTestProfile = {},
@@ -151,6 +153,20 @@ class ServersSnapshotTest {
                 )
             },
             expanded = setOf(1L, 2L),
+        )
+
+    @Test
+    fun redirectRequest() =
+        shoot(
+            "servers-redirect-request",
+            populated().let { s ->
+                s.copy(
+                    groups =
+                    s.groups.mapIndexed { i, g ->
+                        if (i == 0) g.copy(redirectRequestHosts = listOf("new.example")) else g
+                    },
+                )
+            },
         )
 
     private companion object {

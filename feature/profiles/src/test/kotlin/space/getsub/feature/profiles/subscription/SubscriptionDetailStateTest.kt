@@ -3,8 +3,10 @@
 package space.getsub.feature.profiles.subscription
 
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
 import space.getsub.core.data.EffectiveValue
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.StoredSubscription
 
 class SubscriptionDetailStateTest {
@@ -81,5 +83,30 @@ class SubscriptionDetailStateTest {
             )
 
         stored.toLastFetchState() shouldBe LastFetchState.NoServers(lastSuccessAtEpochMillis = 100L)
+    }
+
+    @Test
+    fun `a denied request with targets says the redirects are not followed`() {
+        val denied =
+            SubscriptionDetailState(redirectTrust = RedirectTrust.Denied, redirectTargetHosts = listOf("n.example"))
+        denied.showsRedirectsDenied shouldBe true
+        denied.copy(redirectTargetHosts = emptyList()).showsRedirectsDenied shouldBe false
+        denied.copy(redirectTrust = RedirectTrust.Allowed).showsRedirectsDenied shouldBe false
+        denied.copy(redirectTrust = RedirectTrust.Unasked).showsRedirectsDenied shouldBe false
+    }
+
+    @Test
+    fun `toString keeps the route, the url and the moved-from host out`() {
+        val text =
+            SubscriptionDetailState(
+                redactedUrl = "https://panel.example/…",
+                redirectTargetHosts = listOf("target.example"),
+                resolveAddress = "front.example",
+                hostHeader = "real.example",
+                linkFragment = "80-250,10-100,tlshello",
+                movedFromHost = "old.example",
+            ).toString()
+        listOf("panel.example", "target.example", "front.example", "real.example", "80-250", "old.example")
+            .forEach { text shouldNotContain it }
     }
 }

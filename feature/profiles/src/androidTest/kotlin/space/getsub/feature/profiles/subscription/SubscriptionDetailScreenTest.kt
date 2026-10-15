@@ -10,6 +10,8 @@ import androidx.compose.ui.test.performScrollTo
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.data.RedirectIssue
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.ui.theme.SubspaceTheme
 
 class SubscriptionDetailScreenTest {
@@ -70,9 +72,70 @@ class SubscriptionDetailScreenTest {
         unpinnedKey shouldBe "profile-update-interval"
     }
 
+    @Test
+    fun theRedirectRequestNamesTheHostAndAllowInvokesTheAction() {
+        var allowCalls = 0
+        setContent(
+            state = detailState().copy(redirectTargetHosts = listOf("new.example")),
+            actions = noOpActions(onAllowRedirects = { allowCalls++ }),
+        )
+
+        composeRule
+            .onNodeWithText(
+                "Your provider wants permission to move or redirect this subscription — to new.example",
+            ).assertExists()
+        composeRule.onNodeWithText("Allow").performClick()
+        allowCalls shouldBe 1
+    }
+
+    @Test
+    fun anIgnoredInsecureFlagIsExplained() {
+        setContent(state = detailState().copy(insecureIgnored = true))
+
+        composeRule
+            .onNodeWithText("Certificate checks stay on — insecure in the link was ignored")
+            .performScrollTo()
+            .assertExists()
+    }
+
+    @Test
+    fun aGlobalFragmentationSettingIsNamedUnderTheFetchField() {
+        setContent(state = detailState().copy(globalFragmentationOn = true))
+
+        composeRule.onNodeWithText("Your Fragmentation settings apply").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aNewDomainSupersededByNewUrlSaysSo() {
+        val superseded = RedirectIssue("new-domain", reason = null, collides = false, superseded = true)
+        setContent(state = detailState().copy(redirectIssues = listOf(superseded)))
+
+        composeRule.onNodeWithText("new-domain ignored: new-url takes precedence").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun deniedRedirectsAreNamedWhenTheProviderAsks() {
+        setContent(
+            state = detailState().copy(redirectTrust = RedirectTrust.Denied, redirectTargetHosts = listOf("n.example")),
+        )
+
+        composeRule
+            .onNodeWithText("Your provider's redirects are not followed — you didn't allow them")
+            .performScrollTo()
+            .assertExists()
+    }
+
+    @Test
+    fun aMoveWithoutATimeNamesOnlyTheOldHost() {
+        setContent(state = detailState().copy(movedFromHost = "old.example", movedAt = null))
+
+        composeRule.onNodeWithText("Moved from old.example").performScrollTo().assertExists()
+    }
+
     private fun noOpActions(
         onDeleteConfirmed: () -> Unit = {},
         onUnpinRow: (String) -> Unit = {},
+        onAllowRedirects: () -> Unit = {},
     ) =
         SubscriptionDetailActions(
             onBack = {},
@@ -83,6 +146,11 @@ class SubscriptionDetailScreenTest {
             onHwidEnabledChanged = {},
             onUserAgentOverrideChanged = {},
             onDeleteConfirmed = onDeleteConfirmed,
+            onAllowRedirects = onAllowRedirects,
+            onDenyRedirects = {},
+            onRedirectsAllowedChanged = {},
+            onFrontingSaved = { _, _ -> },
+            onLinkFragmentSaved = {},
         )
 
     private fun detailState() =

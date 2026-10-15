@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.model.LatencyResult
@@ -177,6 +178,8 @@ constructor(
          * identical on screen.
          */
         val pingType: String?,
+        /** Hosts to name in the redirect request; empty once the user has answered. */
+        val redirectRequestHosts: List<String>,
     )
 
     /** How the rows are presented, as opposed to what the rows are. */
@@ -200,20 +203,27 @@ constructor(
         if (isEmpty()) return flowOf(emptyMap())
         val perSubscription =
             map { sub ->
+                val directives =
+                    combine(
+                        profileSource.observeEffective(sub.id, KEY_SUBSCRIPTIONS_SORT_TYPE, default = null),
+                        profileSource.observeEffective(sub.id, KEY_PING_ON_OPEN, default = null),
+                        profileSource.observeEffective(sub.id, KEY_PING_TYPE, default = null),
+                    ) { sortType, pingOnOpen, pingType -> Triple(sortType.value, pingOnOpen.value, pingType.value) }
                 combine(
                     profileSource.observeUserInfo(sub.id),
-                    profileSource.observeEffective(sub.id, KEY_SUBSCRIPTIONS_SORT_TYPE, default = null),
-                    profileSource.observeEffective(sub.id, KEY_PING_ON_OPEN, default = null),
-                    profileSource.observeEffective(sub.id, KEY_PING_TYPE, default = null),
-                ) { raw, sortType, pingOnOpen, pingType ->
+                    directives,
+                    profileSource.observeRedirectStatus(sub.id),
+                ) { raw, (sortType, pingOnOpen, pingType), redirects ->
                     sub.groupId to
                         SubscriptionContext(
                             subscriptionId = sub.id,
                             userInfo = raw?.let(::parseUserInfo),
                             lastFetchedAtEpochMillis = sub.lastFetchedAt,
-                            sortType = sortType.value,
-                            pingOnOpen = pingOnOpen.value,
-                            pingType = pingType.value,
+                            sortType = sortType,
+                            pingOnOpen = pingOnOpen,
+                            pingType = pingType,
+                            redirectRequestHosts =
+                            if (sub.redirectTrust == RedirectTrust.Unasked) redirects.targetHosts else emptyList(),
                         )
                 }
             }
@@ -294,6 +304,16 @@ constructor(
             val result = profileSource.syncSubscription(id)
             _state.value = _state.value.copy(updateResult = result.toUserMessage())
         }
+    }
+
+    /** The user allows [subscriptionId]'s provider to move or redirect it. */
+    fun onAllowRedirects(subscriptionId: Long) {
+        viewModelScope.launch { profileSource.setRedirectTrust(subscriptionId, RedirectTrust.Allowed) }
+    }
+
+    /** The user declines [subscriptionId]'s provider's redirect request. */
+    fun onDenyRedirects(subscriptionId: Long) {
+        viewModelScope.launch { profileSource.setRedirectTrust(subscriptionId, RedirectTrust.Denied) }
     }
 
     /** Clears [ServersState.updateResult] once the user has read it. */
@@ -443,6 +463,7 @@ constructor(
                     lastFetchedAtEpochMillis = context?.lastFetchedAtEpochMillis,
                     sort = effectiveSort,
                     sortFromProvider = fromProvider,
+                    redirectRequestHosts = context?.redirectRequestHosts.orEmpty(),
                 )
             }
         return ServersState(

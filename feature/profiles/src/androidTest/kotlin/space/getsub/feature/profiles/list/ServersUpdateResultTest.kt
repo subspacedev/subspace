@@ -50,6 +50,8 @@ class ServersUpdateResultTest {
                         onUpdateSubscription = {},
                         onDismissUpdateResult = onDismissUpdateResult,
                         onOpenSubscriptionDetail = {},
+                        onAllowRedirects = {},
+                        onDenyRedirects = {},
                         onTestProfile = {},
                         onTestGroup = {},
                         onCancelTests = {},

@@ -19,6 +19,7 @@ import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SubscriptionSyncer
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.parser.ParseFailure
+import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.SubscriptionParser
 import space.getsub.core.parser.directive.DirectiveKind
 import space.getsub.core.parser.directive.KindResult
@@ -112,8 +113,15 @@ internal fun SubscriptionSyncFailure.toUserMessage(): UserMessage =
         SubscriptionSyncFailure.ServerError -> UserMessage(R.string.subscription_error_server)
     }
 
-/** True for an absolute `http`/`https` URL with a host — [DirectiveKind.Url]'s own rule. */
-private fun isSubscriptionUrl(url: String): Boolean = DirectiveKind.Url.canonicalise(url) is KindResult.Canonical
+/**
+ * True for an absolute `http`/`https` URL with a host — [DirectiveKind.Url]'s own rule — judged on the
+ * link's plain URL: a Happ `#title?…` tail (M9-B spec §2.2) may hold a space or `|`, which no URI accepts.
+ * One line only: without that, a URL with a `#` followed by share links on later lines would be swallowed
+ * as one subscription's title.
+ */
+private fun isSubscriptionUrl(url: String): Boolean =
+    url.lines().size == 1 &&
+        DirectiveKind.Url.canonicalise(SubscriptionLink.parse(url).plainUrl) is KindResult.Canonical
 
 /** Where the sheet's one input box sends what it was given. */
 internal sealed interface ImportRoute {
@@ -413,4 +421,5 @@ constructor(
  * non-blank host (`DirectiveKind.Url`'s own rule) — `.orEmpty()` keeps this
  * total without a `!!` for the case that can't actually happen.
  */
-private fun subscriptionHostName(url: String): String = java.net.URI(url).host.orEmpty()
+private fun subscriptionHostName(url: String): String =
+    java.net.URI(SubscriptionLink.parse(url).plainUrl).host.orEmpty()

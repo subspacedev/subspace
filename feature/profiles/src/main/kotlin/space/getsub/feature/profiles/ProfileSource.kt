@@ -13,6 +13,8 @@ import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ObfuscationResolver
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.ProfileRepository
+import space.getsub.core.data.RedirectStatus
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
@@ -260,6 +262,37 @@ internal interface ProfileSource {
      * detail screen can say why one was ignored — see [ObfuscationResolver.directiveIssues].
      */
     suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation
+
+    /**
+     * The hosts a redirect-trust request names and the redirect keys that would be ignored, for
+     * [id] — see [SubscriptionRepository.observeRedirectStatus]. Defaulted (with the four members
+     * below) like [routingOverridesPassthrough], so the existing fakes of this interface need not
+     * implement them.
+     */
+    fun observeRedirectStatus(id: Long): Flow<RedirectStatus> = flowOf(RedirectStatus.NONE)
+
+    /** Whether the user's global Fragmentation setting is On, which overrides a link's own `fragment=`. */
+    val globalFragmentationOn: Flow<Boolean>
+        get() = flowOf(false)
+
+    /** Records the user's answer to [id]'s redirect-trust request — see [SubscriptionRepository.setRedirectTrust]. */
+    suspend fun setRedirectTrust(
+        id: Long,
+        trust: RedirectTrust,
+    ) {}
+
+    /** Sets or clears [id]'s fronting address and Host header — see [SubscriptionRepository.setFronting]. */
+    suspend fun setFronting(
+        id: Long,
+        resolveAddress: String?,
+        hostHeader: String?,
+    ) {}
+
+    /** Sets or clears [id]'s own fetch `fragment=` value — see [SubscriptionRepository.setLinkFragment]. */
+    suspend fun setLinkFragment(
+        id: Long,
+        fragment: String?,
+    ) {}
 }
 
 /**
@@ -458,6 +491,27 @@ constructor(
 
     override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
         obfuscationResolver.directiveIssues(subscriptionId)
+
+    override fun observeRedirectStatus(id: Long): Flow<RedirectStatus> =
+        subscriptionRepository.observeRedirectStatus(id)
+
+    override val globalFragmentationOn: Flow<Boolean> = settingsRepository.fragmentSettings.map { it.enabled }
+
+    override suspend fun setRedirectTrust(
+        id: Long,
+        trust: RedirectTrust,
+    ) = subscriptionRepository.setRedirectTrust(id, trust)
+
+    override suspend fun setFronting(
+        id: Long,
+        resolveAddress: String?,
+        hostHeader: String?,
+    ) = subscriptionRepository.setFronting(id, resolveAddress, hostHeader)
+
+    override suspend fun setLinkFragment(
+        id: Long,
+        fragment: String?,
+    ) = subscriptionRepository.setLinkFragment(id, fragment)
 
     /**
      * Task 8: runs every [StoredProfile] in [groupId] for which [isCandidate] is true through

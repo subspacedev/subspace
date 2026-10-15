@@ -7,7 +7,9 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import space.getsub.core.data.FetchVia
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.db.ProfileEntity
@@ -16,6 +18,7 @@ import space.getsub.core.data.db.SubscriptionDirectiveEntity
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SyncChangeSet
 import space.getsub.core.data.protocolName
+import space.getsub.core.data.redirectTrustOf
 import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
@@ -24,10 +27,13 @@ import space.getsub.core.model.Profile
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
+import space.getsub.core.network.FetchRoute
 import space.getsub.core.network.SubscriptionRequest
 import space.getsub.core.network.SubscriptionSource
 import space.getsub.core.parser.ParseFailure
 import space.getsub.core.parser.PassthroughAnalysis
+import space.getsub.core.parser.RedirectCheck
+import space.getsub.core.parser.RedirectTargets
 import space.getsub.core.parser.SubscriptionParser
 import space.getsub.core.parser.analysePassthrough
 import space.getsub.core.parser.directive.DirectiveSplitter
@@ -40,6 +46,9 @@ private const val DEFAULT_TIMEOUT_SECONDS = 9
 private const val KEY_TIMEOUT = "subscription-request-timeout"
 private const val KEY_TITLE = "profile-title"
 private const val KEY_USER_AGENT = "change-user-agent"
+private const val KEY_FALLBACK_URL = "fallback-url"
+private const val KEY_NEW_URL = "new-url"
+private const val KEY_NEW_DOMAIN = "new-domain"
 private const val NO_SERVERS_STATUS = "NoServers"
 private const val MAX_LOG_KEY_LENGTH = 64
 
@@ -108,21 +117,82 @@ internal constructor(
             subscription.userAgentOverride
                 ?: subscriptions.effective(subscription.id, KEY_USER_AGENT, null).value
 
-        val outcome =
-            source.fetch(
-                SubscriptionRequest(
-                    url = subscription.url,
-                    hwidEnabled = subscription.hwidEnabled && settings.hwidEnabled.first(),
-                    userAgentOverride = userAgent,
-                    timeoutSeconds = timeout,
-                    proxyPort = proxyLocator.httpProxyPortOrNull(),
+        val request =
+            SubscriptionRequest(
+                url = subscription.url,
+                hwidEnabled = subscription.hwidEnabled && settings.hwidEnabled.first(),
+                userAgentOverride = userAgent,
+                timeoutSeconds = timeout,
+                proxyPort = proxyLocator.httpProxyPortOrNull(),
+                route =
+                FetchRoute(
+                    resolveAddress = subscription.resolveAddress,
+                    hostHeader = subscription.hostHeader,
+                    fragment = FetchDecisions.fetchFragment(settings.fragmentSettingsNow(), subscription.linkFragment),
                 ),
             )
+        val (outcome, via, fallbackUrl) = fetchWithFallback(subscription, request)
+        dao.setLastFetchVia(subscription.id, via.stored)
 
         return when (outcome) {
             is FetchOutcome.Failed -> recordFailure(subscription.id, outcome.reason, outcome.detail)
-            is FetchOutcome.Success -> applySuccess(subscription, outcome, activeProfileId)
+            is FetchOutcome.Success -> applySuccess(subscription, outcome, activeProfileId, fallbackUrl)
         }
+    }
+
+    /**
+     * M9-B spec §3.3. The fallback keeps fragmentation but drops fronting: `resolveAddress` and the
+     * `Host` header describe how to reach the main host and would misroute a different one.
+     */
+    private suspend fun fetchWithFallback(
+        subscription: SubscriptionEntity,
+        request: SubscriptionRequest,
+    ): Attempt {
+        val main = source.fetch(request)
+        val target = fallbackTarget(subscription, main)
+        if (main !is FetchOutcome.Failed || target == null) return Attempt(main, FetchVia.Main)
+
+        Log.i(TAG, "subscription ${subscription.id} main failed reason=${main.reason.name}, trying fallback")
+        val fallback =
+            source.fetch(
+                request.copy(url = target, route = request.route.copy(resolveAddress = null, hostHeader = null)),
+            )
+        // Trust is re-read once the fallback answers: a revocation during that fetch must still win.
+        return when {
+            !isRedirectAllowed(subscription.id) -> Attempt(main, FetchVia.Main)
+            fallback is FetchOutcome.Failed -> {
+                Log.i(TAG, "subscription ${subscription.id} fallback failed reason=${fallback.reason.name}")
+                Attempt(main, FetchVia.FallbackFailed)
+            }
+            else -> {
+                Log.i(TAG, "subscription ${subscription.id} fallback ok")
+                Attempt(fallback, FetchVia.Fallback, fallbackUrl = target)
+            }
+        }
+    }
+
+    /** One refresh's answer; [fallbackUrl] is the fallback that answered, when one did. */
+    private data class Attempt(
+        val outcome: FetchOutcome,
+        val via: FetchVia,
+        val fallbackUrl: String? = null,
+    )
+
+    /** The fetch can outlive a consent change, so trust is read fresh, never from the pre-fetch row. */
+    private suspend fun isRedirectAllowed(id: Long): Boolean =
+        dao.subscription(id)?.let { redirectTrustOf(it.redirectTrust) == RedirectTrust.Allowed } == true
+
+    /** The validated fallback URL, or null when [main] is not a failure worth retrying or redirects are not allowed. */
+    private suspend fun fallbackTarget(
+        subscription: SubscriptionEntity,
+        main: FetchOutcome,
+    ): String? {
+        val eligible =
+            main is FetchOutcome.Failed &&
+                FetchDecisions.fallbackEligible(main.reason) &&
+                isRedirectAllowed(subscription.id)
+        val raw = if (eligible) subscriptions.effective(subscription.id, KEY_FALLBACK_URL, null).value else null
+        return (raw?.let { RedirectTargets.checkUrl(it) } as? RedirectCheck.Ok)?.url
     }
 
     /**
@@ -160,6 +230,7 @@ internal constructor(
         subscription: SubscriptionEntity,
         outcome: FetchOutcome.Success,
         activeProfileId: Long?,
+        fallbackUrl: String? = null,
     ): SyncResult {
         val split = DirectiveSplitter.split(outcome.headers, outcome.body)
         val validated = DirectiveValidator.validate(split.directives)
@@ -172,8 +243,17 @@ internal constructor(
         val parsed = SubscriptionParser.parse(split.remainingBody)
 
         val now = System.currentTimeMillis()
+        // The fallback's own response replaces the stored directives. A fallback host that does not repeat
+        // fallback-url would otherwise erase it, and the next refresh with the main URL still down would
+        // have nowhere to go (found on device 2026-10-15). Keep the one that answered unless it names another.
+        val stored =
+            if (fallbackUrl != null && KEY_FALLBACK_URL !in validated.accepted) {
+                validated.accepted + (KEY_FALLBACK_URL to fallbackUrl)
+            } else {
+                validated.accepted
+            }
         val directives =
-            validated.accepted.map { (key, value) -> SubscriptionDirectiveEntity(subscription.id, key, value, now) }
+            stored.map { (key, value) -> SubscriptionDirectiveEntity(subscription.id, key, value, now) }
         val groupName = validated.accepted[KEY_TITLE]
 
         return if (parsed.profiles.isEmpty()) {
@@ -195,6 +275,7 @@ internal constructor(
                     fetchDetail = NO_SERVERS_STATUS,
                 ),
             )
+            applyMoveIfAllowed(subscription, validated.accepted, now)
             SyncResult.NoServers(parsed.failures.redactedDetail())
         } else {
             val response =
@@ -210,7 +291,38 @@ internal constructor(
             // Fetching can take the full provider timeout. Resolve the active tunnel only
             // immediately before reconciliation so a user switching profiles during that wait
             // cannot cause the newly active, provider-absent row to be deleted (spec D4).
-            reconcile(response, activeProfileId ?: settings.activeProfileId.first())
+            val result = reconcile(response, activeProfileId ?: settings.activeProfileId.first())
+            if (result is SyncResult.Synced) applyMoveIfAllowed(subscription, validated.accepted, now)
+            result
+        }
+    }
+
+    /**
+     * M9-B spec §3.4. Only from this fetch's own directives and only when Allowed. The new URL is used
+     * from the next refresh: no re-fetch here, so a looping provider advances one hop per refresh.
+     */
+    private suspend fun applyMoveIfAllowed(
+        subscription: SubscriptionEntity,
+        accepted: Map<String, String>,
+        now: Long,
+    ) {
+        // Fresh row: consent and url may have changed during the fetch (M9-B spec §1.2).
+        val current = dao.subscription(subscription.id)
+        val move =
+            if (current != null && redirectTrustOf(current.redirectTrust) == RedirectTrust.Allowed) {
+                FetchDecisions.moveTarget(current.url, accepted[KEY_NEW_URL], accepted[KEY_NEW_DOMAIN])
+            } else {
+                MoveDecision.None
+            }
+        val owner = if (move is MoveDecision.Move) dao.subscriptionByUrl(move.url)?.id else null
+        if (move is MoveDecision.Move && (owner == null || owner == subscription.id)) {
+            try {
+                dao.applyMove(subscription.id, move.url, move.fromHost, now)
+                Log.i(TAG, "subscription ${subscription.id} moved by provider directive")
+            } catch (ignored: SQLiteConstraintException) {
+                // Another subscription took the URL between the check and the write; skip, as above.
+                Log.i(TAG, "subscription ${subscription.id} move skipped: target taken")
+            }
         }
     }
 

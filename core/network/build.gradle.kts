@@ -7,6 +7,10 @@ plugins {
 
 android {
     namespace = "space.getsub.core.network"
+
+    defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
 }
 
 dependencies {
@@ -16,4 +20,8 @@ dependencies {
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.kotest.assertions)
 }

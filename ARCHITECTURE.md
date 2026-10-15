@@ -1658,6 +1658,12 @@ Mandatory rules:
   `RoutingRepository.decideFor`, so "would this change anything" has one
   definition rather than one per caller.
 
+  **M9-B adds the second.** `new-url`, `new-domain` and `fallback-url` share one grant per
+  subscription: the first fetch carrying any of them raises a request naming the target hosts, on the
+  Servers card and in subscription details. Until the user allows it, nothing is followed; once
+  allowed, a fallback is tried when the main address fails and a move applies at most once per
+  refresh. Targets must be public `https` hosts.
+
 ---
 
 ## A.2 Tier 1 — table stakes (MVP)
@@ -1933,12 +1939,16 @@ above cosmetic parity:
       Noise is a UDP mask, and this build runs no UDP transport (raw JSON
       imports VLESS only; mKCP is gated). Verified when sub-project D adds
       Hysteria2.
-- [ ] **Subscription fronting**: connect to `visa.com` while sending
+- [x] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
-- [ ] **Fallback URL**: switch to a backup subscription URL if the primary
+      — M9-B, with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
+      switch). Verified on device 2026-10-15 against the owner's own front, not a CDN edge.
+- [x] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
-- [ ] **`new-url` / `new-domain`**: provider-initiated migration when the
+      — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
+- [x] **`new-url` / `new-domain`**: provider-initiated migration when the
       primary domain gets blocked
+      — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
 - [ ] **Domain pre-resolution**: resolve the server domain over a specified
       DoH server before connecting, pick the lowest-latency IP
 - [ ] **User-Agent override** for subscription fetch and for geo file

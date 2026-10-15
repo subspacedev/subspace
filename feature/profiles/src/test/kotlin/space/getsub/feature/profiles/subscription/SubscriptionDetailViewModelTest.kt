@@ -23,6 +23,8 @@ import space.getsub.core.data.EffectiveValue
 import space.getsub.core.data.MaskResolution
 import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ProfileGroup
+import space.getsub.core.data.RedirectStatus
+import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
@@ -113,6 +115,24 @@ class SubscriptionDetailViewModelTest {
         override suspend fun setHwidEnabled(id: Long, enabled: Boolean) = Unit
         override suspend fun setUserAgentOverride(id: Long, userAgent: String?) {
             userAgentOverride = userAgent
+        }
+
+        val redirectStatus = MutableStateFlow(RedirectStatus.NONE)
+        val fragmentationOn = MutableStateFlow(false)
+        val trustWrites = mutableListOf<RedirectTrust>()
+        val frontingWrites = mutableListOf<Pair<String?, String?>>()
+        val fragmentWrites = mutableListOf<String?>()
+
+        override fun observeRedirectStatus(id: Long): Flow<RedirectStatus> = redirectStatus
+        override val globalFragmentationOn: Flow<Boolean> get() = fragmentationOn
+        override suspend fun setRedirectTrust(id: Long, trust: RedirectTrust) {
+            trustWrites += trust
+        }
+        override suspend fun setFronting(id: Long, resolveAddress: String?, hostHeader: String?) {
+            frontingWrites += resolveAddress to hostHeader
+        }
+        override suspend fun setLinkFragment(id: Long, fragment: String?) {
+            fragmentWrites += fragment
         }
 
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
@@ -343,6 +363,52 @@ class SubscriptionDetailViewModelTest {
             source.syncCalls shouldBe 1
             source.syncGate?.complete(Unit)
             advanceUntilIdle()
+        }
+
+    @Test
+    fun theRequestShowsWhileUnaskedWithTargets() =
+        runTest {
+            source.redirectStatus.value = RedirectStatus(listOf("new.example"), emptyList())
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.showsRedirectRequest shouldBe true
+            viewModel.state.value.redirectTargetHosts shouldBe listOf("new.example")
+        }
+
+    @Test
+    fun allowAndDenyWriteTheTrust() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onAllowRedirects()
+            viewModel.onDenyRedirects()
+            viewModel.onRedirectsAllowedChanged(true)
+            advanceUntilIdle()
+
+            source.trustWrites shouldBe listOf(RedirectTrust.Allowed, RedirectTrust.Denied, RedirectTrust.Allowed)
+        }
+
+    @Test
+    fun anInvalidLinkFragmentShowsItsProblem() =
+        runTest {
+            source.subscriptions.value =
+                listOf(subscription(SUBSCRIPTION_ID).copy(linkFragment = "0-5,10,tlshello"))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.linkFragmentProblem shouldBe ObfuscationProblem.LengthFromZero
+        }
+
+    @Test
+    fun savingFrontingAndFragmentPassesThroughBlankAsNull() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onFrontingSaved("front.example", " ")
+            viewModel.onLinkFragmentSaved("")
+            advanceUntilIdle()
+
+            source.frontingWrites shouldBe listOf("front.example" to null)
+            source.fragmentWrites shouldBe listOf(null)
         }
 
     private companion object {
