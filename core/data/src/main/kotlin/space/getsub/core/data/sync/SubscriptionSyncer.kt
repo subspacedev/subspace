@@ -131,12 +131,12 @@ internal constructor(
                     fragment = FetchDecisions.fetchFragment(settings.fragmentSettingsNow(), subscription.linkFragment),
                 ),
             )
-        val (outcome, via) = fetchWithFallback(subscription, request)
+        val (outcome, via, fallbackUrl) = fetchWithFallback(subscription, request)
         dao.setLastFetchVia(subscription.id, via.stored)
 
         return when (outcome) {
             is FetchOutcome.Failed -> recordFailure(subscription.id, outcome.reason, outcome.detail)
-            is FetchOutcome.Success -> applySuccess(subscription, outcome, activeProfileId)
+            is FetchOutcome.Success -> applySuccess(subscription, outcome, activeProfileId, fallbackUrl)
         }
     }
 
@@ -147,10 +147,10 @@ internal constructor(
     private suspend fun fetchWithFallback(
         subscription: SubscriptionEntity,
         request: SubscriptionRequest,
-    ): Pair<FetchOutcome, FetchVia> {
+    ): Attempt {
         val main = source.fetch(request)
         val target = fallbackTarget(subscription, main)
-        if (main !is FetchOutcome.Failed || target == null) return main to FetchVia.Main
+        if (main !is FetchOutcome.Failed || target == null) return Attempt(main, FetchVia.Main)
 
         Log.i(TAG, "subscription ${subscription.id} main failed reason=${main.reason.name}, trying fallback")
         val fallback =
@@ -159,17 +159,24 @@ internal constructor(
             )
         // Trust is re-read once the fallback answers: a revocation during that fetch must still win.
         return when {
-            !isRedirectAllowed(subscription.id) -> main to FetchVia.Main
+            !isRedirectAllowed(subscription.id) -> Attempt(main, FetchVia.Main)
             fallback is FetchOutcome.Failed -> {
                 Log.i(TAG, "subscription ${subscription.id} fallback failed reason=${fallback.reason.name}")
-                main to FetchVia.FallbackFailed
+                Attempt(main, FetchVia.FallbackFailed)
             }
             else -> {
                 Log.i(TAG, "subscription ${subscription.id} fallback ok")
-                fallback to FetchVia.Fallback
+                Attempt(fallback, FetchVia.Fallback, fallbackUrl = target)
             }
         }
     }
+
+    /** One refresh's answer; [fallbackUrl] is the fallback that answered, when one did. */
+    private data class Attempt(
+        val outcome: FetchOutcome,
+        val via: FetchVia,
+        val fallbackUrl: String? = null,
+    )
 
     /** The fetch can outlive a consent change, so trust is read fresh, never from the pre-fetch row. */
     private suspend fun isRedirectAllowed(id: Long): Boolean =
@@ -223,6 +230,7 @@ internal constructor(
         subscription: SubscriptionEntity,
         outcome: FetchOutcome.Success,
         activeProfileId: Long?,
+        fallbackUrl: String? = null,
     ): SyncResult {
         val split = DirectiveSplitter.split(outcome.headers, outcome.body)
         val validated = DirectiveValidator.validate(split.directives)
@@ -235,8 +243,17 @@ internal constructor(
         val parsed = SubscriptionParser.parse(split.remainingBody)
 
         val now = System.currentTimeMillis()
+        // The fallback's own response replaces the stored directives. A fallback host that does not repeat
+        // fallback-url would otherwise erase it, and the next refresh with the main URL still down would
+        // have nowhere to go (found on device 2026-10-15). Keep the one that answered unless it names another.
+        val stored =
+            if (fallbackUrl != null && KEY_FALLBACK_URL !in validated.accepted) {
+                validated.accepted + (KEY_FALLBACK_URL to fallbackUrl)
+            } else {
+                validated.accepted
+            }
         val directives =
-            validated.accepted.map { (key, value) -> SubscriptionDirectiveEntity(subscription.id, key, value, now) }
+            stored.map { (key, value) -> SubscriptionDirectiveEntity(subscription.id, key, value, now) }
         val groupName = validated.accepted[KEY_TITLE]
 
         return if (parsed.profiles.isEmpty()) {
