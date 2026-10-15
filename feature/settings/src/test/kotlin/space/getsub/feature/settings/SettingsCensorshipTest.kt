@@ -19,6 +19,7 @@ import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.feature.settings.SettingsViewModelTest.FakeAppVersionSource
 import space.getsub.feature.settings.SettingsViewModelTest.FakeGeoAssetSource
 import space.getsub.feature.settings.SettingsViewModelTest.FakeSettingsSource
@@ -91,6 +92,31 @@ class SettingsCensorshipTest {
 
             source.fragment.value.enabled shouldBe false
             source.fragment.value.length shouldBe "1-9"
+        }
+
+    @Test
+    fun `a pre-resolve patch is stored`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+
+            vm.onPreResolveSettingsChanged { it.copy(enabled = true) }
+            advanceUntilIdle()
+
+            source.preResolve.value.enabled shouldBe true
+        }
+
+    @Test
+    fun `pre-resolve state follows the source`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+            vm.state.value.preResolve shouldBe PreResolveSettings.DEFAULT
+
+            source.preResolve.value = PreResolveSettings(true, "https://dns.google/dns-query", "8.8.8.8")
+            advanceUntilIdle()
+
+            vm.state.value.preResolve.dohUrl shouldBe "https://dns.google/dns-query"
         }
 
     @Test

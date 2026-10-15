@@ -13,6 +13,7 @@ import space.getsub.core.model.GeoSourceCatalogue
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 
 /**
  * What the Settings screen shows: Appearance's current choice and About's
@@ -116,6 +117,8 @@ internal data class SettingsState(
     val perApp: PerAppSelection = PerAppSelection.OFF,
     /** The user's TLS fragmentation, as stored (M9-A spec §2.1). Off means the provider's applies. */
     val fragment: FragmentSettings = FragmentSettings.DEFAULT,
+    /** The user's server pre-resolution, as stored (M9-C). Off means the provider's applies. */
+    val preResolve: PreResolveSettings = PreResolveSettings.DEFAULT,
     /** The user's UDP noise, as stored (M9-A spec §2.1). Off means the provider's applies. */
     val noise: NoiseSettings = NoiseSettings.DEFAULT,
 ) {
