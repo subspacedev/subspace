@@ -1965,17 +1965,17 @@ above cosmetic parity:
       Noise is a UDP mask, and this build runs no UDP transport (raw JSON
       imports VLESS only; mKCP is gated). Verified when sub-project D adds
       Hysteria2.
-- [ ] **Subscription fronting**: connect to `visa.com` while sending
+- [x] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
-      — M9-B: implemented with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
-      switch); https URLs only, an http link with `resolve-address`/`host` fails without dialling;
-      verified on device before ticking.
-- [ ] **Fallback URL**: switch to a backup subscription URL if the primary
+      — M9-B, with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
+      switch); https URLs only, an http link with `resolve-address`/`host` fails without dialling.
+      Verified on device 2026-10-15 against the owner's own front, not a CDN edge.
+- [x] **Fallback URL**: switch to a backup subscription URL if the primary
       returns 300–599 or does not respond within the timeout
-      — M9-B: implemented under the per-subscription trust grant; verified on device before ticking.
-- [ ] **`new-url` / `new-domain`**: provider-initiated migration when the
+      — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
+- [x] **`new-url` / `new-domain`**: provider-initiated migration when the
       primary domain gets blocked
-      — M9-B: implemented under the per-subscription trust grant; verified on device before ticking.
+      — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
 - [ ] **Domain pre-resolution**: resolve the server domain over a specified
       DoH server before connecting, pick the lowest-latency IP
 - [ ] **User-Agent override** for subscription fetch and for geo file

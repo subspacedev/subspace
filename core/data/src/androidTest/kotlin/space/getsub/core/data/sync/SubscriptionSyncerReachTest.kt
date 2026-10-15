@@ -159,6 +159,42 @@ class SubscriptionSyncerReachTest {
     }
 
     @Test
+    fun aFallbackThatDoesNotRepeatItsUrlIsStillTriedNextTime() = runTest {
+        // Found on device 2026-10-15: the fallback's own response carried no fallback-url, replaced the
+        // stored directives, and the second refresh with the main URL still down had nowhere to go.
+        val id = allowedWithFallback()
+        responseForRequest = { r ->
+            requests += r
+            if (r.url == "https://example.com/sub") FetchOutcome.Failed(FetchFailure.ServerError) else ok()
+        }
+
+        syncer().sync(id).shouldBeInstanceOf<SyncResult.Synced>()
+        requests.clear()
+        syncer().sync(id).shouldBeInstanceOf<SyncResult.Synced>()
+
+        requests.map { it.url } shouldBe listOf("https://example.com/sub", "https://backup.example/s")
+        subscriptions.observeSubscriptions().first().single().lastFetchVia shouldBe FetchVia.Fallback
+    }
+
+    @Test
+    fun aFallbackThatNamesItsOwnFallbackReplacesTheStoredOne() = runTest {
+        val id = allowedWithFallback()
+        responseForRequest = { r ->
+            requests += r
+            when (r.url) {
+                "https://example.com/sub" -> FetchOutcome.Failed(FetchFailure.ServerError)
+                else -> ok(mapOf("fallback-url" to "https://backup2.example/s"))
+            }
+        }
+
+        syncer().sync(id)
+        requests.clear()
+        syncer().sync(id)
+
+        requests.map { it.url } shouldBe listOf("https://example.com/sub", "https://backup2.example/s")
+    }
+
+    @Test
     fun bothFailingReportsTheMainFailureAndFallbackFailed() = runTest {
         val id = allowedWithFallback()
         responseForRequest = { r ->
