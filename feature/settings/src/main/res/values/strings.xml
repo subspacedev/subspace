@@ -195,6 +195,10 @@
     <string name="settings_censorship_hub_fragment">Fragmentation</string>
     <string name="settings_censorship_hub_noise">Noise</string>
     <string name="settings_censorship_hub_both">Fragmentation, noise</string>
+    <string name="settings_censorship_hub_preresolve">Pre-resolution</string>
+    <string name="settings_censorship_hub_fragment_preresolve">Fragmentation, pre-resolution</string>
+    <string name="settings_censorship_hub_noise_preresolve">Noise, pre-resolution</string>
+    <string name="settings_censorship_hub_all">Fragmentation, noise, pre-resolution</string>
     <string name="settings_fragment_label">Fragmentation</string>
     <string name="settings_fragment_summary">Splits the TLS handshake so DPI cannot read it. Overrides what your subscription or config sets.</string>
     <string name="settings_fragment_off_summary">Off: your subscription\'s settings apply</string>

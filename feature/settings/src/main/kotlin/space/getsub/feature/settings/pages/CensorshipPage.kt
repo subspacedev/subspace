@@ -169,12 +169,16 @@ private fun PreResolveSection(
             label = R.string.settings_preresolve_doh_url,
             stored = value.dohUrl,
             errorRes = { if (isDohUrl(it)) null else R.string.settings_preresolve_doh_url_error },
-        ) { draft -> update { it.copy(dohUrl = draft.trim()) } }
+        ) { draft ->
+            if (draft.trim() != value.dohUrl) update { it.copy(dohUrl = draft.trim()) }
+        }
         FieldWithError(
             label = R.string.settings_preresolve_bootstrap,
             stored = value.bootstrapIp,
             errorRes = { if (isIpLiteral(it)) null else R.string.settings_preresolve_bootstrap_error },
-        ) { draft -> update { it.copy(bootstrapIp = draft.trim()) } }
+        ) { draft ->
+            if (draft.trim() != value.bootstrapIp) update { it.copy(bootstrapIp = draft.trim()) }
+        }
     }
     TextButton(onClick = {
         resets++

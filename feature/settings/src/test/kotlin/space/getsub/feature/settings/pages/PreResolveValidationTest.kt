@@ -13,6 +13,9 @@ class PreResolveValidationTest {
         isIpLiteral("1.1") shouldBe false
         isIpLiteral("dns.example") shouldBe false
         isIpLiteral("256.1.1.1") shouldBe false
+        isIpLiteral(":::") shouldBe false
+        isIpLiteral("1:2") shouldBe false
+        isIpLiteral("::") shouldBe true
     }
 
     @Test
@@ -21,6 +24,7 @@ class PreResolveValidationTest {
         isDohUrl("http://dns.google/x") shouldBe false
         isDohUrl("https://1.1.1.1/dns-query") shouldBe false
         isDohUrl("https://user@dns.google/x") shouldBe false
+        isDohUrl("https://[2606:4700::1111]/dns-query") shouldBe false
         isDohUrl("not a url") shouldBe false
     }
 }

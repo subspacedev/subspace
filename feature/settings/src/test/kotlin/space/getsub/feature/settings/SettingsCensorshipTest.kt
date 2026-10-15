@@ -121,17 +121,25 @@ class SettingsCensorshipTest {
 
     @Test
     fun `hub text names what is on`() {
-        censorshipTextRes(SettingsState()) shouldBe R.string.settings_censorship_hub_off
-        censorshipTextRes(SettingsState(fragment = FragmentSettings.DEFAULT.copy(enabled = true))) shouldBe
-            R.string.settings_censorship_hub_fragment
-        censorshipTextRes(SettingsState(noise = NoiseSettings.DEFAULT.copy(enabled = true))) shouldBe
-            R.string.settings_censorship_hub_noise
-        censorshipTextRes(
+        fun text(
+            fragment: Boolean,
+            noise: Boolean,
+            preResolve: Boolean,
+        ) = censorshipTextRes(
             SettingsState(
-                fragment = FragmentSettings.DEFAULT.copy(enabled = true),
-                noise = NoiseSettings.DEFAULT.copy(enabled = true),
+                fragment = FragmentSettings.DEFAULT.copy(enabled = fragment),
+                noise = NoiseSettings.DEFAULT.copy(enabled = noise),
+                preResolve = PreResolveSettings.DEFAULT.copy(enabled = preResolve),
             ),
-        ) shouldBe R.string.settings_censorship_hub_both
+        )
+        text(false, false, false) shouldBe R.string.settings_censorship_hub_off
+        text(true, false, false) shouldBe R.string.settings_censorship_hub_fragment
+        text(false, true, false) shouldBe R.string.settings_censorship_hub_noise
+        text(false, false, true) shouldBe R.string.settings_censorship_hub_preresolve
+        text(true, true, false) shouldBe R.string.settings_censorship_hub_both
+        text(true, false, true) shouldBe R.string.settings_censorship_hub_fragment_preresolve
+        text(false, true, true) shouldBe R.string.settings_censorship_hub_noise_preresolve
+        text(true, true, true) shouldBe R.string.settings_censorship_hub_all
     }
 
     @Test
