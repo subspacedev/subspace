@@ -2,13 +2,13 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.network.preresolve
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -41,15 +41,19 @@ public class TcpConnectRacer(
                 val jobs = candidates.map { address ->
                     async { winners.send(if (connects(sockets, address, port, timeoutMillis)) address else null) }
                 }
-                val winner = withTimeoutOrNull(timeoutMillis + GRACE_MILLIS) {
-                    var found: InetAddress? = null
-                    var remaining = candidates.size
-                    while (found == null && remaining-- > 0) found = winners.receive()
-                    found
+                val winner = try {
+                    withTimeoutOrNull(timeoutMillis + GRACE_MILLIS) {
+                        var found: InetAddress? = null
+                        var remaining = candidates.size
+                        while (found == null && remaining-- > 0) found = winners.receive()
+                        found
+                    }
+                } finally {
+                    // A blocking connect ignores coroutine cancellation: closing the sockets is what unblocks
+                    // it, also when the caller itself is cancelled while receiving.
+                    sockets.closeAll()
+                    jobs.forEach { it.cancel() }
                 }
-                // A blocking connect ignores coroutine cancellation: closing the sockets is what unblocks it.
-                sockets.closeAll()
-                jobs.forEach { it.cancel() }
                 winner
             }
         } finally {
@@ -65,10 +69,16 @@ public class TcpConnectRacer(
             // loopback: macOS refuses a wildcard-bound socket connecting to 127.0.0.1 (EADDRNOTAVAIL), which
             // would make the loopback tests unrunnable on a Mac. Real servers are never loopback.
             socket.bind(InetSocketAddress(if (address.isLoopbackAddress) address else null, 0))
-            protect.protect(socket)
-            socket.connect(InetSocketAddress(address, port), timeoutMillis.toInt())
-            true
-        } catch (_: IOException) {
+            // A socket that could not bypass the VPN would connect through the tunnel and pin a wrong IP.
+            val connectTimeout = timeoutMillis.coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+            protect.protect(socket) && run {
+                socket.connect(InetSocketAddress(address, port), connectTimeout)
+                true
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+            // Any failure (IO, bad port, SecurityException) is "did not connect": pre-resolution never fails a connect.
             false
         } finally {
             runCatching { socket.close() }

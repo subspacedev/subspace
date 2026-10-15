@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.network.preresolve
 
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -22,9 +23,15 @@ public class ProtectedSocketFactory(
     private val protect: SocketProtect,
 ) : SocketFactory() {
     override fun createSocket(): Socket =
-        base.createSocket().apply {
-            bind(InetSocketAddress(0))
-            protect.protect(this)
+        base.createSocket().also { socket ->
+            try {
+                socket.bind(InetSocketAddress(0))
+                // An unprotected socket would send the DoH query into the tunnel: refuse it.
+                if (!protect.protect(socket)) throw IOException("socket could not be protected")
+            } catch (e: IOException) {
+                runCatching { socket.close() }
+                throw e
+            }
         }
 
     override fun createSocket(host: String?, port: Int): Socket =

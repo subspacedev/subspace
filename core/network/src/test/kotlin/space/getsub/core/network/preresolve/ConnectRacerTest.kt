@@ -81,4 +81,16 @@ class ConnectRacerTest {
             stalled.close()
         }
     }
+
+    @Test
+    fun aSocketThatCannotBeProtectedDoesNotCount() = runTest {
+        ServerSocket(0, 1, loopback).use { server ->
+            TcpConnectRacer(protect = { false }).firstToConnect(listOf(loopback), server.localPort, 1_500) shouldBe null
+        }
+    }
+
+    @Test
+    fun aProbeThatThrowsIsJustNotConnected() = runTest {
+        TcpConnectRacer(protect = { true }).firstToConnect(listOf(loopback), 70_000, 500) shouldBe null
+    }
 }
