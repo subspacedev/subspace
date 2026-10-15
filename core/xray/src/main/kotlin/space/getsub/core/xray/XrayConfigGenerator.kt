@@ -69,6 +69,12 @@ public data class TunnelSettings(
      * from before M9-A. Defaulted so call sites that do not resolve obfuscation keep compiling.
      */
     val obfuscation: Obfuscation? = null,
+    /**
+     * The pre-resolved server address, or null (M9-C spec §3.2). Null emits exactly today's config.
+     * Non-null replaces the proxy outbound's address and fills, when empty, the fields Xray would
+     * otherwise derive from the dial address (research note 2026-10-15-m9c-xray-address-fallbacks).
+     */
+    val addressPin: ServerAddressPin? = null,
 )
 
 /**
@@ -330,7 +336,7 @@ public object XrayConfigGenerator {
         sb.appendLine("""      "settings": {""")
         sb.appendLine("""        "vnext": [""")
         sb.appendLine("""          {""")
-        sb.appendLine("""            "address": ${jsonString(out.address)},""")
+        sb.appendLine("""            "address": ${jsonString(settings.addressPin?.ip ?: out.address)},""")
         sb.appendLine("""            "port": ${out.port},""")
         sb.appendLine("""            "users": [""")
         sb.appendLine("""              {""")
@@ -346,7 +352,7 @@ public object XrayConfigGenerator {
         sb.appendLine("""          }""")
         sb.appendLine("""        ]""")
         sb.appendLine("""      },""")
-        appendStreamSettings(sb, out, settings.obfuscation)
+        appendStreamSettings(sb, out, settings.obfuscation, settings.addressPin?.domain)
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
         val needsDnsOutbound = settings.dns != null
@@ -366,6 +372,7 @@ public object XrayConfigGenerator {
         sb: StringBuilder,
         out: VlessOutbound,
         obfuscation: Obfuscation?,
+        pinDomain: String?,
     ) {
         val stream = out.stream
         // The security block is last in the object unless a transport block
@@ -383,7 +390,7 @@ public object XrayConfigGenerator {
             is Security.Reality -> {
                 sb.appendLine("""        "security": "reality",""")
                 sb.appendLine("""        "realitySettings": {""")
-                sb.appendLine("""          "serverName": ${jsonString(security.serverName)},""")
+                sb.appendLine("""          "serverName": ${jsonString(security.serverName.fillBlank(pinDomain))},""")
                 sb.appendLine("""          "publicKey": ${jsonString(security.publicKey)},""")
                 sb.appendLine("""          "shortId": ${jsonString(security.shortId)},""")
                 sb.appendLine("""          "fingerprint": ${jsonString(security.fingerprint)},""")
@@ -394,7 +401,7 @@ public object XrayConfigGenerator {
             is Security.Tls -> {
                 sb.appendLine("""        "security": "tls",""")
                 sb.appendLine("""        "tlsSettings": {""")
-                sb.appendLine("""          "serverName": ${jsonString(security.serverName)},""")
+                sb.appendLine("""          "serverName": ${jsonString(security.serverName.fillBlank(pinDomain))},""")
                 sb.appendLine("""          "fingerprint": ${jsonString(security.fingerprint)},""")
                 sb.appendLine("""          "allowInsecure": ${security.allowInsecure}""")
                 sb.appendLine("""        }$tail""")
@@ -404,7 +411,7 @@ public object XrayConfigGenerator {
                 sb.appendLine("""        "security": "none"$tail""")
             }
         }
-        appendTransportSettings(sb, stream.transport)
+        appendTransportSettings(sb, stream.transport, stream.security, pinDomain)
         sb.appendLine("""      }""")
     }
 
@@ -433,36 +440,52 @@ public object XrayConfigGenerator {
     private fun appendTransportSettings(
         sb: StringBuilder,
         transport: TransportOptions,
+        security: Security,
+        pinDomain: String?,
     ) {
+        // A transport key is filled only where Xray's fallback chain would have reached the dial
+        // address, so an address pin keeps every derived name on the domain (M9-C spec §3.2).
         when (transport) {
             is TransportOptions.None -> Unit
-            is TransportOptions.WebSocket -> appendWebSocketSettings(sb, transport)
+            is TransportOptions.WebSocket ->
+                appendWebSocketSettings(sb, transport, pinDomain.takeUnless { security is Security.Tls })
             is TransportOptions.Grpc -> {
                 sb.appendLine("""        "grpcSettings": {""")
-                sb.appendLine("""          "serviceName": ${jsonString(transport.serviceName)}""")
+                val authority = pinDomain.takeIf { security == Security.None }
+                val comma = if (authority != null) "," else ""
+                sb.appendLine("""          "serviceName": ${jsonString(transport.serviceName)}$comma""")
+                authority?.let { sb.appendLine("""          "authority": ${jsonString(it)}""") }
                 sb.appendLine("""        }""")
             }
 
-            is TransportOptions.Xhttp -> appendXhttpSettings(sb, transport)
+            is TransportOptions.Xhttp ->
+                appendXhttpSettings(sb, transport, pinDomain.takeIf { security == Security.None })
         }
     }
 
     private fun appendWebSocketSettings(
         sb: StringBuilder,
         transport: TransportOptions.WebSocket,
+        hostFallback: String?,
     ) {
+        val headers =
+            if (hostFallback != null && transport.headers.keys.none { it.equals("Host", ignoreCase = true) }) {
+                transport.headers + ("Host" to hostFallback)
+            } else {
+                transport.headers
+            }
         sb.appendLine("""        "wsSettings": {""")
         sb.appendLine(
-            """          "path": ${jsonString(transport.path)}${if (transport.headers.isEmpty()) "" else ","}""",
+            """          "path": ${jsonString(transport.path)}${if (headers.isEmpty()) "" else ","}""",
         )
-        if (transport.headers.isNotEmpty()) {
+        if (headers.isNotEmpty()) {
             sb.appendLine("""          "headers": {""")
             // Sorted, like `OutboundMapper` sorts the same map before hashing it:
             // §6 requires byte-identical output for the same profile, and a Map's
             // iteration order is a property of its implementation, not its contents.
-            val headers = transport.headers.toSortedMap()
-            headers.entries.forEachIndexed { index, (name, value) ->
-                val comma = if (index == headers.size - 1) "" else ","
+            val sorted = headers.toSortedMap()
+            sorted.entries.forEachIndexed { index, (name, value) ->
+                val comma = if (index == sorted.size - 1) "" else ","
                 sb.appendLine("""            ${jsonString(name)}: ${jsonString(value)}$comma""")
             }
             sb.appendLine("""          }""")
@@ -473,12 +496,13 @@ public object XrayConfigGenerator {
     private fun appendXhttpSettings(
         sb: StringBuilder,
         transport: TransportOptions.Xhttp,
+        hostFallback: String?,
     ) {
         // Built as a list first: `host` and `mode` are independently optional, so
         // deciding each line's trailing comma in place would need to look ahead
         // past the other one.
         val fields = mutableListOf(""""path": ${jsonString(transport.path)}""")
-        transport.host?.let { fields += """"host": ${jsonString(it)}""" }
+        (transport.host ?: hostFallback)?.let { fields += """"host": ${jsonString(it)}""" }
         transport.mode?.let { fields += """"mode": ${jsonString(it)}""" }
 
         sb.appendLine("""        "xhttpSettings": {""")
@@ -489,6 +513,8 @@ public object XrayConfigGenerator {
         sb.appendLine("""        }""")
     }
 }
+
+private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this
 
 /**
  * One `dns.servers` entry — a bare string when unscoped, an object when it carries
