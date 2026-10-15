@@ -15,6 +15,7 @@ import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.perAppModeFrom
 import space.getsub.core.model.perAppModeWire
 import space.getsub.core.model.pingModeFrom
@@ -52,6 +53,9 @@ private const val KEY_FRAGMENT_PACKETS = "fragment_packets"
 private const val KEY_FRAGMENT_LENGTH = "fragment_length"
 private const val KEY_FRAGMENT_DELAY = "fragment_delay"
 private const val KEY_FRAGMENT_MAX_SPLIT = "fragment_max_split"
+private const val KEY_PRERESOLVE_ENABLED = "preresolve_enabled"
+private const val KEY_PRERESOLVE_DOH_URL = "preresolve_doh_url"
+private const val KEY_PRERESOLVE_BOOTSTRAP = "preresolve_bootstrap_ip"
 private const val KEY_NOISE_ENABLED = "noise_enabled"
 private const val KEY_NOISE_MODE = "noise_mode"
 private const val KEY_NOISE_PACKET_TYPE = "noise_packet_type"
@@ -557,6 +561,28 @@ internal constructor(
         dao.put(SettingEntity(KEY_FRAGMENT_MAX_SPLIT, settings.maxSplit))
     }
 
+    /** M9-C spec §1.4. Each field falls back to [PreResolveSettings.DEFAULT]. */
+    public val preResolveSettings: Flow<PreResolveSettings> =
+        combine(
+            dao.observe(KEY_PRERESOLVE_ENABLED),
+            dao.observe(KEY_PRERESOLVE_DOH_URL),
+            dao.observe(KEY_PRERESOLVE_BOOTSTRAP),
+        ) { enabled, url, ip -> preResolveFrom(enabled, url, ip) }
+
+    public suspend fun preResolveSettingsNow(): PreResolveSettings =
+        preResolveFrom(
+            dao.value(KEY_PRERESOLVE_ENABLED),
+            dao.value(KEY_PRERESOLVE_DOH_URL),
+            dao.value(KEY_PRERESOLVE_BOOTSTRAP),
+        )
+
+    /** Writes every field, so switching [PreResolveSettings.enabled] keeps the values. */
+    public suspend fun setPreResolveSettings(settings: PreResolveSettings) {
+        dao.put(SettingEntity(KEY_PRERESOLVE_ENABLED, settings.enabled.toString()))
+        dao.put(SettingEntity(KEY_PRERESOLVE_DOH_URL, settings.dohUrl))
+        dao.put(SettingEntity(KEY_PRERESOLVE_BOOTSTRAP, settings.bootstrapIp))
+    }
+
     public val noiseSettings: Flow<NoiseSettings> =
         combine(
             listOf(
@@ -594,6 +620,19 @@ internal constructor(
         dao.put(SettingEntity(KEY_NOISE_RAND_RANGE, settings.randRange))
         dao.put(SettingEntity(KEY_NOISE_DELAY, settings.delay))
     }
+}
+
+private fun preResolveFrom(
+    enabled: String?,
+    url: String?,
+    ip: String?,
+): PreResolveSettings {
+    val d = PreResolveSettings.DEFAULT
+    return PreResolveSettings(
+        enabled = enabled?.toBooleanStrictOrNull() ?: d.enabled,
+        dohUrl = url ?: d.dohUrl,
+        bootstrapIp = ip ?: d.bootstrapIp,
+    )
 }
 
 @Suppress("LongParameterList") // One parameter per stored field.
