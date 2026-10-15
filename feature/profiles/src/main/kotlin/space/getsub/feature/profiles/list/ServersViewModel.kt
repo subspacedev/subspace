@@ -22,8 +22,11 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.RedirectTrust
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.pingModeFrom
@@ -180,6 +183,8 @@ constructor(
         val pingType: String?,
         /** Hosts to name in the redirect request; empty once the user has answered. */
         val redirectRequestHosts: List<String>,
+        /** The DoH host to name in the resolver request; null once answered or when there is none. */
+        val resolverRequestHost: String?,
     )
 
     /** How the rows are presented, as opposed to what the rows are. */
@@ -213,7 +218,8 @@ constructor(
                     profileSource.observeUserInfo(sub.id),
                     directives,
                     profileSource.observeRedirectStatus(sub.id),
-                ) { raw, (sortType, pingOnOpen, pingType), redirects ->
+                    profileSource.observeResolverStatus(sub.id),
+                ) { raw, (sortType, pingOnOpen, pingType), redirects, resolver ->
                     sub.groupId to
                         SubscriptionContext(
                             subscriptionId = sub.id,
@@ -224,6 +230,7 @@ constructor(
                             pingType = pingType,
                             redirectRequestHosts =
                             if (sub.redirectTrust == RedirectTrust.Unasked) redirects.targetHosts else emptyList(),
+                            resolverRequestHost = resolver.requestHost(),
                         )
                 }
             }
@@ -314,6 +321,22 @@ constructor(
     /** The user declines [subscriptionId]'s provider's redirect request. */
     fun onDenyRedirects(subscriptionId: Long) {
         viewModelScope.launch { profileSource.setRedirectTrust(subscriptionId, RedirectTrust.Denied) }
+    }
+
+    /** The user allows [subscriptionId]'s provider to look addresses up through [host], the one shown. */
+    fun onAllowResolver(
+        subscriptionId: Long,
+        host: String,
+    ) {
+        viewModelScope.launch { profileSource.setResolverTrust(subscriptionId, ResolverTrust.Allowed, host) }
+    }
+
+    /** The user declines [subscriptionId]'s provider's resolver request for [host]. */
+    fun onDenyResolver(
+        subscriptionId: Long,
+        host: String,
+    ) {
+        viewModelScope.launch { profileSource.setResolverTrust(subscriptionId, ResolverTrust.Denied, host) }
     }
 
     /** Clears [ServersState.updateResult] once the user has read it. */
@@ -464,6 +487,7 @@ constructor(
                     sort = effectiveSort,
                     sortFromProvider = fromProvider,
                     redirectRequestHosts = context?.redirectRequestHosts.orEmpty(),
+                    resolverRequestHost = context?.resolverRequestHost,
                 )
             }
         return ServersState(
@@ -547,3 +571,7 @@ private fun String.toProtocolDisplayName(): String =
  * display label always recovers the raw protocol string the DAO stores.
  */
 private fun String.toRawProtocolOrNull(): String? = if (this == ALL_PROTOCOLS_SENTINEL) null else lowercase()
+
+/** M9-C spec §1.3: ask only while unanswered and the provider names a valid resolver. */
+private fun ResolverStatus.requestHost(): String? =
+    (provider as? ProviderResolver.Valid)?.host?.takeIf { trust == ResolverTrust.Unasked }

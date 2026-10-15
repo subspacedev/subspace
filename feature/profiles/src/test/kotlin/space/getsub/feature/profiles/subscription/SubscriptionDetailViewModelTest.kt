@@ -26,8 +26,11 @@ import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
@@ -133,6 +136,16 @@ class SubscriptionDetailViewModelTest {
         }
         override suspend fun setLinkFragment(id: Long, fragment: String?) {
             fragmentWrites += fragment
+        }
+
+        val resolverStatus = MutableStateFlow(ResolverStatus(ProviderResolver.Absent, ResolverTrust.Unasked))
+        val preResolveOn = MutableStateFlow(false)
+        var lastResolverTrust: Triple<Long, ResolverTrust, String>? = null
+
+        override fun observeResolverStatus(id: Long): Flow<ResolverStatus> = resolverStatus
+        override val userPreResolveOn: Flow<Boolean> get() = preResolveOn
+        override suspend fun setResolverTrust(id: Long, trust: ResolverTrust, host: String) {
+            lastResolverTrust = Triple(id, trust, host)
         }
 
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
@@ -389,6 +402,81 @@ class SubscriptionDetailViewModelTest {
         }
 
     @Test
+    fun aValidUnaskedProviderResolverShowsTheRequest() =
+        runTest {
+            source.resolverStatus.value = ResolverStatus(VALID_RESOLVER, ResolverTrust.Unasked)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.showsResolverRequest shouldBe true
+            viewModel.state.value.resolverHost shouldBe "dns.example"
+        }
+
+    @Test
+    fun allowWritesTrustBoundToTheHost() =
+        runTest {
+            source.resolverStatus.value = ResolverStatus(VALID_RESOLVER, ResolverTrust.Unasked)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onAllowResolver()
+            advanceUntilIdle()
+
+            source.lastResolverTrust shouldBe Triple(SUBSCRIPTION_ID, ResolverTrust.Allowed, "dns.example")
+        }
+
+    @Test
+    fun denyAndTheSwitchWriteTheShownHost() =
+        runTest {
+            source.resolverStatus.value = ResolverStatus(VALID_RESOLVER, ResolverTrust.Allowed)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.showsResolverSwitch shouldBe true
+            viewModel.onResolverAllowedChanged(false)
+            advanceUntilIdle()
+            source.lastResolverTrust shouldBe Triple(SUBSCRIPTION_ID, ResolverTrust.Denied, "dns.example")
+
+            viewModel.onDenyResolver()
+            advanceUntilIdle()
+            source.lastResolverTrust shouldBe Triple(SUBSCRIPTION_ID, ResolverTrust.Denied, "dns.example")
+        }
+
+    @Test
+    fun invalidProviderShowsNoRequest() =
+        runTest {
+            source.resolverStatus.value =
+                ResolverStatus(ProviderResolver.Invalid("server-address-resolve-dns-domain"), ResolverTrust.Unasked)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.showsResolverRequest shouldBe false
+            viewModel.onAllowResolver()
+            advanceUntilIdle()
+            source.lastResolverTrust shouldBe null
+        }
+
+    @Test
+    fun theUserSwitchIsFoldedIntoState() =
+        runTest {
+            source.preResolveOn.value = true
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.userPreResolveOn shouldBe true
+        }
+
+    @Test
+    fun stateToStringNamesNoResolverHost() =
+        runTest {
+            source.resolverStatus.value = ResolverStatus(VALID_RESOLVER, ResolverTrust.Allowed)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.toString().contains("dns.example") shouldBe false
+        }
+
+    @Test
     fun anInvalidLinkFragmentShowsItsProblem() =
         runTest {
             source.subscriptions.value =
@@ -413,6 +501,7 @@ class SubscriptionDetailViewModelTest {
 
     private companion object {
         const val SUBSCRIPTION_ID = 7L
+        val VALID_RESOLVER = ProviderResolver.Valid("https://dns.example/q", "dns.example", null)
         const val GROUP_ID = 9L
         const val KEY_INTERVAL = "profile-update-interval"
         const val KEY_TIMEOUT = "subscription-request-timeout"

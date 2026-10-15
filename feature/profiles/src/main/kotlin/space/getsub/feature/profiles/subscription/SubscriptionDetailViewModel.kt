@@ -23,7 +23,9 @@ import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.Checked
 import space.getsub.core.parser.LinkFragment
 import space.getsub.core.parser.directive.DirectiveRegistry
@@ -148,8 +150,7 @@ constructor(
                     providerUserAgent = userAgent.providerValue,
                     globalHwidEnabled = globalHwidEnabled,
                     issues = issues,
-                    redirect = reach.first,
-                    fragmentationOn = reach.second,
+                    reach = reach,
                 )
             }
 
@@ -171,19 +172,20 @@ constructor(
                         providerUserAgent = settings.providerUserAgent,
                         globalHwidEnabled = settings.globalHwidEnabled,
                         issues = settings.issues,
-                        redirect = settings.redirect,
-                        fragmentationOn = settings.fragmentationOn,
+                        reach = settings.reach,
                         ephemeral = eph,
                     ),
                 )
             }.onEach { _state.value = it }.launchIn(viewModelScope)
     }
 
-    private fun observeReach(id: Long): Flow<Pair<RedirectStatus, Boolean>> =
+    private fun observeReach(id: Long): Flow<Reach> =
         combine(
             profileSource.observeRedirectStatus(id),
             profileSource.globalFragmentationOn,
-            ::Pair,
+            profileSource.observeResolverStatus(id),
+            profileSource.userPreResolveOn,
+            ::Reach,
         )
 
     private fun observeDirectiveRows(id: Long): Flow<List<DirectiveRow>> =
@@ -253,18 +255,21 @@ constructor(
             fragmentIgnored = (inputs.issues.fragment as? MaskResolution.Ignored)?.problem,
             noiseIgnored = (inputs.issues.noise as? MaskResolution.Ignored)?.problem,
             redirectTrust = subscription.redirectTrust,
-            redirectTargetHosts = inputs.redirect.targetHosts,
-            redirectIssues = inputs.redirect.issues,
+            redirectTargetHosts = inputs.reach.redirect.targetHosts,
+            redirectIssues = inputs.reach.redirect.issues,
             resolveAddress = subscription.resolveAddress,
             hostHeader = subscription.hostHeader,
             linkFragment = subscription.linkFragment,
             linkFragmentProblem =
             subscription.linkFragment?.let { (LinkFragment.parse(it) as? Checked.Invalid)?.problem },
-            globalFragmentationOn = inputs.fragmentationOn,
+            globalFragmentationOn = inputs.reach.fragmentationOn,
             movedFromHost = subscription.movedFromHost,
             movedAt = subscription.movedAt,
             lastFetchVia = subscription.lastFetchVia,
             insecureIgnored = subscription.insecureIgnored,
+            resolverProvider = inputs.reach.resolver.provider,
+            resolverTrust = inputs.reach.resolver.trust,
+            userPreResolveOn = inputs.reach.userPreResolveOn,
         )
     }
 
@@ -277,8 +282,7 @@ constructor(
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
         val issues: ResolvedObfuscation,
-        val redirect: RedirectStatus,
-        val fragmentationOn: Boolean,
+        val reach: Reach,
         val ephemeral: Ephemeral,
     )
 
@@ -287,8 +291,15 @@ constructor(
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
         val issues: ResolvedObfuscation,
+        val reach: Reach,
+    )
+
+    /** Everything "Reaching the subscription" shows besides the stored row (M9-B spec §4, M9-C spec §4.2). */
+    private data class Reach(
         val redirect: RedirectStatus,
         val fragmentationOn: Boolean,
+        val resolver: ResolverStatus,
+        val userPreResolveOn: Boolean,
     )
 
     /**
@@ -359,6 +370,20 @@ constructor(
     private fun setTrust(trust: RedirectTrust) {
         val id = loadedId ?: return
         viewModelScope.launch { profileSource.setRedirectTrust(id, trust) }
+    }
+
+    fun onAllowResolver() = setResolverTrust(ResolverTrust.Allowed)
+
+    fun onDenyResolver() = setResolverTrust(ResolverTrust.Denied)
+
+    fun onResolverAllowedChanged(allowed: Boolean) =
+        setResolverTrust(if (allowed) ResolverTrust.Allowed else ResolverTrust.Denied)
+
+    /** M9-C spec §1.3: the answer is bound to the DoH host the user was shown, not one read later. */
+    private fun setResolverTrust(trust: ResolverTrust) {
+        val id = loadedId ?: return
+        val host = _state.value.resolverHost ?: return
+        viewModelScope.launch { profileSource.setResolverTrust(id, trust, host) }
     }
 
     /** Blank values clear the field — see [ProfileSource.setFronting]. */

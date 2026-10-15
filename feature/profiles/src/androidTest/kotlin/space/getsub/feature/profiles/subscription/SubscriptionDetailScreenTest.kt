@@ -12,6 +12,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
+import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.ui.theme.SubspaceTheme
 
 class SubscriptionDetailScreenTest {
@@ -89,6 +91,25 @@ class SubscriptionDetailScreenTest {
     }
 
     @Test
+    fun theResolverRequestNamesTheHostAndAllowInvokesTheAction() {
+        var allowCalls = 0
+        setContent(
+            state =
+            detailState().copy(
+                resolverProvider = ProviderResolver.Valid("https://dns.example/q", "dns.example", null),
+                resolverTrust = ResolverTrust.Unasked,
+            ),
+            actions = noOpActions(onAllowResolver = { allowCalls++ }),
+        )
+
+        composeRule
+            .onNodeWithText("Your provider wants to look up server addresses through dns.example")
+            .assertExists()
+        composeRule.onNodeWithText("Allow").performClick()
+        allowCalls shouldBe 1
+    }
+
+    @Test
     fun anIgnoredInsecureFlagIsExplained() {
         setContent(state = detailState().copy(insecureIgnored = true))
 
@@ -136,6 +157,7 @@ class SubscriptionDetailScreenTest {
         onDeleteConfirmed: () -> Unit = {},
         onUnpinRow: (String) -> Unit = {},
         onAllowRedirects: () -> Unit = {},
+        onAllowResolver: () -> Unit = {},
     ) =
         SubscriptionDetailActions(
             onBack = {},
@@ -151,6 +173,7 @@ class SubscriptionDetailScreenTest {
             onRedirectsAllowedChanged = {},
             onFrontingSaved = { _, _ -> },
             onLinkFragmentSaved = {},
+            onAllowResolver = onAllowResolver,
         )
 
     private fun detailState() =

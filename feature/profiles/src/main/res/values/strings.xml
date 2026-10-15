@@ -494,4 +494,12 @@
     <string name="redirect_rejection_ip_literal">IP addresses are not followed</string>
     <string name="redirect_rejection_local">local addresses are not followed</string>
     <string name="redirect_rejection_bare_host">new-domain must be a host name only</string>
+
+    <!-- M9-C: the provider's DoH resolver -->
+    <string name="subscription_resolver_request">Your provider wants to look up server addresses through %1$s</string>
+    <string name="subscription_resolver_switch">Allow provider\'s address lookup (via %1$s)</string>
+    <string name="subscription_resolver_user_applies">Your pre-resolution setting applies</string>
+    <string name="subscription_resolver_denied">Provider\'s lookup not used — you didn\'t allow it</string>
+    <string name="subscription_resolver_invalid">Provider\'s lookup ignored: invalid DoH address</string>
+    <string name="subscription_resolver_plain_bootstrap">The DoH host itself is looked up over plain DNS</string>
 </resources>
