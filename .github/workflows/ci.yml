@@ -41,13 +41,6 @@ jobs:
           mkdir -p ~/.gradle
           echo 'org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64' >> ~/.gradle/gradle.properties
 
-      # libXray v26.7.11 declares Go 1.26.3. The patched AAR is built from
-      # source below, so CI needs the same compiler rather than whichever Go
-      # version happens to be preinstalled on ubuntu-latest.
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.3'
-
       # compileSdk is 37.1 — release(37) { minorApiLevel = 1 } in
       # app/build.gradle.kts and subspace.android.library. The Compose
       # 1.13.0-alpha artifacts behind the M8.6 Material 3 Expressive work require
@@ -74,17 +67,17 @@ jobs:
       - name: Install Android SDK platform 37
         uses: android-actions/setup-android@v4
         with:
-          # NDK r29 is the version libXray's own v26.7.11 release workflow uses.
+          # NDK r29 is what the hev-socks5-tunnel JNI build is verified against.
           packages: 'platform-tools platforms;android-37.1 build-tools;37.0.0 ndk;29.0.14206865'
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # The libXray AAR is ~95 MB and gitignored (§10.7), so a fresh clone
-      # does not have it and :core:xray cannot resolve its dependency. M5 needs
-      # the committed env patch; fetch-native.sh correctly refuses to replace
-      # it with the stock release, so CI builds the pinned source plus patches.
-      - name: Build pinned patched libXray AAR
-        run: ./scripts/build-libxray.sh
+      # The libXray AAR is ~55 MB and gitignored (§10.7), so a fresh clone
+      # does not have it and :core:xray cannot resolve its dependency. The
+      # official release asset is fetched and checked against the SHA-256
+      # pinned in the script.
+      - name: Fetch pinned libXray AAR
+        run: ./scripts/fetch-native.sh
 
       - name: Verify module boundaries, format, static analysis, licence headers
         run: ./gradlew checkAll

@@ -34,8 +34,8 @@ internal object LibXrayInvoke {
     private const val API_VERSION = 1
 
     /**
-     * @param env The `env` object PR #133 restored on the invoke request —
-     *   `third_party/libxray-patches/0001-restore-invoke-env.patch` — and the
+     * @param env The `env` object PR #133 restored on the invoke request
+     *   (formerly a local patch, dropped with the official v26.10.10 AAR) — and the
      *   only route by which xray-core learns `XRAY_LOCATION_ASSET` on Android
      *   (research §2b). Included only when non-null: an unpatched libXray
      *   silently drops an unknown `env` key, so omitting it when there is
@@ -92,11 +92,9 @@ internal object LibXrayInvoke {
  * The `env` object on a libXray invoke request.
  *
  * Field names are upstream's own — `LibXrayEnvJson` in
- * `third_party/libxray-patches/0001-restore-invoke-env.patch` (PR #133),
- * copied rather than renamed. Matching the wire shape exactly is what keeps
- * that patch reversible: when upstream ships `env` again, only the pin in
- * `scripts/fetch-native.sh` changes and nothing here does (see that patch
- * directory's README).
+ * upstream PR #133, copied rather than renamed (the local patch carrying it
+ * has been dropped; the v26.10.10 invoke API moves the channel into the
+ * config root).
  *
  * Only [assetLocation] has a production caller today — `XrayController`
  * points it at [space.getsub.core.data.GeoAssetRepository]'s

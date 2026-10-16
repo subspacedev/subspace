@@ -36,7 +36,7 @@ import java.io.File
  *
  * The only route that works is a Go-side `os.Setenv`, which libXray performs
  * when the invoke request carries an `env` object — upstream's own PR #133,
- * restored by `third_party/libxray-patches/0001-restore-invoke-env.patch`.
+ * restored by a local patch that has since been dropped.
  * `XrayController` sends it on every `testXray`/`runXray` call, built from the
  * directory this function returns. See `XrayController`'s KDoc for why a
  * constructor parameter and not a call here.

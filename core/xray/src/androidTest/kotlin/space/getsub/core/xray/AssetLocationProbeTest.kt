@@ -29,10 +29,9 @@ import java.io.File
  * what fails.
  *
  * The positive pins the `env` object on the invoke request, applied by
- * `applyEnv` → `os.Setenv` inside Go. That code is upstream's own, currently
- * carried as `third_party/libxray-patches/0001-restore-invoke-env.patch`.
- * **When upstream restores it, this test is the check that the stock AAR still
- * honours it** — see that directory's README.
+ * `applyEnv` → `os.Setenv` inside Go. That code is upstream's own, formerly
+ * carried as a local patch, now removed (official v26.10.10 AAR).
+ * **This test is the check that the stock AAR still honours it.**
  *
  * ## Why this is one test method and not two
  *

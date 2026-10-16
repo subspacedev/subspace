@@ -823,7 +823,7 @@ Rules:
   first and the `.dat` file last, so a process killed mid-install can only
   ever leave a stale-but-consistent live pair, never a half-written one.
   xray-core is pointed at the install directory through the invoke `env`
-  object PR #133 restored upstream (`third_party/libxray-patches/`) —
+  object PR #133 restored upstream (carried by the local patch until v26.10.10) —
   `XrayController` builds it from `GeoAssetRepository.geoDirectory()` and
   sends it on every `testXray`/`runXray` call. **`testXray` (import-time
   validation) does not consult this channel at all — measured on a Pixel 8,
