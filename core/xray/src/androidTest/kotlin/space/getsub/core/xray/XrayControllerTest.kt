@@ -86,7 +86,7 @@ class XrayControllerTest {
             check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
             val configFile = File(cacheDir, "instr-valid.json").apply { writeText(result.json) }
 
-            controller.validate(configFile)
+            controller.validate(configFile.readText())
             configFile.delete()
         }
 
@@ -113,7 +113,7 @@ class XrayControllerTest {
             val configFile = File(cacheDir, "instr-global-proxy-false.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(configFile.readText())
             } catch (e: XrayException) {
                 fail("the core rejected a GlobalProxy false config: ${e.javaClass.simpleName}")
             } finally {
@@ -190,7 +190,7 @@ class XrayControllerTest {
 
                 try {
                     configFile.writeText((result as ConfigResult.Ok).json)
-                    controller.validate(configFile)
+                    controller.validate(configFile.readText())
                 } catch (e: XrayException) {
                     // ARCHITECTURE.md §5.6: libXray's message can quote the generated config.
                     fail("the core rejected DNS shape $label: ${e.javaClass.simpleName}")
@@ -247,7 +247,7 @@ class XrayControllerTest {
                 val configFile = File(cacheDir, "instr-transport-$index.json").apply { writeText(result.json) }
 
                 try {
-                    controller.validate(configFile)
+                    controller.validate(configFile.readText())
                 } catch (e: XrayException) {
                     // ARCHITECTURE.md §5.6: the message can quote the config back, so it must not
                     // reach the failure text. The network name is ours, not the
@@ -288,7 +288,7 @@ class XrayControllerTest {
             val configFile = File(cacheDir, "instr-two-inbound.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(configFile.readText())
             } catch (e: XrayException) {
                 // ARCHITECTURE.md §5.6: the message can quote the config back.
                 fail("the core rejected a two-inbound config: ${e.javaClass.simpleName}")
@@ -306,7 +306,7 @@ class XrayControllerTest {
             val configFile = File(cacheDir, "instr-broken.json").apply { writeText("{ not json") }
 
             try {
-                XrayController().validate(configFile)
+                XrayController().validate(configFile.readText())
                 fail("expected malformed config to be rejected")
             } catch (e: XrayException) {
                 assertTrue(
@@ -335,7 +335,7 @@ class XrayControllerTest {
             val geoDir = File(cacheDir, "instr-controller-geo-${System.nanoTime()}").apply { mkdirs() }
             File(geoDir, "geosite.dat").writeBytes(minimalGeositeDat())
 
-            val controller = XrayController(geoAssetDir = geoDir)
+            val controller = XrayController()
             val ruleSet =
                 RoutingRuleSet(
                     name = "geosite-test",
@@ -347,6 +347,7 @@ class XrayControllerTest {
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
                     routing = ruleSet,
+                    geoAssetDir = geoDir.absolutePath,
                 )
             val profile = Profile(id = "id", name = "n", outbound = outbound)
             val result = XrayConfigGenerator.generate(profile, settings)
@@ -354,7 +355,7 @@ class XrayControllerTest {
             val configFile = File(cacheDir, "instr-geosite.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(configFile.readText())
             } catch (e: XrayException) {
                 // ARCHITECTURE.md §5.6: the message can quote the config back.
                 fail("the core rejected a geosite: rule against a real geosite.dat: ${e.javaClass.simpleName}")

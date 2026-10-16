@@ -44,7 +44,17 @@ internal object LibXrayInvoke {
     fun call(
         method: String,
         payload: JSONObject? = null,
-    ): JSONObject? = parse(method, LibXray.invoke(request(method, payload?.toString())))
+    ): JSONObject? = callJson(method, payload?.toString())
+
+    /**
+     * [call] for a payload already rendered to text — the form `testXray`/`runXray`
+     * payloads are built in, so the config string is never round-tripped through
+     * `org.json`.
+     */
+    fun callJson(
+        method: String,
+        payloadJson: String?,
+    ): JSONObject? = parse(method, LibXray.invoke(request(method, payloadJson)))
 
     /**
      * Builds the request string without `org.json`, so a JVM test can pin it

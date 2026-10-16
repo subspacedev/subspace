@@ -5,10 +5,11 @@ package space.getsub.core.xray
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import libXray.DialerController
 import libXray.LibXray
 import org.json.JSONObject
-import java.io.File
 
 /**
  * Owns the libXray lifecycle for one tunnel session.
@@ -19,27 +20,24 @@ import java.io.File
  * Instances are single-use: create one per connection, so a stale protector
  * reference cannot survive a service recreation (ARCHITECTURE.md §5.1).
  *
- * @param geoAssetDir Where `geoip.dat`/`geosite.dat` are installed —
- *   `GeoAssetRepository.geoDirectory()` in production; null when routing is off
- *   and no rule needs geo data. Not yet consumed: the invoke request no longer
- *   carries an `env`, and the directory will travel in the config's own root
- *   `env` block ([TunnelSettings.geoAssetDir]).
+ * Configs are handed to libXray as JSON text (`xrayJson`); nothing is written to
+ * disk for the core. The geo asset location is not a property of the controller:
+ * it travels inside each config's own root `env` block
+ * ([TunnelSettings.geoAssetDir], `RawConfigComposer`), the only channel
+ * libXray v26.10.10 honours (`docs/agent/research/libxray-api.md` §4).
  */
 public class XrayController private constructor(
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val geoAssetDir: File? = null,
     private val invocation: XrayControllerInvocation,
 ) {
     public constructor(
         io: CoroutineDispatcher = Dispatchers.IO,
-        geoAssetDir: File? = null,
-    ) : this(io, geoAssetDir, XrayControllerInvocation())
+    ) : this(io, XrayControllerInvocation())
 
     internal constructor(
         invocation: XrayControllerInvocation,
         io: CoroutineDispatcher = Dispatchers.IO,
-        geoAssetDir: File? = null,
-    ) : this(io, geoAssetDir, invocation)
+    ) : this(io, invocation)
 
     /**
      * §10.6: never a hardcoded port. A fixed port collides with other proxy apps.
@@ -82,20 +80,21 @@ public class XrayController private constructor(
      * ARCHITECTURE.md §6: validate before starting. A malformed config makes libXray fail in a way
      * that is hard to attribute; catching it here produces a real error instead.
      *
-     * Takes a [File] because `testXray` accepts only a path — and validating the
-     * same file [start] then runs means the bytes checked are the bytes used.
+     * Takes the JSON text itself, as `testXray` does since v26.10.10 — the caller hands
+     * the same string to [start], so the bytes checked are the bytes run, without a
+     * file holding the UUID and keys on disk (ARCHITECTURE.md §5.6).
      *
-     * `testXray` builds a real core (`StartXray` under the hood, research §4), so a
+     * `testXray` constructs a real core (`core.New`, research §2), so a
      * `geoip:`/`geosite:`/`ext:` rule resolves geo data here exactly as it would on a
      * live start — the config's own `env` block supplies the asset location to both.
+     *
+     * **It refuses to run in a process where [start] has a live instance**
+     * (`testXray requires an isolated process without a managed Xray instance`,
+     * `xray/validation.go:13-14`). Callers in `:bg` must stop the previous core
+     * first; `TunnelService.restartCoreRetainingTun` does.
      */
-    public suspend fun validate(configFile: File) {
-        withContext(io) {
-            LibXrayInvoke.call(
-                "testXray",
-                JSONObject().put("configPath", configFile.absolutePath),
-            )
-        }
+    public suspend fun validate(xrayJson: String) {
+        withContext(io) { invocation.testXray(xrayJson) }
     }
 
     /**
@@ -104,28 +103,33 @@ public class XrayController private constructor(
      * [protector] is wired here, on every start, rather than in a constructor or
      * `init` block. ARCHITECTURE.md §5.1 requires re-wiring whenever the service is recreated, and
      * a code path that *cannot* skip the wiring beats one that must remember to.
+     * "Wiring" is the [protector] swap only: the Go-side registration happens once
+     * per process — see [XrayControllerInvocation.retainProtector].
      *
-     * There is deliberately no DNS call: libXray v26.7.11 has no `setDNS`, so the
-     * generated config is the only place DNS can be configured. ARCHITECTURE.md §5.2 needs three
-     * levers, and this one carries two of them: the config's `dns` block and the
-     * **port-53 hijack** — a routing rule sending all port-53 traffic to the
-     * `dns-out` outbound, which is the lever that reaches an app ignoring the
-     * advertised resolver. `VpnService.Builder.addDnsServer()` is the third and
-     * lives in the service.
+     * There is deliberately no DNS call. libXray v26.10.10 does have `setDNS`
+     * (research §3), which replaces Go's process-wide resolver; Subspace does not
+     * use it, so the generated config remains the only place DNS is configured.
+     * ARCHITECTURE.md §5.2 needs three levers, and this one carries two of them:
+     * the config's `dns` block and the **port-53 hijack** — a routing rule sending
+     * all port-53 traffic to the `dns-out` outbound, which is the lever that
+     * reaches an app ignoring the advertised resolver.
+     * `VpnService.Builder.addDnsServer()` is the third and lives in the service.
      */
     @Suppress("TooGenericExceptionCaught")
     public suspend fun start(
-        configFile: File,
+        xrayJson: String,
         protector: SocketProtector,
     ) {
         withContext(io) {
             // gomobile maps Go's int to a Java long; VpnService.protect() takes an
-            // int, so the bridge narrows here. The Go wrapper discards the returned
-            // boolean, so a false does not abort the dial — it surfaces only as
-            // ARCHITECTURE.md §5.1's symptom. SocketProtector's implementation must log it.
+            // int, so the bridge narrows here. libXray v26.10.10 honours the
+            // returned boolean: a false aborts that dial or listen with
+            // "protect Android VPN socket failed" (controller/controller.go). The
+            // protector must be retained before runXray, or the core's first
+            // dials fail. SocketProtector's implementation must log a false.
             try {
                 invocation.retainProtector(protector)
-                invocation.runXray(configFile)
+                invocation.runXray(xrayJson)
             } catch (error: Throwable) {
                 invocation.clearProtector()
                 throw error
@@ -181,36 +185,68 @@ public class XrayController private constructor(
     }
 }
 
+/** The `testXray`/`runXray` payload: the config itself, never a path (v26.10.10, research §2). */
+internal fun xrayJsonPayload(xrayJson: String): String = buildJsonObject { put("xrayJson", xrayJson) }.toString()
+
+/**
+ * Registers the dialer and listener controllers with libXray **once**.
+ *
+ * libXray appends on every registration and never replaces or removes one
+ * (`transport/internet/system_dialer.go:195`, `system_listener.go:193`; research §3).
+ * Registering on every start would leave one hook per past session, each making its
+ * own `protectFd` call on every socket — and since v26.10.10 any one `false` aborts
+ * the dial. So the hook is installed once per process and
+ * [XrayControllerInvocation]'s holder target is the only switch.
+ *
+ * Marked done only after [register] returns, so a failed registration is retried by
+ * the next start rather than remembered as done.
+ */
+internal class ControllerRegistration(
+    private val register: () -> Unit,
+) {
+    private var registered = false
+
+    @Synchronized
+    fun ensureRegistered() {
+        if (!registered) {
+            register()
+            registered = true
+        }
+    }
+}
+
 /**
  * The process-global protector bridge and the native calls that define its lifetime.
  *
  * [ProtectorHolder] stays private: tests may observe only whether it retains a target,
- * never retrieve the service-backed [SocketProtector] itself. Replacing the three native
- * operations lets JVM tests exercise [XrayController.start] and [XrayController.stopBlocking]
- * without loading libXray.
+ * never retrieve the service-backed [SocketProtector] itself. Replacing the native
+ * operations lets JVM tests exercise [XrayController.start], [XrayController.validate]
+ * and [XrayController.stopBlocking] without loading libXray. The `invoke*` seams take
+ * the rendered payload, so a test sees exactly what libXray would.
  */
 internal class XrayControllerInvocation(
-    private val registerControllers: () -> Unit = {
-        LibXray.registerDialerController(ProtectorHolder)
-        LibXray.registerListenerController(ProtectorHolder)
+    private val registration: ControllerRegistration = processRegistration,
+    private val invokeRunXray: (String) -> Unit = { payload ->
+        LibXrayInvoke.callJson("runXray", payload)
     },
-    private val invokeRunXray: (File) -> Unit = { configFile ->
-        LibXrayInvoke.call(
-            "runXray",
-            JSONObject().put("configPath", configFile.absolutePath),
-        )
+    private val invokeTestXray: (String) -> Unit = { payload ->
+        LibXrayInvoke.callJson("testXray", payload)
     },
     private val invokeStopXray: () -> Unit = {
         LibXrayInvoke.call("stopXray")
     },
 ) {
     fun retainProtector(protector: SocketProtector) {
-        registerControllers()
+        registration.ensureRegistered()
         ProtectorHolder.target = protector
     }
 
-    fun runXray(configFile: File) {
-        invokeRunXray(configFile)
+    fun runXray(xrayJson: String) {
+        invokeRunXray(xrayJsonPayload(xrayJson))
+    }
+
+    fun testXray(xrayJson: String) {
+        invokeTestXray(xrayJsonPayload(xrayJson))
     }
 
     fun clearProtector() {
@@ -232,12 +268,24 @@ internal class XrayControllerInvocation(
      * and its `Context` — in native memory until the process dies.
      *
      * Instead Go holds this singleton forever and we swap [target], so a stopped
-     * session leaves nothing but a null field behind.
+     * session leaves nothing but a null field behind. With no target it answers
+     * `false`, which since v26.10.10 **aborts** the socket: a Go dial in this
+     * process between [clearProtector] and the next [retainProtector] fails
+     * rather than leaking into the TUN.
      */
     private object ProtectorHolder : DialerController {
         @Volatile
         var target: SocketProtector? = null
 
         override fun protectFd(fd: Long): Boolean = target?.protect(fd.toInt()) ?: false
+    }
+
+    private companion object {
+        /** The process's one registration of [ProtectorHolder] — see [ControllerRegistration]. */
+        val processRegistration =
+            ControllerRegistration {
+                LibXray.registerDialerController(ProtectorHolder)
+                LibXray.registerListenerController(ProtectorHolder)
+            }
     }
 }

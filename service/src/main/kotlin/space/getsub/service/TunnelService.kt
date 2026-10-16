@@ -171,6 +171,24 @@ internal fun adoptedStartId(
     frameworkStartId: Int,
 ): Int = if (sessionStartId != 0 && frameworkStartId > sessionStartId) frameworkStartId else sessionStartId
 
+/**
+ * The geo directory a *typed* config's root `env` names ([TunnelSettings.geoAssetDir]), or null
+ * for no `env` block.
+ *
+ * Active routing names its own retained generation directory ([RoutingResolution.Active.assetDir]),
+ * whose files the resolver's missing-file gate has already checked. Otherwise the flat root,
+ * **only when something is installed there**: a fresh install has no geo files, and the config
+ * then builds without an `env` block — the same "no geo files → skip" stance as
+ * `ServiceModule.boundPassthroughValidator` (stock-upgrade plan, Review Focus 4). A typed config
+ * with routing off carries no geo rule, so nothing reads the directory in that case either way.
+ */
+internal fun typedConfigGeoDir(
+    routingAssetDir: File?,
+    flatRoot: File,
+): String? =
+    routingAssetDir?.absolutePath
+        ?: flatRoot.takeIf { it.isDirectory && !it.list().isNullOrEmpty() }?.absolutePath
+
 /** [passthroughPlanFor]'s answer: what a passthrough compose call should do about routing/DNS. */
 internal data class PassthroughPlan(
     /** M7 spec §4.3: what `xray.location.asset` must name — see [passthroughPlanFor]. */
@@ -825,16 +843,15 @@ class TunnelService : VpnService() {
      * against before deciding whether keeping it is still safe.
      */
     private var tunAdvertisedDns: String? = null
-    private var configFile: File? = null
 
     /**
      * The loopback port [trafficLoop]'s `readTags` reads from, or null while
      * the breakdown is off or [allocateSessionPorts]'s allocation failed
-     * (M8.5 spec §2). Every *write* is under [lock], same as [configFile] and
-     * the same lifetime — set in [startCore] once a session's config is
-     * generated, cleared everywhere [configFile] is.
+     * (M8.5 spec §2). Every *write* is under [lock], with the session's
+     * lifetime — set in [startCore] once a session's config is generated,
+     * cleared everywhere [controller] is.
      *
-     * Unlike [configFile], **not** lock-guarded on read: [trafficLoop]'s
+     * Unlike [controller], **not** lock-guarded on read: [trafficLoop]'s
      * `readTags` polls it once a second from its own coroutine, off the
      * `Dispatchers.IO` scope, and taking [lock] there for one field read on a
      * hot path is worse than the alternative. `@Volatile` is what makes a
@@ -989,10 +1006,11 @@ class TunnelService : VpnService() {
             seeded = currentState
             generationAtSeed = generation
         }
-        // ARCHITECTURE.md §5.6: a config left by a start that failed, or by a process the system
-        // killed before onDestroy, holds the UUID and REALITY key. Nothing else
-        // would ever remove it.
-        File(filesDir, CONFIG_NAME).delete()
+        // ARCHITECTURE.md §5.6: builds before libXray v26.10.10 wrote the running config to
+        // this file, and one left by a failed start or a killed process holds the UUID
+        // and REALITY key. Nothing writes it any more (the core takes the JSON itself);
+        // this only removes a copy an older build left behind on an upgraded install.
+        File(filesDir, LEGACY_CONFIG_NAME).delete()
         connectionRecorder =
             ConnectionRecorder(
                 recordConnected = profileRepository::recordConnected,
@@ -1660,7 +1678,7 @@ class TunnelService : VpnService() {
                 //
                 // Reconnecting is allowed through alongside Disconnected/Failed:
                 // it means a retryable failure already ran settleRetryableFailure's
-                // cleanup (controller/configFile/liveSession all null) and is
+                // cleanup (controller/liveSession both null) and is
                 // waiting out its backoff. Refusing here would silently swallow
                 // every retry the moment BackoffElapsed fires it — fix round 1,
                 // Finding 1's core bug.
@@ -1790,10 +1808,7 @@ class TunnelService : VpnService() {
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
                         sniffingEnabled = SNIFFING_ENABLED,
                     )
-                val assetDir =
-                    (routing as? RoutingResolution.Active)?.assetDir
-                        ?: geoAssetRepository.geoDirectory()
-                val xray = XrayController(geoAssetDir = assetDir)
+                val xray = XrayController()
                 val ownsStart =
                     synchronized(lock) {
                         if (gen != generation) {
@@ -1869,6 +1884,15 @@ class TunnelService : VpnService() {
                 // M9-A spec §3.1: resolved once per start, from the same row this session connects.
                 obfuscation = obfuscationResolver.forConfig(rowId),
                 addressPin = addressPin,
+                // Stock-upgrade spec §2: the config's own root `env` is the only channel
+                // libXray v26.10.10 reads the asset location from, for testXray and runXray
+                // alike. The passthrough path names its directory through
+                // passthroughPlanFor instead; RawConfigComposer writes that `env` itself.
+                geoAssetDir =
+                typedConfigGeoDir(
+                    routingAssetDir = (routing as? RoutingResolution.Active)?.assetDir,
+                    flatRoot = geoAssetRepository.geoDirectory(),
+                ),
             )
         // §10.4/failStart's cleanup applies here too, not just to the try/catch
         // below: an early return that only published a state (skipping
@@ -1879,15 +1903,8 @@ class TunnelService : VpnService() {
                 is ConfigJsonOutcome.Ok -> Triple(outcome.json, outcome.runsAsWritten, outcome.metricsApplied)
                 is ConfigJsonOutcome.Failed -> return failStart(gen, outcome.reason, outcome.cause, rowId)
             }
-        val file =
-            try {
-                writeConfig(json)
-            } catch (e: java.io.IOException) {
-                return failStart(gen, FailureReason.ConfigGenerationFailed, e, rowId)
-            }
         synchronized(lock) {
             if (gen != generation) return null
-            configFile = file
             // Not unconditionally `allocated.metricsPort` (review finding I4):
             // the override branch can degrade away the breakdown for a config
             // that already claims the `Metrics` tag — see
@@ -1899,11 +1916,18 @@ class TunnelService : VpnService() {
             metricsPort = allocated.metricsPort.takeIf { metricsApplied }
         }
 
-        // ARCHITECTURE.md §6: validate before starting. libXray's testXray takes a path, so the
-        // bytes validated are exactly the bytes runXray will read.
+        // ARCHITECTURE.md §6: validate before starting. testXray and runXray both take the JSON
+        // itself (libXray v26.10.10), so the bytes validated are exactly the bytes run, and
+        // no copy of the UUID and keys is written to disk (ARCHITECTURE.md §5.6).
+        //
+        // testXray refuses while this process has a managed instance (xray/validation.go:13-14).
+        // Neither caller leaves one running: a fresh start gets past startTunnel's state guard
+        // only after the previous session's teardown (which stops its core) has published, and
+        // restartCoreRetainingTun stops the old core (`handoff.oldXray?.stopBlocking()`) before
+        // calling resolveAndStartCore.
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.ValidatingConfig))) return null
         try {
-            xray.validate(file)
+            xray.validate(json)
         } catch (e: XrayException) {
             // A stored config that passed import can still be refused here —
             // the core, the environment, or the row's own bytes changed since.
@@ -1916,7 +1940,7 @@ class TunnelService : VpnService() {
 
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingCore))) return null
         try {
-            xray.start(file, protector())
+            xray.start(json, protector())
         } catch (e: XrayException) {
             return failStart(gen, FailureReason.CoreStartFailed, e, rowId)
         }
@@ -1962,7 +1986,10 @@ class TunnelService : VpnService() {
             ?.takeIf { stored -> runsAsWrittenAtConnect(stored.runsAsWritten, stored.rawJson) }
             ?.rawJson
 
-    /** [resolveConfigJson]'s outcome — a JSON string ready for [writeConfig], or a named failure. */
+    /**
+     * [resolveConfigJson]'s outcome — a JSON string ready for `XrayController.validate`/`start`,
+     * or a named failure.
+     */
     private sealed interface ConfigJsonOutcome {
         /**
          * @property runsAsWritten Whether [json] is the row's own composed bytes, not a typed generation.
@@ -1978,7 +2005,7 @@ class TunnelService : VpnService() {
     }
 
     /**
-     * Produces the config text [startCore] hands to [writeConfig] — the row's
+     * Produces the config text [startCore] hands to the core — the row's
      * own bytes for a `runsAsWritten` profile, or a typed generation otherwise.
      *
      * The raw bytes come from Room, not the Parcel: `ProfileParcel` carries
@@ -2209,7 +2236,7 @@ class TunnelService : VpnService() {
      * [startCore] has left a core running. Unguarded, the failure reaches
      * [errorHandler], which publishes [FailureReason.CoreStartFailed] but skips
      * both `xray.stop()` and failStart's §5.4 cleanup: a live Go runtime, a
-     * non-null `controller`, the config file still on disk (ARCHITECTURE.md §5.6) and a stuck
+     * non-null `controller` and a stuck
      * foreground notification, while `Failed` invites a second connect that would
      * overwrite `controller` and orphan the first core.
      */
@@ -2534,9 +2561,6 @@ class TunnelService : VpnService() {
      * or anything else that would make retrying conditional on that setting.
      * TUN retention is a separate decision — [shouldRetainTun] — consulted only
      * inside [settleRetryableFailure].
-     *
-     * ARCHITECTURE.md §5.6: the config file holds the UUID and REALITY key. A failed start used
-     * to leave it on disk indefinitely, because only teardown deleted it.
      */
     private suspend fun failStart(
         gen: Int,
@@ -2588,8 +2612,6 @@ class TunnelService : VpnService() {
             state = failed,
             lifecycle = {
                 ownedIntentToken = sessionIntentToken
-                configFile?.delete()
-                configFile = null
                 metricsPort = null
                 controller = null
                 liveSession = null
@@ -2654,7 +2676,7 @@ class TunnelService : VpnService() {
      * Reuses [terminalOutcome]'s atomic gen-check-then-mutate-then-publish
      * transition — the same primitive [publishIfCurrent] is built on — rather
      * than a second hand-rolled one: a superseded generation must not null out
-     * a *newer* generation's `controller`/`configFile` any more than it must
+     * a *newer* generation's `controller` any more than it must
      * publish over a newer generation's state, and `TerminalOutcome` already
      * closes exactly that race. Used here for a non-terminal state
      * deliberately — the mechanism is state-shape-agnostic even though its
@@ -2682,8 +2704,8 @@ class TunnelService : VpnService() {
      * attached belongs to whoever holds the generation, and this settlement is
      * where that is resolved. So this function cannot assume [gen] is current
      * on entry. [ReconnectAttemptCounter.commit]
-     * therefore runs inside `lifecycle`, alongside `controller`/`configFile`/
-     * `liveSession`, so a superseded [gen] leaves the counter exactly as it
+     * therefore runs inside `lifecycle`, alongside `controller`/`liveSession`,
+     * so a superseded [gen] leaves the counter exactly as it
      * found it: [ReconnectAttemptCounter.peekNext] has no side effect, and
      * `terminalOutcome.settle` never runs `lifecycle` — hence never calls
      * `commit` — for a generation that lost the race.
@@ -2725,8 +2747,6 @@ class TunnelService : VpnService() {
         terminalOutcome.settleComputed(
             gen = gen,
             lifecycle = {
-                configFile?.delete()
-                configFile = null
                 metricsPort = null
                 controller = null
                 liveSession = null
@@ -2840,11 +2860,12 @@ class TunnelService : VpnService() {
         SocketProtector { fd ->
             val ok = protect(fd)
             if (!ok) {
-                // libXray DISCARDS this result (docs/agent/research/libxray-api.md
-                // §2), so nothing upstream reports it. Without this line a failed
-                // protect is invisible and presents only as ARCHITECTURE.md §5.1's symptom:
-                // connected, no traffic, rising CPU.
-                Log.e(TAG, "VpnService.protect() failed — traffic will loop back into the tunnel")
+                // libXray v26.10.10 honours this result: a false aborts the dial or
+                // listen with "protect Android VPN socket failed"
+                // (docs/agent/research/libxray-api.md §3), so the socket never loops
+                // into the TUN — the connection fails instead. The core's error names
+                // no cause, so this line is what tells a device run why.
+                Log.e(TAG, "VpnService.protect() failed — libXray aborts this connection")
             }
             ok
         }
@@ -2867,14 +2888,6 @@ class TunnelService : VpnService() {
      */
     private fun activeNetwork(): Network? =
         getSystemService(ConnectivityManager::class.java)?.activeNetwork
-
-    private fun writeConfig(json: String): File {
-        // Internal storage, not cache: ARCHITECTURE.md §5.6 — the config holds the UUID and
-        // REALITY key, and cache is more readily harvested.
-        val file = File(filesDir, CONFIG_NAME)
-        file.writeText(json)
-        return file
-    }
 
     /**
      * How [establishTun] ended.
@@ -3166,7 +3179,6 @@ class TunnelService : VpnService() {
 
         val xray: XrayController?
         val fd: ParcelFileDescriptor?
-        val cfg: File?
         val startId: Int
         val intentToken: Int
 
@@ -3179,11 +3191,9 @@ class TunnelService : VpnService() {
             ++generation
             xray = controller
             fd = tunInterface
-            cfg = configFile
             controller = null
             tunInterface = null
             tunAdvertisedDns = null
-            configFile = null
             metricsPort = null
             liveSession = null
             // Every stopTunnel caller (explicit disconnect, onRevoke, a
@@ -3214,13 +3224,13 @@ class TunnelService : VpnService() {
         // (spec §6 item #9) — reorder a step's *position* in [runTeardownStep]'s
         // `when` and LogCaptureLifecycleTest's ordering assertions cover exactly
         // what they claim to.
-        val taken = TeardownSnapshot(xray, fd, cfg)
+        val taken = TeardownSnapshot(xray, fd)
         teardownOrder().forEach { step -> runTeardownStep(step, taken, finalState, ::sinceStart) }
         return StoppedSession(startId = startId, intentToken = intentToken)
     }
 
     /** What [stopTunnel] took from the session's fields, bundled for [runTeardownStep]'s sake. */
-    private data class TeardownSnapshot(val xray: XrayController?, val fd: ParcelFileDescriptor?, val cfg: File?)
+    private data class TeardownSnapshot(val xray: XrayController?, val fd: ParcelFileDescriptor?)
 
     /**
      * One [TeardownStep] of [stopTunnel], extracted so that function stays
@@ -3235,7 +3245,7 @@ class TunnelService : VpnService() {
         finalState: ConnectionState,
         sinceStart: () -> Long,
     ) {
-        val (xray, fd, cfg) = taken
+        val (xray, fd) = taken
         when (step) {
             TeardownStep.StopTun2Socks -> {
                 // Order matters: stop feeding packets in before removing their destination.
@@ -3266,7 +3276,6 @@ class TunnelService : VpnService() {
                 Log.i(TAG, "teardown[xray-stopBlocking] enter (present=${xray != null})")
                 xray?.stopBlocking()
                 Log.i(TAG, "teardown[xray-stopBlocking] exit +${sinceStart()}ms")
-                cfg?.delete()
             }
 
             TeardownStep.ClearNotification -> {
@@ -3878,8 +3887,6 @@ class TunnelService : VpnService() {
                     val nextGeneration = ++generation
                     val oldXray = controller
                     controller = null
-                    configFile?.delete()
-                    configFile = null
                     metricsPort = null
                     // M8 spec §1.1: [rowId] is the *active* profile, which can differ
                     // from the row this session started on if another server was
@@ -3916,6 +3923,11 @@ class TunnelService : VpnService() {
             // comes back.
             Log.e(TAG, "tun2socks stop failed during restart: ${e.javaClass.simpleName}")
         }
+        // Before resolveAndStartCore, and load-bearing since libXray v26.10.10: its
+        // testXray refuses while this process still has a managed instance
+        // ("testXray requires an isolated process without a managed Xray instance",
+        // xray/validation.go:13-14), so validating the new config with the old core
+        // still running would fail every network-change restart.
         handoff.oldXray?.stopBlocking()
 
         val started = resolveAndStartCore(handoff.gen, profile, rowId) ?: return
@@ -4214,7 +4226,8 @@ class TunnelService : VpnService() {
         if (intent?.action == SERVICE_INTERFACE) super.onBind(intent) else binder
 
     private companion object {
-        const val CONFIG_NAME = "xray-config.json"
+        /** Written by builds before libXray v26.10.10; only ever deleted now — see [onCreate]. */
+        const val LEGACY_CONFIG_NAME = "xray-config.json"
         const val FOREGROUND_LIFECYCLE_REJECTED = "ForegroundLifecycleRejected"
         const val LOG_DIR_NAME = "logs"
     }

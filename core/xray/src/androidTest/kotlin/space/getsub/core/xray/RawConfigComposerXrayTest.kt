@@ -79,11 +79,11 @@ class RawConfigComposerXrayTest {
 
     private suspend fun validate(raw: String, override: OverrideBlocks? = null): Result<Unit> {
         val assetDir = File(context.filesDir, "geo").apply { mkdirs() }
-        val controller = XrayController(geoAssetDir = assetDir)
+        val controller = XrayController()
         val result = RawConfigComposer.compose(raw, settings, assetDir.absolutePath, override)
         check(result is ComposeResult.Ok) { "composer refused the fixture: $result" }
         val file = File(context.cacheDir, "passthrough-test.json").apply { writeText(result.json) }
-        return runCatching { controller.validate(file) }
+        return runCatching { controller.validate(file.readText()) }
     }
 
     /**
@@ -181,7 +181,7 @@ class RawConfigComposerXrayTest {
             val result =
                 try {
                     file.writeText(composed.json)
-                    runCatching { XrayController(geoAssetDir = fromEnvelope).validate(file) }
+                    runCatching { XrayController().validate(file.readText()) }
                 } finally {
                     file.delete()
                     // Cleaned here, not only at the next run's setup, so this test leaves no

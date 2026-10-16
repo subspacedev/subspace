@@ -67,9 +67,10 @@ private const val VALIDATION_PORT = 41080
  *   must name. **This is the only channel `testXray` reads the asset location
  *   from** — measured on a Pixel 8, 2026-08-31, and recorded in
  *   `docs/agent/research/2026-08-25-m7-device-verification.md` finding F8:
- *   with a real directory on `XrayController`'s `geoAssetDir` and a
+ *   with a real directory on the (then patched-in) invoke-level `env` and a
  *   placeholder here, a `geosite:` rule is refused; with the directories
- *   swapped, it is accepted. An earlier version of this class wrote a
+ *   swapped, it is accepted. libXray v26.10.10 ignores the invoke-level `env`
+ *   altogether (`docs/agent/research/libxray-api.md` §1). An earlier version of this class wrote a
  *   `/data/local/tmp` placeholder here on the opposite claim, which refused
  *   every config the target panel emits. Pinned by
  *   `RawConfigComposerXrayTest.theComposedEnvNotTheInvokeEnvelopeIsWhereTheCoreResolvesGeoFiles`.
@@ -77,8 +78,8 @@ private const val VALIDATION_PORT = 41080
  *   *core itself* accepted it. Taken as a lambda rather than an injected `XrayController`
  *   directly: `:service` carries no mocking library, and a lambda is what makes this class's
  *   composition testable on the JVM ([PassthroughValidatorTest]). The real implementation —
- *   writing the text to a temp file, calling `XrayController.validate`, converting a thrown
- *   `XrayException` to `false` — lives in the Hilt binding ([ServiceModule.boundPassthroughValidator],
+ *   handing the text to `XrayController.validate`, converting a thrown `XrayException` to
+ *   `false` — lives in the Hilt binding ([ServiceModule.boundPassthroughValidator],
  *   via [validateOnCore]) rather than here, per the same "adapter owns the throw-to-Boolean
  *   conversion" reasoning that keeps this class free of `File`/Android APIs. It must never throw
  *   for a real core refusal (that is what `false` means) — only for a genuine failure to run the
@@ -107,7 +108,7 @@ public class BoundPassthroughValidator(
         } catch (e: Exception) {
             // Review Important 2: `testConfig` converts a real core refusal (`XrayException`) to
             // `false` without throwing (see its own KDoc). Anything that reaches here instead —
-            // e.g. `createTempFile`/`writeText` failing on a full cache — is a failure to run the
+            // e.g. a response envelope `org.json` cannot parse — is a failure to run the
             // check at all, not a verdict from the core. §10.4 forbids a reason that misdescribes
             // the failure: recording CoreRejected for "we could not tell" would be a *permanent*
             // wrong reason, since nothing re-checks a row once it is marked, so this is treated

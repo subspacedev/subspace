@@ -194,9 +194,22 @@ rising CPU.
 
 libXray exposes a protector callback. Wire it to the live `VpnService`
 instance. When the service is recreated, the protector must be re-wired —
-a stale reference silently stops protecting.
+a stale reference stops protecting.
 
-**If you are debugging "connects but nothing loads", check this first.**
+**Since libXray v26.10.10 the callback's answer is enforced.** A `false`
+aborts that dial or listen with `protect Android VPN socket failed`
+(`controller/controller.go` `protectSocket`;
+`docs/agent/research/libxray-api.md` §3). A failed protect is therefore a
+failed connection, not a silent loop, and `TunnelService`'s
+`VpnService.protect() failed` log line is what names the cause on a device.
+Registration with libXray **appends** and has no unregister, so the hook
+(`XrayController`'s process-wide `ProtectorHolder`) is registered once per
+process and each session only swaps its target; with no target it answers
+`false`, so a Go dial in `:bg` between sessions fails rather than looping
+into a TUN the kill switch kept open.
+
+**If you are debugging "connects but nothing loads", check this first** —
+and look for that log line.
 
 ### 5.2 Route DNS through the tunnel
 
