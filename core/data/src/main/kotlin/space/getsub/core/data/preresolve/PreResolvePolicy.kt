@@ -45,7 +45,7 @@ public object PreResolvePolicy {
         if (user.enabled) {
             val url = user.dohUrl.trim()
             val bootstrap = user.bootstrapIp.trim()
-            val valid = RedirectTargets.checkUrl(url) is RedirectCheck.Ok && IpLiteral.isLiteral(bootstrap)
+            val valid = isUsableDohUrl(url) && IpLiteral.isLiteral(bootstrap)
             return if (valid) {
                 PreResolveDecision.Run(ResolverConfig(url, bootstrap, userFragment), PreResolveSource.User)
             } else {
@@ -60,6 +60,12 @@ public object PreResolvePolicy {
         }
         return PreResolveDecision.Off(PreResolveReason.Off)
     }
+
+    /**
+     * The connect-time rule for the user's DoH URL: a public `https` host, as for a provider redirect
+     * (M9-C spec §1.4). Settings validates with this too, so a value that saves cleanly is one connect uses.
+     */
+    public fun isUsableDohUrl(url: String): Boolean = RedirectTargets.checkUrl(url.trim()) is RedirectCheck.Ok
 
     /** Plan ruling R2: a grant answered for another DoH host counts as unasked. */
     public fun effectiveTrust(
