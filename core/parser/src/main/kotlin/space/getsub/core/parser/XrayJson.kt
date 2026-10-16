@@ -165,6 +165,14 @@ private fun parseVlessOutbound(
     elementText: String,
 ): List<LinkResult> {
     val settings = outbound["settings"] as? JsonObject
+    // Xray-core v26.10.10 (and so libXray's share conversion) writes VLESS settings flat:
+    // `address`/`port`/`id`/`flow` directly under `settings`, with no `vnext[].users[]`. A flat
+    // block is one destination with exactly one user, which is what `vnext` + `users` spells out
+    // with more ceremony, so it is lifted into that shape and takes the same path.
+    if (settings != null && settings["vnext"] == null && settings["address"] != null) {
+        val destination = JsonObject(settings + ("users" to JsonArray(listOf(settings))))
+        return parseVlessDestination(outbound, destination, index, remarks, elementText)
+    }
     val vnext =
         settings?.get("vnext") as? JsonArray
             ?: return listOf(
@@ -292,13 +300,13 @@ private fun parseSecurity(
 
     return when (securityElement.content) {
         "reality" -> {
-            val reality = streamSettings["realitySettings"] as? JsonObject
-            val publicKey =
-                reality?.stringValue("publicKey")
-                    ?: return SecurityParse.Bad(
-                        ParseFailureReason.InvalidRealityKey,
-                        FailureDetail.Missing(DetailField.PublicKey),
-                    )
+            val missingKey =
+                SecurityParse.Bad(ParseFailureReason.InvalidRealityKey, FailureDetail.Missing(DetailField.PublicKey))
+            val reality = streamSettings["realitySettings"] as? JsonObject ?: return missingKey
+            // v26.10.10 spells the REALITY public key `password` and no longer emits
+            // `publicKey` (share/marshal_share.go projectShareStream); older and hand-written
+            // configs still say `publicKey`, so both are read, `publicKey` first.
+            val publicKey = reality.stringValue("publicKey") ?: reality.stringValue("password") ?: return missingKey
             validateRealityPublicKey(publicKey)?.let {
                 return SecurityParse.Bad(ParseFailureReason.InvalidRealityKey, it)
             }

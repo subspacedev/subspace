@@ -17,14 +17,14 @@ import org.junit.Test
  * present as an unattributable failure.
  *
  * The API shape asserted here is recorded verbatim in
- * docs/agent/research/libxray-api.md.
+ * docs/agent/research/libxray-api.md. `apiVersion` must be exactly 3 for libXray v26.10.10.
  */
 class LibXrayBindingTest {
 
     @Test
     fun coreReportsItsVersionThroughTheInvokeEnvelope() {
         val request = JSONObject()
-            .put("apiVersion", 1)
+            .put("apiVersion", 3)
             .put("method", "xrayVersion")
             .toString()
 
@@ -34,8 +34,21 @@ class LibXrayBindingTest {
             "expected success, got: ${response.optString("error")}",
             response.getBoolean("success"),
         )
-        val version = response.getJSONObject("data").getString("version")
-        assertTrue("expected a non-blank version, got '$version'", version.isNotBlank())
+        // core.Version() is x.y.z with no leading "v" (docs/agent/research/libxray-api.md §2).
+        assertEquals("26.10.10", response.getJSONObject("data").getString("version"))
+    }
+
+    @Test
+    fun anyOtherApiVersionIsRefusedInTheEnvelope() {
+        val request = JSONObject()
+            .put("apiVersion", 1)
+            .put("method", "xrayVersion")
+            .toString()
+
+        val response = JSONObject(LibXray.invoke(request))
+
+        assertEquals(false, response.getBoolean("success"))
+        assertTrue(response.getString("error").contains("unsupported apiVersion"))
     }
 
     @Test
@@ -43,7 +56,7 @@ class LibXrayBindingTest {
         // §10.4: failures must be legible. libXray never throws — it encodes the
         // error in the response. Pin that behaviour so XrayController can rely on it.
         val request = JSONObject()
-            .put("apiVersion", 1)
+            .put("apiVersion", 3)
             .put("method", "definitelyNotAMethod")
             .toString()
 

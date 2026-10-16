@@ -13,13 +13,11 @@ private const val MAX_ALLOCATE_DISTINCT_ATTEMPTS = 3
  * Requests [count] free ports from [fetch], retrying when the result is not
  * distinct.
  *
- * `docs/agent/research/libxray-api.md` §5, quoting `nodep/port.go`: `GetFreePorts`
- * binds `localhost:0`, records the port, and **closes the listener before
- * opening the next one**. Nothing holds the earlier port between iterations, so
- * the kernel can hand the same number back inside a single call — the file's
- * own example is one `count = 2` call returning `[38411, 38411]`. Two Xray
- * inbounds sharing a port is a config the core rejects outright, so this checks
- * distinctness itself rather than trusting the call to provide it.
+ * libXray v26.10.10's `GetFreePorts` keeps every listener open until it returns, so one call
+ * yields distinct ports (`docs/agent/research/libxray-api.md` §2); v26.7.11 closed each before
+ * opening the next and could return `[38411, 38411]` from a single `count = 2` call. Two Xray
+ * inbounds sharing a port is a config the core rejects outright, so this still checks
+ * distinctness itself, as a guard that costs nothing, rather than trusting the call.
  *
  * A free function rather than a method on [XrayController], for the same
  * reason [XrayPingApi] is a separate interface from [ProxyHeadProbe]: the
