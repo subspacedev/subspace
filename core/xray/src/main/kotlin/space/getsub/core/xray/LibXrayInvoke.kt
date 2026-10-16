@@ -2,6 +2,9 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.xray
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import libXray.LibXray
 import org.json.JSONObject
 
@@ -41,25 +44,24 @@ internal object LibXrayInvoke {
     fun call(
         method: String,
         payload: JSONObject? = null,
-    ): JSONObject? = parse(method, LibXray.invoke(request(method, payload)))
+    ): JSONObject? = parse(method, LibXray.invoke(request(method, payload?.toString())))
 
     /**
-     * Builds the request string. Separate from [call] only because `LibXray.invoke`
-     * is native; this part has a rule worth pinning (version 3, no `env` key).
+     * Builds the request string without `org.json`, so a JVM test can pin it
+     * (version 3, no `env` key). [payloadJson] is a JSON object already rendered
+     * to text, or null for methods with no payload.
      */
     fun request(
         method: String,
-        payload: JSONObject?,
-    ): String {
-        val request =
-            JSONObject()
-                .put("apiVersion", API_VERSION)
-                .put("method", method)
-        if (payload != null) {
-            request.put("payload", payload)
-        }
-        return request.toString()
-    }
+        payloadJson: String?,
+    ): String =
+        buildJsonObject {
+            put("apiVersion", API_VERSION)
+            put("method", method)
+            if (payloadJson != null) {
+                put("payload", Json.parseToJsonElement(payloadJson))
+            }
+        }.toString()
 
     /**
      * Splits the envelope. Separate from [call] only because `LibXray.invoke` is
