@@ -75,6 +75,14 @@ public data class TunnelSettings(
      * otherwise derive from the dial address (research note 2026-10-15-m9c-xray-address-fallbacks).
      */
     val addressPin: ServerAddressPin? = null,
+    /**
+     * Where `geoip.dat`/`geosite.dat` are installed (`GeoAssetRepository.geoDirectory()`), or null.
+     *
+     * Non-null emits a root `"env": {"xray.location.asset": …}` block, which is how libXray
+     * v26.10.10 learns the asset location (the invoke request carries no `env`). Null emits no
+     * `env` key, so the output is byte-identical to a build from before this existed.
+     */
+    val geoAssetDir: String? = null,
 )
 
 /**
@@ -189,6 +197,11 @@ public object XrayConfigGenerator {
         // addresses too.
         sb.appendLine("""    "loglevel": "warning"""")
         sb.appendLine("""  },""")
+        settings.geoAssetDir?.let { dir ->
+            sb.appendLine("""  "env": {""")
+            sb.appendLine("""    "xray.location.asset": ${jsonString(dir)}""")
+            sb.appendLine("""  },""")
+        }
 
         appendDns(sb, settings)
         appendInbounds(sb, settings)

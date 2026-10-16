@@ -5,6 +5,7 @@ package space.getsub.core.xray
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import org.json.JSONObject
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -26,6 +27,18 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class LibXrayInvokeTest {
+    @Test
+    fun requestUsesApiVersion3AndHasNoEnvKey() {
+        val request =
+            JSONObject(LibXrayInvoke.request("testXray", JSONObject().put("configPath", "/c.json")))
+
+        request.getInt("apiVersion") shouldBe 3
+        request.getString("method") shouldBe "testXray"
+        request.has("env") shouldBe false
+        request.getJSONObject("payload").getString("configPath") shouldBe "/c.json"
+        JSONObject(LibXrayInvoke.request("stopXray", null)).has("payload") shouldBe false
+    }
+
     @Test
     fun aFailureEnvelopeCarryingASentinelDelayThrowsInsteadOfReturningIt() {
         val envelope = """{"success":false,"data":{"delay":10000},"error":"connection refused"}"""

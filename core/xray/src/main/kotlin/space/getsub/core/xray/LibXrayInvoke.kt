@@ -19,9 +19,11 @@ public class XrayException(
 /**
  * The libXray call envelope.
  *
- * v26.7.11 exposes exactly one entry point — `LibXray.invoke(String): String` —
- * taking `{"apiVersion":1,"method":"…","payload":{…}}` and returning
- * `{"success":bool,"data":…,"error":"…"}`.
+ * v26.10.10 exposes exactly one entry point — `LibXray.invoke(String): String` —
+ * taking `{"apiVersion":3,"method":"…","payload":{…}}` and returning
+ * `{"success":bool,"data":…,"error":"…"}`. The invoke request carries no `env`:
+ * the asset location travels in the config's own root `env` block instead
+ * ([TunnelSettings.geoAssetDir]).
  *
  * **It never throws.** A failure arrives inside the envelope, so an unchecked
  * `success` field is a silently ignored error — the precise shape §10.4 calls the
@@ -31,34 +33,32 @@ public class XrayException(
  * Verbatim API: `docs/agent/research/libxray-api.md`
  */
 internal object LibXrayInvoke {
-    private const val API_VERSION = 1
+    private const val API_VERSION = 3
 
     /**
-     * @param env The `env` object PR #133 restored on the invoke request
-     *   (formerly a local patch, dropped with the official v26.10.10 AAR) — and the
-     *   only route by which xray-core learns `XRAY_LOCATION_ASSET` on Android
-     *   (research §2b). Included only when non-null: an unpatched libXray
-     *   silently drops an unknown `env` key, so omitting it when there is
-     *   nothing to say keeps the request byte-identical to before this existed.
      * @return the `data` object, or null for methods that return no data.
      */
     fun call(
         method: String,
         payload: JSONObject? = null,
-        env: XrayEnv? = null,
-    ): JSONObject? {
+    ): JSONObject? = parse(method, LibXray.invoke(request(method, payload)))
+
+    /**
+     * Builds the request string. Separate from [call] only because `LibXray.invoke`
+     * is native; this part has a rule worth pinning (version 3, no `env` key).
+     */
+    fun request(
+        method: String,
+        payload: JSONObject?,
+    ): String {
         val request =
             JSONObject()
                 .put("apiVersion", API_VERSION)
                 .put("method", method)
-        if (env != null) {
-            request.put("env", env.toJson())
-        }
         if (payload != null) {
             request.put("payload", payload)
         }
-
-        return parse(method, LibXray.invoke(request.toString()))
+        return request.toString()
     }
 
     /**
@@ -86,31 +86,4 @@ internal object LibXrayInvoke {
         }
         return envelope.optJSONObject("data")
     }
-}
-
-/**
- * The `env` object on a libXray invoke request.
- *
- * Field names are upstream's own — `LibXrayEnvJson` in
- * upstream PR #133, copied rather than renamed (the local patch carrying it
- * has been dropped; the v26.10.10 invoke API moves the channel into the
- * config root).
- *
- * Only [assetLocation] has a production caller today — `XrayController`
- * points it at [space.getsub.core.data.GeoAssetRepository]'s
- * install directory (research §2b). [certLocation] and [tunFd] exist because
- * they are part of upstream's shape, not because this project uses them.
- */
-internal data class XrayEnv(
-    val assetLocation: String? = null,
-    val certLocation: String? = null,
-    val tunFd: String? = null,
-) {
-    /** Omits absent fields rather than sending them empty — matches `omitempty` on the Go struct. */
-    fun toJson(): JSONObject =
-        JSONObject().apply {
-            assetLocation?.let { put("xray.location.asset", it) }
-            certLocation?.let { put("xray.location.cert", it) }
-            tunFd?.let { put("xray.tun.fd", it) }
-        }
 }

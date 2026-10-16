@@ -20,18 +20,10 @@ import java.io.File
  * reference cannot survive a service recreation (ARCHITECTURE.md §5.1).
  *
  * @param geoAssetDir Where `geoip.dat`/`geosite.dat` are installed —
- *   `GeoAssetRepository.geoDirectory()` in production. A constructor
- *   parameter rather than a per-call one on [validate]/[start]: this class is
- *   already single-use per connection, the directory cannot change mid-session,
- *   and threading it through the constructor means every call that needs it
- *   ([validate], [start]) gets it from one place instead of every call site
- *   having to remember to pass it. Sent on **every** [validate] and [start]
- *   call rather than tracked as "already sent" — `applyEnv` calls
- *   `os.Setenv` inside Go, which is sticky for the process's whole lifetime
- *   (`AssetLocationProbeTest`), so resending is redundant but harmless, and a
- *   dumb always-send beats a flag that could drift out of sync with reality.
- *   Null when routing is off and no rule needs geo data — callers are not
- *   required to have one.
+ *   `GeoAssetRepository.geoDirectory()` in production; null when routing is off
+ *   and no rule needs geo data. Not yet consumed: the invoke request no longer
+ *   carries an `env`, and the directory will travel in the config's own root
+ *   `env` block ([TunnelSettings.geoAssetDir]).
  */
 public class XrayController private constructor(
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -48,15 +40,6 @@ public class XrayController private constructor(
         io: CoroutineDispatcher = Dispatchers.IO,
         geoAssetDir: File? = null,
     ) : this(io, geoAssetDir, invocation)
-
-    /**
-     * The `env` object attached to every [validate]/[start] call. Built once per
-     * instance rather than per call — the directory is fixed for the life of a
-     * single-use controller (see the class KDoc) — and null when [geoAssetDir]
-     * is null, so [LibXrayInvoke.call] omits `env` entirely rather than sending
-     * one with nothing in it.
-     */
-    private val env: XrayEnv? = geoAssetDir?.let { XrayEnv(assetLocation = it.absolutePath) }
 
     /**
      * §10.6: never a hardcoded port. A fixed port collides with other proxy apps.
@@ -102,17 +85,15 @@ public class XrayController private constructor(
      * Takes a [File] because `testXray` accepts only a path — and validating the
      * same file [start] then runs means the bytes checked are the bytes used.
      *
-     * Carries [env]: `testXray` builds a real core (`StartXray` under the hood,
-     * research §4), so a `geoip:`/`geosite:`/`ext:` rule resolves geo data here
-     * exactly as it would on a live start — validation only means something if it
-     * exercises the same asset-location path [start] does.
+     * `testXray` builds a real core (`StartXray` under the hood, research §4), so a
+     * `geoip:`/`geosite:`/`ext:` rule resolves geo data here exactly as it would on a
+     * live start — the config's own `env` block supplies the asset location to both.
      */
     public suspend fun validate(configFile: File) {
         withContext(io) {
             LibXrayInvoke.call(
                 "testXray",
                 JSONObject().put("configPath", configFile.absolutePath),
-                env,
             )
         }
     }
@@ -131,10 +112,6 @@ public class XrayController private constructor(
      * `dns-out` outbound, which is the lever that reaches an app ignoring the
      * advertised resolver. `VpnService.Builder.addDnsServer()` is the third and
      * lives in the service.
-     *
-     * Carries [env] on the same call as `configPath`, not a separate call before
-     * it: `applyEnv` runs before `Invoke` dispatches on `method` (see the patch),
-     * so one request both sets the asset location and starts the core.
      */
     @Suppress("TooGenericExceptionCaught")
     public suspend fun start(
@@ -148,7 +125,7 @@ public class XrayController private constructor(
             // ARCHITECTURE.md §5.1's symptom. SocketProtector's implementation must log it.
             try {
                 invocation.retainProtector(protector)
-                invocation.runXray(configFile, env)
+                invocation.runXray(configFile)
             } catch (error: Throwable) {
                 invocation.clearProtector()
                 throw error
@@ -217,11 +194,10 @@ internal class XrayControllerInvocation(
         LibXray.registerDialerController(ProtectorHolder)
         LibXray.registerListenerController(ProtectorHolder)
     },
-    private val invokeRunXray: (File, XrayEnv?) -> Unit = { configFile, env ->
+    private val invokeRunXray: (File) -> Unit = { configFile ->
         LibXrayInvoke.call(
             "runXray",
             JSONObject().put("configPath", configFile.absolutePath),
-            env,
         )
     },
     private val invokeStopXray: () -> Unit = {
@@ -233,11 +209,8 @@ internal class XrayControllerInvocation(
         ProtectorHolder.target = protector
     }
 
-    fun runXray(
-        configFile: File,
-        env: XrayEnv?,
-    ) {
-        invokeRunXray(configFile, env)
+    fun runXray(configFile: File) {
+        invokeRunXray(configFile)
     }
 
     fun clearProtector() {

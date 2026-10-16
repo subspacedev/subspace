@@ -25,7 +25,7 @@ class XrayControllerLifetimeTest {
             val invocation =
                 XrayControllerInvocation(
                     registerControllers = {},
-                    invokeRunXray = { _, _ -> failureToThrow?.let { throw it } },
+                    invokeRunXray = { _ -> failureToThrow?.let { throw it } },
                     invokeStopXray = {},
                 )
             val testDispatcher = coroutineContext[ContinuationInterceptor] as CoroutineDispatcher
@@ -60,7 +60,7 @@ class XrayControllerLifetimeTest {
             val invocation =
                 XrayControllerInvocation(
                     registerControllers = { registrationFailure?.let { throw it } },
-                    invokeRunXray = { _, _ -> },
+                    invokeRunXray = { _ -> },
                     invokeStopXray = {},
                 )
             val testDispatcher = coroutineContext[ContinuationInterceptor] as CoroutineDispatcher

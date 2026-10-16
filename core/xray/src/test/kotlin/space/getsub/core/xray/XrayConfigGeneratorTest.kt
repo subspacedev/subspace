@@ -8,6 +8,9 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.Outbound
@@ -140,6 +143,30 @@ class XrayConfigGeneratorTest {
     fun `matches the golden file`() {
         val golden = checkNotNull(javaClass.getResource("/golden/vless-reality.json")).readText()
         generateJson(outbound, settings) shouldBe golden.trimEnd()
+    }
+
+    @Test
+    fun `generatedConfigCarriesTheGeoDirInItsEnvBlock`() {
+        val json = generateJson(outbound, settings.copy(geoAssetDir = "/data/geo"))
+
+        json shouldContain
+            """
+            |  "env": {
+            |    "xray.location.asset": "/data/geo"
+            |  },
+            """.trimMargin()
+        val env = Json.parseToJsonElement(json).jsonObject.getValue("env").jsonObject
+        env.getValue("xray.location.asset").jsonPrimitive.content shouldBe "/data/geo"
+    }
+
+    @Test
+    fun `noGeoDirMeansNoEnvBlock`() {
+        val json = generateJson(outbound, settings)
+
+        json shouldNotContain "\"env\""
+        // Same bytes as the golden file: the env block is purely additive.
+        val golden = checkNotNull(javaClass.getResource("/golden/vless-reality.json")).readText()
+        json shouldBe golden.trimEnd()
     }
 
     // The M1 tunnel is proven on hardware. Routing must not drift it, so this
