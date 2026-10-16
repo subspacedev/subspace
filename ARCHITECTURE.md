@@ -1699,7 +1699,7 @@ Mandatory rules:
   that will see every server name the app looks up. The first fetch carrying them raises a
   per-subscription consent card naming the DoH host; the grant is bound to that host, so a different
   host asks again. Without the grant the directives do nothing. The user's own switch under
-  Censorship resistance needs no card. (M9-C spec §7.)
+  Censorship resistance needs no card. (M9-C spec §1.3, §4.2.)
 
 ---
 
