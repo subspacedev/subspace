@@ -41,7 +41,7 @@ internal suspend fun runPreResolution(
         val silent = decision.reason == PreResolveReason.Off
         return PreResolveOutcome(
             ip = null,
-            logLine = if (silent) null else logLine(null, PreResolution.Skipped(decision.reason)),
+            logLine = if (silent) null else logLine(decision.source, PreResolution.Skipped(decision.reason)),
         )
     }
     decision as PreResolveDecision.Run

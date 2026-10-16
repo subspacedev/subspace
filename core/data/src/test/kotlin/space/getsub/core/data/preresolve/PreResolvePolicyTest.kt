@@ -50,14 +50,14 @@ class PreResolvePolicyTest {
         val absent = ProviderResolver.Absent
         val badIp = userOn.copy(bootstrapIp = "garbage")
         PreResolvePolicy.decide(badIp, null, absent, ResolverTrust.Unasked, null) shouldBe
-            PreResolveDecision.Off(PreResolveReason.InvalidUserResolver)
+            PreResolveDecision.Off(PreResolveReason.InvalidUserResolver, PreResolveSource.User)
         PreResolvePolicy.decide(
             userOn.copy(dohUrl = "http://x.example/q"),
             null,
             absent,
             ResolverTrust.Unasked,
             null,
-        ) shouldBe PreResolveDecision.Off(PreResolveReason.InvalidUserResolver)
+        ) shouldBe PreResolveDecision.Off(PreResolveReason.InvalidUserResolver, PreResolveSource.User)
     }
 
     @Test

@@ -90,10 +90,10 @@ class PreResolutionRunTest {
     @Test fun invalidUserResolverLogsOnce() =
         runTest {
             step(
-                PreResolveDecision.Off(PreResolveReason.InvalidUserResolver),
+                PreResolveDecision.Off(PreResolveReason.InvalidUserResolver, PreResolveSource.User),
                 PreResolution.Skipped(PreResolveReason.Off),
             ) shouldBe null
-            logged.single() shouldContain "reason=InvalidUserResolver"
+            logged.single() shouldBe "preresolve outcome=Skipped source=User reason=InvalidUserResolver"
         }
 
     @Test fun alreadyAnIpIsSilent() =

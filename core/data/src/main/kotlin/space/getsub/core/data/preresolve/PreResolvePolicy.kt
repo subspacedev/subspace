@@ -14,8 +14,10 @@ import space.getsub.core.parser.RedirectTargets
 public enum class PreResolveSource { User, Provider }
 
 internal sealed interface PreResolveDecision {
+    /** [source] names whose setting turned the step off; null when nobody asked for it (M9-C spec §4.3). */
     data class Off(
         val reason: PreResolveReason,
+        val source: PreResolveSource? = null,
     ) : PreResolveDecision
 
     data class Run(
@@ -47,7 +49,7 @@ public object PreResolvePolicy {
             return if (valid) {
                 PreResolveDecision.Run(ResolverConfig(url, bootstrap, userFragment), PreResolveSource.User)
             } else {
-                PreResolveDecision.Off(PreResolveReason.InvalidUserResolver)
+                PreResolveDecision.Off(PreResolveReason.InvalidUserResolver, PreResolveSource.User)
             }
         }
         if (provider is ProviderResolver.Valid && effectiveTrust(trust, trustHost, provider) == ResolverTrust.Allowed) {
