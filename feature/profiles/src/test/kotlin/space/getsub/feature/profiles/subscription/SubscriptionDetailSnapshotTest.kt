@@ -8,6 +8,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectTrust
+import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.profiles.R
@@ -94,6 +96,17 @@ class SubscriptionDetailSnapshotTest {
             movedAt = System.currentTimeMillis() - TWO_AND_A_HALF_HOURS_MS,
         )
 
+    // M9-C spec §4.2: the resolver consent card, and the switch with its line once answered.
+    private val resolverRequest =
+        fetched.copy(
+            refreshResult = null,
+            rows = emptyList(),
+            resolverProvider = ProviderResolver.Valid("https://dns.example/dns-query", "dns.example", null),
+            resolverTrust = ResolverTrust.Unasked,
+        )
+
+    private val resolverSwitch = resolverRequest.copy(resolverTrust = ResolverTrust.Allowed)
+
     private fun shoot(
         name: String,
         state: SubscriptionDetailState,
@@ -113,6 +126,12 @@ class SubscriptionDetailSnapshotTest {
 
     @Test
     fun reachingTheSubscription() = shoot("subscription-reach", reach)
+
+    @Test
+    fun resolverRequest() = shoot("subscription-resolver-request", resolverRequest)
+
+    @Test
+    fun resolverSwitch() = shoot("subscription-resolver-switch", resolverSwitch)
 
     private companion object {
         // DateUtils floors to whole hours, so 2.5 h renders "2 hours ago" for

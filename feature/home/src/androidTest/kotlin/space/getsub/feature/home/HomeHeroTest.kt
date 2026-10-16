@@ -84,7 +84,7 @@ class HomeHeroTest {
         composeRule.onNodeWithContentDescription("Starting core", substring = true)
             .assertIsNotEnabled()
             .assert(clickLabel(null))
-        composeRule.onNodeWithText("Step 4 of 6", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Step 5 of 7", substring = true).assertIsDisplayed()
     }
 
     @Test

@@ -21,7 +21,7 @@ import space.getsub.feature.profiles.R
 
 private val GROUP_HEADER_GAP = 8.dp
 
-/** What a group's card shows above its rows: quota, last update, and a pending redirect request. */
+/** What a group's card shows above its rows: quota, last update, and pending redirect and resolver requests. */
 @Composable
 internal fun ColumnScope.GroupCardHeader(
     group: ServersGroup,
@@ -40,24 +40,33 @@ internal fun ColumnScope.GroupCardHeader(
         onUpdate = group.subscriptionId?.let { id -> { actions.onUpdateSubscription(id) } },
     )
     if (group.redirectRequestHosts.isNotEmpty() && group.subscriptionId != null) {
-        GroupRedirectRequest(
-            hosts = group.redirectRequestHosts,
+        GroupTrustRequest(
+            text =
+            stringResource(R.string.subscription_redirect_request, group.redirectRequestHosts.joinToString(", ")),
             onAllow = { actions.onAllowRedirects(group.subscriptionId) },
             onDeny = { actions.onDenyRedirects(group.subscriptionId) },
         )
     }
+    val resolverHost = group.resolverRequestHost
+    if (resolverHost != null && group.subscriptionId != null) {
+        GroupTrustRequest(
+            text = stringResource(R.string.subscription_resolver_request, resolverHost),
+            onAllow = { actions.onAllowResolver(group.subscriptionId, resolverHost) },
+            onDeny = { actions.onDenyResolver(group.subscriptionId, resolverHost) },
+        )
+    }
 }
 
-/** The provider's redirect request, compact: the text, then Allow and Don't allow. */
+/** A provider's request for trust (redirects, M9-B; its DoH resolver, M9-C), compact: text, Allow, Don't allow. */
 @Composable
-private fun GroupRedirectRequest(
-    hosts: List<String>,
+private fun GroupTrustRequest(
+    text: String,
     onAllow: () -> Unit,
     onDeny: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = GROUP_HEADER_GAP)) {
         Text(
-            text = stringResource(R.string.subscription_redirect_request, hosts.joinToString(", ")),
+            text = text,
             style = MaterialTheme.typography.bodyMedium,
         )
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {

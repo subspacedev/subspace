@@ -128,7 +128,11 @@ public object RawConfigComposer {
 
         // M9-A spec §3.3: both branches. Applied to the config's own outbounds only; the
         // override's direct/block/dns-out extras are never eligible.
-        val ownOutbounds = ObfuscationInjector.apply(outbounds, settings.obfuscation)
+        val ownOutbounds =
+            AddressPinInjector.apply(
+                ObfuscationInjector.apply(outbounds, settings.obfuscation),
+                settings.addressPin,
+            )
 
         val kept =
             root.filterKeys { it !in STRIPPED }

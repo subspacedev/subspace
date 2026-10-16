@@ -14,6 +14,7 @@ import space.getsub.core.model.GeoSourceCatalogue
 import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.settings.SettingsActions
@@ -102,6 +103,14 @@ class SettingsPagesSnapshotTest {
                     packet = "0a0b0c0d",
                 ),
             ),
+        )
+
+    /** M9-C: server pre-resolution On shows its DoH URL and bootstrap IP fields. */
+    @Test
+    fun censorshipPreResolveOn() =
+        shoot(
+            SettingsPageId.Censorship,
+            base.copy(preResolve = PreResolveSettings.DEFAULT.copy(enabled = true), sessionConnected = true),
         )
 
     @Test

@@ -16,10 +16,13 @@ import space.getsub.core.data.ProfileRepository
 import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.SubscriptionRepository
+import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SubscriptionSyncer
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.ConnectionState
@@ -293,6 +296,24 @@ internal interface ProfileSource {
         id: Long,
         fragment: String?,
     ) {}
+
+    /**
+     * The provider's DoH resolver and [id]'s answer to it — see
+     * [SubscriptionRepository.observeResolverStatus]. Defaulted, like [observeRedirectStatus].
+     */
+    fun observeResolverStatus(id: Long): Flow<ResolverStatus> =
+        flowOf(ResolverStatus(ProviderResolver.Absent, ResolverTrust.Unasked))
+
+    /** Whether the user's own pre-resolution switch is On, which overrides the provider (M9-C spec §1.1). */
+    val userPreResolveOn: Flow<Boolean>
+        get() = flowOf(false)
+
+    /** Records [id]'s answer for the DoH [host] the user was shown — see [SubscriptionRepository.setResolverTrust]. */
+    suspend fun setResolverTrust(
+        id: Long,
+        trust: ResolverTrust,
+        host: String,
+    ) {}
 }
 
 /**
@@ -512,6 +533,17 @@ constructor(
         id: Long,
         fragment: String?,
     ) = subscriptionRepository.setLinkFragment(id, fragment)
+
+    override fun observeResolverStatus(id: Long): Flow<ResolverStatus> =
+        subscriptionRepository.observeResolverStatus(id)
+
+    override val userPreResolveOn: Flow<Boolean> = settingsRepository.preResolveSettings.map { it.enabled }
+
+    override suspend fun setResolverTrust(
+        id: Long,
+        trust: ResolverTrust,
+        host: String,
+    ) = subscriptionRepository.setResolverTrust(id, trust, host)
 
     /**
      * Task 8: runs every [StoredProfile] in [groupId] for which [isCandidate] is true through

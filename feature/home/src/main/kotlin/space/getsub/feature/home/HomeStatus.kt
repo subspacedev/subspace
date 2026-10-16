@@ -136,6 +136,7 @@ internal fun ConnectionState.labelRes(): Int =
 private fun StartupStage.labelRes(): Int =
     when (this) {
         StartupStage.AllocatingPort -> R.string.stage_allocating_port
+        StartupStage.ResolvingServer -> R.string.stage_resolving_server
         StartupStage.GeneratingConfig -> R.string.stage_generating_config
         StartupStage.ValidatingConfig -> R.string.stage_validating_config
         StartupStage.StartingCore -> R.string.stage_starting_core

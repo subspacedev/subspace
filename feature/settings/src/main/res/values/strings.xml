@@ -195,6 +195,10 @@
     <string name="settings_censorship_hub_fragment">Fragmentation</string>
     <string name="settings_censorship_hub_noise">Noise</string>
     <string name="settings_censorship_hub_both">Fragmentation, noise</string>
+    <string name="settings_censorship_hub_preresolve">Pre-resolution</string>
+    <string name="settings_censorship_hub_fragment_preresolve">Fragmentation, pre-resolution</string>
+    <string name="settings_censorship_hub_noise_preresolve">Noise, pre-resolution</string>
+    <string name="settings_censorship_hub_all">Fragmentation, noise, pre-resolution</string>
     <string name="settings_fragment_label">Fragmentation</string>
     <string name="settings_fragment_summary">Splits the TLS handshake so DPI cannot read it. Overrides what your subscription or config sets.</string>
     <string name="settings_fragment_off_summary">Off: your subscription\'s settings apply</string>
@@ -208,6 +212,14 @@
     <string name="settings_noise_summary">Sends junk packets before connecting. Only affects UDP-based servers (Hysteria2, QUIC). Overrides your provider.</string>
     <string name="settings_noise_off_summary">Off: your subscription\'s settings apply</string>
     <string name="settings_noise_connected_note">Noise changes from your next connection.</string>
+    <string name="settings_preresolve_title">Pre-resolve server addresses</string>
+    <string name="settings_preresolve_summary">Looks up your server\'s address over DoH before connecting, so a poisoned local DNS can\'t misdirect it. Overrides your provider.</string>
+    <string name="settings_preresolve_off">Off: your subscription\'s settings apply</string>
+    <string name="settings_preresolve_doh_url">DoH URL</string>
+    <string name="settings_preresolve_bootstrap">Bootstrap IP</string>
+    <string name="settings_preresolve_doh_url_error">Must be an https address with a host name</string>
+    <string name="settings_preresolve_bootstrap_error">Must be an IPv4 or IPv6 address</string>
+    <string name="settings_preresolve_connected_note">Applies from the next connection.</string>
     <string name="settings_noise_mode_random">Random bytes</string>
     <string name="settings_noise_mode_fixed">Fixed packet</string>
     <string name="settings_noise_rand">Length, bytes</string>

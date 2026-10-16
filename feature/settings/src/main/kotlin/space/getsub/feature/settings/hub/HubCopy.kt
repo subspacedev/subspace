@@ -70,12 +70,17 @@ internal fun aboutText(state: SettingsState): String =
             stringResource(R.string.settings_hub_about_app_only, state.appVersion)
     }
 
-/** M9-A spec §2.3: what is on. Both Off names the provider's settings, never "off". */
+/** M9-A spec §2.3 (and M9-C): what is on. Both Off names the provider's settings, never "off". */
 @StringRes
 internal fun censorshipTextRes(state: SettingsState): Int =
     when {
+        state.fragment.enabled && state.noise.enabled && state.preResolve.enabled ->
+            R.string.settings_censorship_hub_all
         state.fragment.enabled && state.noise.enabled -> R.string.settings_censorship_hub_both
+        state.fragment.enabled && state.preResolve.enabled -> R.string.settings_censorship_hub_fragment_preresolve
+        state.noise.enabled && state.preResolve.enabled -> R.string.settings_censorship_hub_noise_preresolve
         state.fragment.enabled -> R.string.settings_censorship_hub_fragment
         state.noise.enabled -> R.string.settings_censorship_hub_noise
+        state.preResolve.enabled -> R.string.settings_censorship_hub_preresolve
         else -> R.string.settings_censorship_hub_off
     }

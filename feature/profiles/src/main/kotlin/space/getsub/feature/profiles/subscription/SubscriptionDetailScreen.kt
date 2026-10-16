@@ -61,7 +61,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.isDirectiveEnabled
+import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.parser.RedirectRejection
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.HubRow
@@ -131,13 +133,16 @@ fun SubscriptionDetailScreen(
             onRedirectsAllowedChanged = viewModel::onRedirectsAllowedChanged,
             onFrontingSaved = viewModel::onFrontingSaved,
             onLinkFragmentSaved = viewModel::onLinkFragmentSaved,
+            onAllowResolver = viewModel::onAllowResolver,
+            onDenyResolver = viewModel::onDenyResolver,
+            onResolverAllowedChanged = viewModel::onResolverAllowedChanged,
         ),
         modifier = modifier,
     )
 }
 
 /**
- * [SubscriptionDetailContent]'s thirteen callbacks, grouped for the same reason
+ * [SubscriptionDetailContent]'s sixteen callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.editor.EditorActions] is.
  */
 internal data class SubscriptionDetailActions(
@@ -154,6 +159,10 @@ internal data class SubscriptionDetailActions(
     val onRedirectsAllowedChanged: (Boolean) -> Unit,
     val onFrontingSaved: (resolveAddress: String?, hostHeader: String?) -> Unit,
     val onLinkFragmentSaved: (String?) -> Unit,
+    // M9-C spec §4.2. Defaulted so callers that do not show the resolver need not wire it.
+    val onAllowResolver: () -> Unit = {},
+    val onDenyResolver: () -> Unit = {},
+    val onResolverAllowedChanged: (Boolean) -> Unit = {},
 )
 
 /**
@@ -250,13 +259,7 @@ private fun DetailBody(
             .padding(horizontal = CONTENT_PADDING)
             .padding(bottom = CONTENT_PADDING),
     ) {
-        if (state.showsRedirectRequest) {
-            RedirectRequestCard(
-                hosts = state.redirectTargetHosts,
-                onAllow = actions.onAllowRedirects,
-                onDeny = actions.onDenyRedirects,
-            )
-        }
+        TrustRequests(state = state, actions = actions)
         SectionCard(title = stringResource(R.string.subscription_detail_section_subscription)) {
             UrlRow(redactedUrl = state.redactedUrl)
             LastFetchRow(state = state, onRefreshNow = actions.onRefreshNow)
@@ -302,9 +305,33 @@ private fun DetailBody(
     }
 }
 
+/** The provider's pending requests, redirects first (M9-B spec §4), then its DoH resolver (M9-C spec §1.3). */
 @Composable
-private fun RedirectRequestCard(
-    hosts: List<String>,
+private fun TrustRequests(
+    state: SubscriptionDetailState,
+    actions: SubscriptionDetailActions,
+) {
+    if (state.showsRedirectRequest) {
+        TrustRequestCard(
+            text = stringResource(R.string.subscription_redirect_request, state.redirectTargetHosts.joinToString(", ")),
+            onAllow = actions.onAllowRedirects,
+            onDeny = actions.onDenyRedirects,
+        )
+    }
+    val resolverHost = state.resolverHost
+    if (state.showsResolverRequest && resolverHost != null) {
+        TrustRequestCard(
+            text = stringResource(R.string.subscription_resolver_request, resolverHost),
+            onAllow = actions.onAllowResolver,
+            onDeny = actions.onDenyResolver,
+        )
+    }
+}
+
+/** A provider's request for trust: the text, then Allow and Don't allow. */
+@Composable
+private fun TrustRequestCard(
+    text: String,
     onAllow: () -> Unit,
     onDeny: () -> Unit,
 ) {
@@ -315,7 +342,7 @@ private fun RedirectRequestCard(
     ) {
         Column(modifier = Modifier.padding(CONTENT_PADDING), verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
             Text(
-                text = stringResource(R.string.subscription_redirect_request, hosts.joinToString(", ")),
+                text = text,
                 style = MaterialTheme.typography.bodyLarge,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
@@ -339,6 +366,16 @@ private fun ReachSection(
                 supporting = null,
                 checked = state.redirectTrust == RedirectTrust.Allowed,
                 onCheckedChange = actions.onRedirectsAllowedChanged,
+            )
+        }
+        val resolverHost = state.resolverHost
+        if (state.showsResolverSwitch && resolverHost != null) {
+            SwitchRow(
+                icon = SubspaceIcons.VpnLock,
+                label = stringResource(R.string.subscription_resolver_switch, resolverHost),
+                supporting = null,
+                checked = state.resolverTrust == ResolverTrust.Allowed,
+                onCheckedChange = actions.onResolverAllowedChanged,
             )
         }
         FrontingFields(state.resolveAddress, state.hostHeader, onSave = actions.onFrontingSaved)
@@ -441,6 +478,32 @@ private fun ReachLines(state: SubscriptionDetailState) {
         IgnoredDirectiveText(stringResource(R.string.subscription_fetch_fragment_invalid, reason))
     }
     state.redirectIssues.forEach { issue -> IgnoredDirectiveText(redirectIssueText(issue)) }
+    ResolverLines(state)
+}
+
+/**
+ * M9-C spec §4.2. Trust is meaningful only while the provider's resolver is valid: for an absent or
+ * invalid one the stored answer is not compared with any host, so it is not shown.
+ */
+@Composable
+private fun ResolverLines(state: SubscriptionDetailState) {
+    val provider = state.resolverProvider
+    if (state.userPreResolveOn && provider !is ProviderResolver.Absent) {
+        ReachFact(stringResource(R.string.subscription_resolver_user_applies))
+    }
+    if (!state.userPreResolveOn && state.resolverTrust == ResolverTrust.Denied && state.resolverHost != null) {
+        ReachFact(stringResource(R.string.subscription_resolver_denied))
+    }
+    if (provider is ProviderResolver.Invalid) {
+        IgnoredDirectiveText(stringResource(R.string.subscription_resolver_invalid))
+    }
+    // The user's own setting always carries a bootstrap IP, so this line is only true while it is Off.
+    val providerInUse =
+        (provider as? ProviderResolver.Valid)
+            ?.takeIf { !state.userPreResolveOn && state.resolverTrust == ResolverTrust.Allowed }
+    if (providerInUse != null && providerInUse.bootstrapIp == null) {
+        ReachFact(stringResource(R.string.subscription_resolver_plain_bootstrap))
+    }
 }
 
 @Composable

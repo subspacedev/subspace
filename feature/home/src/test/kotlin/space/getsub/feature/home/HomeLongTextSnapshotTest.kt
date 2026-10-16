@@ -42,7 +42,7 @@ class HomeLongTextSnapshotTest {
 
     /**
      * The longest one-line status at 360 dp: "Establishing tunnel interface… ·
-     * Step 5 of 6". Only a failure's detail may wrap.
+     * Step 6 of 7". Only a failure's detail may wrap.
      */
     @Test
     fun longestStatusLine() {

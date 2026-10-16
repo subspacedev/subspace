@@ -19,6 +19,7 @@ import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.ProfileDns
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -157,6 +158,11 @@ internal interface SettingsSource {
 
     suspend fun setNoiseSettings(settings: NoiseSettings)
 
+    /** The user's server pre-resolution (M9-C). See [SettingsRepository.preResolveSettings]. */
+    val preResolveSettings: Flow<PreResolveSettings>
+
+    suspend fun setPreResolveSettings(settings: PreResolveSettings)
+
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
@@ -269,6 +275,11 @@ constructor(
         settingsRepository.setFragmentSettings(settings)
 
     override val noiseSettings: Flow<NoiseSettings> = settingsRepository.noiseSettings
+
+    override val preResolveSettings: Flow<PreResolveSettings> = settingsRepository.preResolveSettings
+
+    override suspend fun setPreResolveSettings(settings: PreResolveSettings) =
+        settingsRepository.setPreResolveSettings(settings)
 
     override suspend fun setNoiseSettings(settings: NoiseSettings) = settingsRepository.setNoiseSettings(settings)
 

@@ -15,7 +15,9 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.dnsoverhttps)
 
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.kotlinx.coroutines.test)

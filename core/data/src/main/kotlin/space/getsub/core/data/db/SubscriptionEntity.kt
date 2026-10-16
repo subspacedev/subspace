@@ -64,6 +64,9 @@ internal data class SubscriptionEntity(
     val movedFromHost: String? = null,
     val movedAt: Long? = null,
     val lastFetchVia: String? = null,
+    // M9-C spec §1.5: the grant for the provider's DoH resolver, bound to the host it was answered for.
+    @ColumnInfo(defaultValue = "'UNASKED'") val resolverTrust: String = "UNASKED",
+    val resolverTrustHost: String? = null,
 ) {
     // ARCHITECTURE.md §5.6: url is a secret. The generated data-class toString() would print
     // it verbatim, which is exactly the "reaches a log line" failure mode
@@ -82,7 +85,8 @@ internal data class SubscriptionEntity(
             "linkFragment=${if (linkFragment == null) "none" else "<redacted>"}, " +
             "insecureIgnored=$insecureIgnored, redirectTrust=$redirectTrust, " +
             "movedFromHost=${if (movedFromHost == null) "none" else "<redacted>"}, " +
-            "movedAt=$movedAt, lastFetchVia=$lastFetchVia)"
+            "movedAt=$movedAt, lastFetchVia=$lastFetchVia, resolverTrust=$resolverTrust, " +
+            "resolverTrustHost=${if (resolverTrustHost == null) "none" else "<redacted>"})"
 }
 
 /**

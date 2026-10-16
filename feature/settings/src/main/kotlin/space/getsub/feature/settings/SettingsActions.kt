@@ -18,6 +18,7 @@ import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.ui.component.SubspaceDialog
 import space.getsub.core.ui.icon.SubspaceIcons
 
@@ -78,6 +79,7 @@ internal data class SettingsActions(
     // Field-level patches, applied by the ViewModel to the latest stored value (M9-A Task 8 fix 1).
     val onFragmentSettingsChanged: ((FragmentSettings) -> FragmentSettings) -> Unit = {},
     val onNoiseSettingsChanged: ((NoiseSettings) -> NoiseSettings) -> Unit = {},
+    val onPreResolveSettingsChanged: ((PreResolveSettings) -> PreResolveSettings) -> Unit = {},
 )
 
 /** Every [SettingsActions] callback bound to [viewModel]; shared by the hub and the sub-pages. */
@@ -108,6 +110,7 @@ internal fun settingsActionsOf(viewModel: SettingsViewModel): SettingsActions =
         onDynamicColorChanged = viewModel::onDynamicColorChanged,
         onFragmentSettingsChanged = viewModel::onFragmentSettingsChanged,
         onNoiseSettingsChanged = viewModel::onNoiseSettingsChanged,
+        onPreResolveSettingsChanged = viewModel::onPreResolveSettingsChanged,
     )
 
 /**

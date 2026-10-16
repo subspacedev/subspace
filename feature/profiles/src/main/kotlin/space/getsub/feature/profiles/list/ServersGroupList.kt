@@ -82,6 +82,10 @@ internal data class ServersGroupListActions(
     val onAllowRedirects: (Long) -> Unit,
     /** The redirect request's Don't allow, for the same subscription id. */
     val onDenyRedirects: (Long) -> Unit,
+    /** The resolver request's Allow, for the subscription id and the DoH host the card showed. */
+    val onAllowResolver: (Long, String) -> Unit = { _, _ -> },
+    /** The resolver request's Don't allow, for the same subscription id and host. */
+    val onDenyResolver: (Long, String) -> Unit = { _, _ -> },
     /**
      * Task 15: `GroupCard`'s "Subscription details" overflow item — opens
      * `SubscriptionDetail(subscriptionId)`. Same "only ever invoked for a

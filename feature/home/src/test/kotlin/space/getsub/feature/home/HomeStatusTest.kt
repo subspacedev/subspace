@@ -44,11 +44,11 @@ class HomeStatusTest {
     private fun connected(health: Health) = ConnectionState.Connected(1_000L, 1080, 0, health)
 
     @Test
-    fun `every startup stage reads as its step of six`() {
+    fun `every startup stage reads as its step of seven`() {
         StartupStage.entries.forEachIndexed { i, stage ->
             ConnectionState.Connecting(stage).detail() shouldBe HomeDetail.Step(i + 1, StartupStage.entries.size)
         }
-        StartupStage.entries.size shouldBe 6
+        StartupStage.entries.size shouldBe 7
     }
 
     @Test
@@ -89,8 +89,8 @@ class HomeStatusTest {
 
     @Test
     fun `startup stages keep their order at the ends`() {
-        ConnectionState.Connecting(StartupStage.AllocatingPort).detail() shouldBe HomeDetail.Step(1, 6)
-        ConnectionState.Connecting(StartupStage.StartingTunnel).detail() shouldBe HomeDetail.Step(6, 6)
+        ConnectionState.Connecting(StartupStage.AllocatingPort).detail() shouldBe HomeDetail.Step(1, 7)
+        ConnectionState.Connecting(StartupStage.StartingTunnel).detail() shouldBe HomeDetail.Step(7, 7)
     }
 
     @Test
@@ -147,7 +147,7 @@ class HomeStatusTest {
         line(ConnectionState.Disconnected, server = profile("kcp")) shouldBe
             StatusLine(R.string.state_disconnected, null)
         line(ConnectionState.Connecting(StartupStage.StartingCore)) shouldBe
-            StatusLine(R.string.stage_starting_core, HomeDetail.Step(4, 6))
+            StatusLine(R.string.stage_starting_core, HomeDetail.Step(5, 7))
         line(connected(Health.Open)) shouldBe
             StatusLine(R.string.state_connected, HomeDetail.Uptime(1_000L, idle = false))
         line(connected(Health.Idle)) shouldBe

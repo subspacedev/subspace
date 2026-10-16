@@ -30,6 +30,7 @@ import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.isGeoFileName
 import javax.inject.Inject
 
@@ -69,7 +70,7 @@ constructor(
     private var editableDnsRevision: Long? = null
     private var latestPersistedDnsResolver = DnsResolver.DEFAULT
 
-    /** Serialises fragmentation and noise patches (see [onFragmentSettingsChanged]). */
+    /** Serialises fragmentation, noise and pre-resolution patches (see [onFragmentSettingsChanged]). */
     private val obfuscationWrites = Mutex()
 
     init {
@@ -169,6 +170,10 @@ constructor(
             .onEach { value -> _state.update { it.copy(noise = value) } }
             .launchIn(viewModelScope)
 
+        settingsSource.preResolveSettings
+            .onEach { value -> _state.update { it.copy(preResolve = value) } }
+            .launchIn(viewModelScope)
+
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)
         // purely so SettingsState.perTagBreakdownSessionNoticeVisible has something to derive
         // from — see that property's own KDoc for why this plain mirror, with no latch of what
@@ -261,6 +266,15 @@ constructor(
         viewModelScope.launch {
             obfuscationWrites.withLock {
                 settingsSource.setNoiseSettings(patch(settingsSource.noiseSettings.first()))
+            }
+        }
+    }
+
+    /** As [onFragmentSettingsChanged]. */
+    fun onPreResolveSettingsChanged(patch: (PreResolveSettings) -> PreResolveSettings) {
+        viewModelScope.launch {
+            obfuscationWrites.withLock {
+                settingsSource.setPreResolveSettings(patch(settingsSource.preResolveSettings.first()))
             }
         }
     }

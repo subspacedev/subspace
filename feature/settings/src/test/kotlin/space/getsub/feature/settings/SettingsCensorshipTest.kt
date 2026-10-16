@@ -19,6 +19,7 @@ import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.feature.settings.SettingsViewModelTest.FakeAppVersionSource
 import space.getsub.feature.settings.SettingsViewModelTest.FakeGeoAssetSource
 import space.getsub.feature.settings.SettingsViewModelTest.FakeSettingsSource
@@ -94,18 +95,51 @@ class SettingsCensorshipTest {
         }
 
     @Test
+    fun `a pre-resolve patch is stored`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+
+            vm.onPreResolveSettingsChanged { it.copy(enabled = true) }
+            advanceUntilIdle()
+
+            source.preResolve.value.enabled shouldBe true
+        }
+
+    @Test
+    fun `pre-resolve state follows the source`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val vm = viewModel(source)
+            vm.state.value.preResolve shouldBe PreResolveSettings.DEFAULT
+
+            source.preResolve.value = PreResolveSettings(true, "https://dns.google/dns-query", "8.8.8.8")
+            advanceUntilIdle()
+
+            vm.state.value.preResolve.dohUrl shouldBe "https://dns.google/dns-query"
+        }
+
+    @Test
     fun `hub text names what is on`() {
-        censorshipTextRes(SettingsState()) shouldBe R.string.settings_censorship_hub_off
-        censorshipTextRes(SettingsState(fragment = FragmentSettings.DEFAULT.copy(enabled = true))) shouldBe
-            R.string.settings_censorship_hub_fragment
-        censorshipTextRes(SettingsState(noise = NoiseSettings.DEFAULT.copy(enabled = true))) shouldBe
-            R.string.settings_censorship_hub_noise
-        censorshipTextRes(
+        fun text(
+            fragment: Boolean,
+            noise: Boolean,
+            preResolve: Boolean,
+        ) = censorshipTextRes(
             SettingsState(
-                fragment = FragmentSettings.DEFAULT.copy(enabled = true),
-                noise = NoiseSettings.DEFAULT.copy(enabled = true),
+                fragment = FragmentSettings.DEFAULT.copy(enabled = fragment),
+                noise = NoiseSettings.DEFAULT.copy(enabled = noise),
+                preResolve = PreResolveSettings.DEFAULT.copy(enabled = preResolve),
             ),
-        ) shouldBe R.string.settings_censorship_hub_both
+        )
+        text(false, false, false) shouldBe R.string.settings_censorship_hub_off
+        text(true, false, false) shouldBe R.string.settings_censorship_hub_fragment
+        text(false, true, false) shouldBe R.string.settings_censorship_hub_noise
+        text(false, false, true) shouldBe R.string.settings_censorship_hub_preresolve
+        text(true, true, false) shouldBe R.string.settings_censorship_hub_both
+        text(true, false, true) shouldBe R.string.settings_censorship_hub_fragment_preresolve
+        text(false, true, true) shouldBe R.string.settings_censorship_hub_noise_preresolve
+        text(true, true, true) shouldBe R.string.settings_censorship_hub_all
     }
 
     @Test

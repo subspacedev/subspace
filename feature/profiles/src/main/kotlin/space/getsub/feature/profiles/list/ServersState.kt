@@ -135,6 +135,11 @@ internal data class ServersGroup(
      * allow while it is not.
      */
     val redirectRequestHosts: List<String> = emptyList(),
+    /**
+     * The DoH host the provider asks to look server addresses up through, while the user has not
+     * answered and the provider's directives are valid (M9-C spec §1.3). Null otherwise.
+     */
+    val resolverRequestHost: String? = null,
 )
 
 /**

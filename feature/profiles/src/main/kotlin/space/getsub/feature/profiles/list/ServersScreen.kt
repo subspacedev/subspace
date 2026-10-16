@@ -156,6 +156,8 @@ fun ServersScreen(
                 onUpdateSubscription = viewModel::onUpdateSubscription,
                 onAllowRedirects = viewModel::onAllowRedirects,
                 onDenyRedirects = viewModel::onDenyRedirects,
+                onAllowResolver = viewModel::onAllowResolver,
+                onDenyResolver = viewModel::onDenyResolver,
                 onDismissUpdateResult = viewModel::onDismissUpdateResult,
                 onOpenSubscriptionDetail = onOpenSubscriptionDetail,
                 onTestProfile = viewModel::onTestProfile,
@@ -198,6 +200,10 @@ internal data class ServersActions(
     val onAllowRedirects: (Long) -> Unit,
     /** Forwarded to [ServersGroupListActions.onDenyRedirects]. */
     val onDenyRedirects: (Long) -> Unit,
+    /** Forwarded to [ServersGroupListActions.onAllowResolver]. */
+    val onAllowResolver: (Long, String) -> Unit = { _, _ -> },
+    /** Forwarded to [ServersGroupListActions.onDenyResolver]. */
+    val onDenyResolver: (Long, String) -> Unit = { _, _ -> },
     /** Dismisses [ServersState.updateResult] once read. */
     val onDismissUpdateResult: () -> Unit,
     /** Task 15: forwarded to [ServersGroupListActions.onOpenSubscriptionDetail]. */
@@ -272,6 +278,8 @@ internal fun ServersScreenContent(
                 onUpdateSubscription = actions.onUpdateSubscription,
                 onAllowRedirects = actions.onAllowRedirects,
                 onDenyRedirects = actions.onDenyRedirects,
+                onAllowResolver = actions.onAllowResolver,
+                onDenyResolver = actions.onDenyResolver,
                 onOpenSubscriptionDetail = actions.onOpenSubscriptionDetail,
                 onTestProfile = actions.onTestProfile,
                 onTestGroup = actions.onTestGroup,

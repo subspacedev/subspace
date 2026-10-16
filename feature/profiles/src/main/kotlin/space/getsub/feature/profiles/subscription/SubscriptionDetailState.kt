@@ -7,8 +7,10 @@ import space.getsub.core.data.EffectiveValue
 import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.isDirectiveEnabled
+import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.feature.profiles.add.UserMessage
@@ -196,7 +198,23 @@ internal data class SubscriptionDetailState(
     val movedAt: Long? = null,
     val lastFetchVia: FetchVia? = null,
     val insecureIgnored: Boolean = false,
+    // M9-C spec §4.2.
+    val resolverProvider: ProviderResolver = ProviderResolver.Absent,
+    val resolverTrust: ResolverTrust = ResolverTrust.Unasked,
+    val userPreResolveOn: Boolean = false,
 ) {
+    /** The provider's DoH host, only while its resolver directives are valid (M9-C spec §1.2). */
+    val resolverHost: String?
+        get() = (resolverProvider as? ProviderResolver.Valid)?.host
+
+    /** M9-C spec §1.3: the card shows while unanswered and the provider names a valid resolver. */
+    val showsResolverRequest: Boolean
+        get() = resolverTrust == ResolverTrust.Unasked && resolverHost != null
+
+    /** M9-C spec §4.2: after an answer, a switch changes it. */
+    val showsResolverSwitch: Boolean
+        get() = resolverTrust != ResolverTrust.Unasked && resolverHost != null
+
     /** Plan ruling P2: the request shows only while unanswered and there is something to ask about. */
     val showsRedirectRequest: Boolean
         get() = redirectTrust == RedirectTrust.Unasked && redirectTargetHosts.isNotEmpty()
@@ -213,7 +231,9 @@ internal data class SubscriptionDetailState(
             "redirectTargetHosts=<redacted>, redirectIssues=$redirectIssues, " +
             "resolveAddress=${redactedOrNone(resolveAddress)}, hostHeader=${redactedOrNone(hostHeader)}, " +
             "linkFragment=${redactedOrNone(linkFragment)}, movedFromHost=${redactedOrNone(movedFromHost)}, " +
-            "movedAt=$movedAt, lastFetchVia=$lastFetchVia, isRefreshing=$isRefreshing, deleted=$deleted)"
+            "movedAt=$movedAt, lastFetchVia=$lastFetchVia, resolverProvider=$resolverProvider, " +
+            "resolverTrust=$resolverTrust, userPreResolveOn=$userPreResolveOn, isRefreshing=$isRefreshing, " +
+            "deleted=$deleted)"
 }
 
 private fun redactedOrNone(value: String?): String = if (value == null) "none" else "<redacted>"

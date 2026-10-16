@@ -169,6 +169,20 @@ class ServersSnapshotTest {
             },
         )
 
+    @Test
+    fun resolverRequest() =
+        shoot(
+            "servers-resolver-request",
+            populated().let { s ->
+                s.copy(
+                    groups =
+                    s.groups.mapIndexed { i, g ->
+                        if (i == 0) g.copy(resolverRequestHost = "dns.example") else g
+                    },
+                )
+            },
+        )
+
     private companion object {
         const val DROPPED_AT = 1_700_000_000_000L
         const val THREE_HOURS_MILLIS = 3L * 60 * 60 * 1000

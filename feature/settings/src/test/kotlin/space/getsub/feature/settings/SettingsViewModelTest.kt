@@ -34,6 +34,7 @@ import space.getsub.core.model.GeoSourceCatalogue
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.PreResolveSettings
 
 /**
  * Covers Task 22's substance: theme is persisted through [SettingsSource]
@@ -235,6 +236,13 @@ class SettingsViewModelTest {
 
         override suspend fun setNoiseSettings(settings: NoiseSettings) {
             noise.value = settings
+        }
+
+        val preResolve = MutableStateFlow(PreResolveSettings.DEFAULT)
+        override val preResolveSettings: Flow<PreResolveSettings> = preResolve.asStateFlow()
+
+        override suspend fun setPreResolveSettings(settings: PreResolveSettings) {
+            preResolve.value = settings
         }
 
         var ignoringBatteryOptimizations: Boolean = false

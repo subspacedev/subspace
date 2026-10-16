@@ -32,6 +32,7 @@ import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.ObfuscationValidation
+import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
 import space.getsub.core.ui.component.SectionTitle
@@ -58,6 +59,7 @@ internal fun CensorshipPage(
         // Read once at connect, like lightweight mode: while connected, say a change waits for the next one.
         FragmentSection(state.fragment, state.sessionConnected, actions.onFragmentSettingsChanged)
         NoiseSection(state.noise, state.sessionConnected, actions.onNoiseSettingsChanged)
+        PreResolveSection(state.preResolve, state.sessionConnected, actions.onPreResolveSettingsChanged)
     }
 }
 
@@ -146,6 +148,47 @@ private fun NoiseSection(
 }
 
 @Composable
+private fun PreResolveSection(
+    value: PreResolveSettings,
+    connected: Boolean,
+    update: Patch<PreResolveSettings>,
+) {
+    var resets by remember { mutableIntStateOf(0) }
+    SwitchRow(
+        icon = SubspaceIcons.Shield,
+        label = stringResource(R.string.settings_preresolve_title),
+        supporting =
+        stringResource(if (value.enabled) R.string.settings_preresolve_summary else R.string.settings_preresolve_off),
+        checked = value.enabled,
+        onCheckedChange = { on -> update { it.copy(enabled = on) } },
+        note = stringResource(R.string.settings_preresolve_connected_note).takeIf { connected },
+    )
+    if (!value.enabled) return
+    CompositionLocalProvider(LocalDraftResets provides resets) {
+        FieldWithError(
+            label = R.string.settings_preresolve_doh_url,
+            stored = value.dohUrl,
+            errorRes = { if (isDohUrl(it)) null else R.string.settings_preresolve_doh_url_error },
+        ) { draft ->
+            if (draft.trim() != value.dohUrl) update { it.copy(dohUrl = draft.trim()) }
+        }
+        FieldWithError(
+            label = R.string.settings_preresolve_bootstrap,
+            stored = value.bootstrapIp,
+            errorRes = { if (isIpLiteral(it)) null else R.string.settings_preresolve_bootstrap_error },
+        ) { draft ->
+            if (draft.trim() != value.bootstrapIp) update { it.copy(bootstrapIp = draft.trim()) }
+        }
+    }
+    TextButton(onClick = {
+        resets++
+        update { PreResolveSettings.DEFAULT.copy(enabled = true) }
+    }) {
+        Text(stringResource(R.string.settings_obfuscation_reset))
+    }
+}
+
+@Composable
 private fun NoiseFields(
     value: NoiseSettings,
     update: Patch<NoiseSettings>,
@@ -212,10 +255,7 @@ private fun FixedPacket(
 
 /**
  * A draft that commits only valid text (M9-A Review Focus 4), on Done, focus loss and leaving the
- * page (M9-A Review Focus 5). The error is shown inline from [validate]'s problem. The tag names the
- * label's resource id so a test can find one field without depending on its rendered text.
- * [LocalDraftResets] discards the draft when Reset is pressed; keying the composable instead would
- * dispose it, and disposing commits.
+ * page (M9-A Review Focus 5). The error is shown inline from [validate]'s problem.
  */
 @Composable
 private fun ValidatedField(
@@ -224,19 +264,40 @@ private fun ValidatedField(
     validate: (String) -> Checked<*>,
     @StringRes hint: Int? = null,
     commitValue: (String) -> Unit,
+) = FieldWithError(
+    label = label,
+    stored = stored,
+    errorRes = { draft -> (validate(draft) as? Checked.Invalid)?.problem?.textRes() },
+    hint = hint,
+    commitValue = commitValue,
+)
+
+/**
+ * [ValidatedField]'s body: [errorRes] is null for a valid draft, else the message to show. The tag
+ * names the label's resource id so a test can find one field without depending on its rendered text.
+ * [LocalDraftResets] discards the draft when Reset is pressed; keying the composable instead would
+ * dispose it, and disposing commits.
+ */
+@Composable
+private fun FieldWithError(
+    @StringRes label: Int,
+    stored: String,
+    errorRes: (String) -> Int?,
+    @StringRes hint: Int? = null,
+    commitValue: (String) -> Unit,
 ) {
     var draft by remember(stored, LocalDraftResets.current) { mutableStateOf(stored) }
-    val checked = validate(draft)
-    val commit = { if (shouldCommitDraft(draft, stored, isValid = checked is Checked.Ok)) commitValue(draft) }
+    val error = errorRes(draft)
+    val commit = { if (shouldCommitDraft(draft, stored, isValid = error == null)) commitValue(draft) }
     CommitDraftOnDispose(commit)
     OutlinedTextField(
         value = draft,
         onValueChange = { draft = it },
         label = { Text(stringResource(label)) },
-        isError = checked is Checked.Invalid,
+        isError = error != null,
         supportingText = {
             when {
-                checked is Checked.Invalid -> Text(stringResource(checked.problem.textRes()))
+                error != null -> Text(stringResource(error))
                 hint != null -> Text(stringResource(hint))
             }
         },

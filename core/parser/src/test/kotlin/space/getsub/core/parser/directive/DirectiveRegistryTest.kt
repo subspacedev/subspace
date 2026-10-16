@@ -137,10 +137,17 @@ class DirectiveRegistryTest {
      * This set is the whole reason the blanket assertion below was narrowed rather
      * than deleted. Adding a member here is a claim that the key cannot take effect
      * without the user approving it, in a UI that shows them what they are
-     * approving. `routing` earns it through M6's import review sheet (M6 spec §6).
+     * approving. `routing` earns it through M6's import review sheet (M6 spec §6). The three
+     * `server-address-resolve-*` keys earn it through M9-C's per-subscription resolver card (M9-C spec §1.3).
      */
     @Suppress("VariableNaming", "ktlint:standard:property-naming")
-    private val CONFIRMED_DANGEROUS_KEYS = setOf("routing")
+    private val CONFIRMED_DANGEROUS_KEYS =
+        setOf(
+            "routing",
+            "server-address-resolve-enable",
+            "server-address-resolve-dns-domain",
+            "server-address-resolve-dns-ip",
+        )
 
     @Test
     fun dangerousKeysAreUnconsumedUnlessTheyPassThroughConfirmation() {
@@ -159,7 +166,13 @@ class DirectiveRegistryTest {
     fun theConfirmedDangerousSetIsExactlyWhatWeThinkItIs() {
         // Pinned so that a future milestone wiring up a second Dangerous key has to
         // change this line, and explain itself in the diff.
-        CONFIRMED_DANGEROUS_KEYS shouldBe setOf("routing")
+        CONFIRMED_DANGEROUS_KEYS shouldBe
+            setOf(
+                "routing",
+                "server-address-resolve-enable",
+                "server-address-resolve-dns-domain",
+                "server-address-resolve-dns-ip",
+            )
         DirectiveRegistry.specs.values
             .filter { it.danger == Danger.Dangerous && it.consumer != Consumer.None }
             .map { it.key }

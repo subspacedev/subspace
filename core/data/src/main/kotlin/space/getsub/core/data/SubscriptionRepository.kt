@@ -16,6 +16,10 @@ import space.getsub.core.data.db.SubscriptionDao
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SubscriptionOverrideEntity
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.data.preresolve.PreResolvePolicy
+import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.data.preresolve.ResolverStatus
+import space.getsub.core.data.preresolve.providerResolverOf
 import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.directive.DirectiveKind
 import space.getsub.core.parser.directive.KindResult
@@ -312,6 +316,34 @@ internal constructor(
 
     /** M9-B spec §1.2. */
     public suspend fun setRedirectTrust(id: Long, trust: RedirectTrust): Unit = dao.setRedirectTrust(id, trust.stored)
+
+    /** M9-C spec §1.3: the answer is bound to the DoH host it was given for (plan ruling R2). */
+    public suspend fun setResolverTrust(
+        id: Long,
+        trust: ResolverTrust,
+        host: String,
+    ): Unit = dao.setResolverTrust(id, trust.stored, host)
+
+    /** M9-C spec §4.2: recomposes on directive or row change, so the card never goes stale. */
+    public fun observeResolverStatus(id: Long): Flow<ResolverStatus> =
+        combine(dao.observeDirectives(id), dao.observeSubscriptions()) { directives, rows ->
+            val self = rows.firstOrNull { it.id == id }
+            if (self == null) {
+                ResolverStatus(ProviderResolver.Absent, ResolverTrust.Unasked)
+            } else {
+                val provider = providerResolverOf(directives.associate { it.key to it.value })
+                ResolverStatus(
+                    provider,
+                    PreResolvePolicy.effectiveTrust(
+                        resolverTrustOf(self.resolverTrust),
+                        self.resolverTrustHost,
+                        provider,
+                    ),
+                )
+            }
+        }.distinctUntilChanged()
+
+    internal suspend fun subscriptionRow(id: Long): SubscriptionEntity? = dao.subscription(id)
 
     /** M9-B spec §4: the user edits fronting in subscription details. */
     public suspend fun setFronting(id: Long, resolveAddress: String?, hostHeader: String?): Unit =

@@ -29,8 +29,11 @@ import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
+import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.ConnectionState
@@ -162,6 +165,8 @@ class ServersViewModelTest {
             lastConnectedAt = 500L,
             outbound = connectableOutbound,
         )
+
+    private val validResolver = ProviderResolver.Valid("https://dns.example/q", "dns.example", null)
 
     private val group =
         ProfileGroup(id = 1L, name = "Local configs", profiles = listOf(frankfurt, tokyo, berlin, amsterdam))
@@ -350,6 +355,23 @@ class ServersViewModelTest {
             trust: RedirectTrust,
         ) {
             trustWrites += id to trust
+        }
+
+        /** Resolver status by subscription id; absent means no provider resolver. */
+        val resolverStatusById: MutableMap<Long, ResolverStatus> = mutableMapOf()
+        val resolverTrustWrites = mutableListOf<Triple<Long, ResolverTrust, String>>()
+
+        override fun observeResolverStatus(id: Long): Flow<ResolverStatus> =
+            MutableStateFlow(
+                resolverStatusById[id] ?: ResolverStatus(ProviderResolver.Absent, ResolverTrust.Unasked),
+            )
+
+        override suspend fun setResolverTrust(
+            id: Long,
+            trust: ResolverTrust,
+            host: String,
+        ) {
+            resolverTrustWrites += Triple(id, trust, host)
         }
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
@@ -974,6 +996,50 @@ class ServersViewModelTest {
             advanceUntilIdle()
 
             source.trustWrites shouldBe listOf(7L to RedirectTrust.Allowed, 8L to RedirectTrust.Denied)
+        }
+
+    @Test
+    fun `an unasked valid provider resolver carries the request host`() =
+        runTest {
+            val subscribedSource =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            subscribedSource.resolverStatusById[9L] = ResolverStatus(validResolver, ResolverTrust.Unasked)
+            val model = ServersViewModel(subscribedSource, tester)
+            advanceUntilIdle()
+
+            model.state.value.groups.single().resolverRequestHost shouldBe "dns.example"
+        }
+
+    @Test
+    fun `an answered or invalid provider resolver carries no request`() =
+        runTest {
+            val answered =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            answered.resolverStatusById[9L] = ResolverStatus(validResolver, ResolverTrust.Denied)
+            val answeredModel = ServersViewModel(answered, tester)
+            val invalid =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            invalid.resolverStatusById[9L] =
+                ResolverStatus(ProviderResolver.Invalid("server-address-resolve-dns-domain"), ResolverTrust.Unasked)
+            val invalidModel = ServersViewModel(invalid, tester)
+            advanceUntilIdle()
+
+            answeredModel.state.value.groups.single().resolverRequestHost shouldBe null
+            invalidModel.state.value.groups.single().resolverRequestHost shouldBe null
+        }
+
+    @Test
+    fun `allow and deny write the resolver trust for that subscription and host`() =
+        runTest {
+            viewModel.onAllowResolver(subscriptionId = 7L, host = "dns.example")
+            viewModel.onDenyResolver(subscriptionId = 8L, host = "other.example")
+            advanceUntilIdle()
+
+            source.resolverTrustWrites shouldBe
+                listOf(
+                    Triple(7L, ResolverTrust.Allowed, "dns.example"),
+                    Triple(8L, ResolverTrust.Denied, "other.example"),
+                )
         }
 
     @Test

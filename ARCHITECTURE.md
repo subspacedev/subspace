@@ -522,6 +522,12 @@ branch below is taken:
   either way. Like the `stats` strip
   below, this is stripped unconditionally and so is an exception to the pure
   branch's byte-identical promise.
+- address pin — only when M9-C pre-resolution resolves, the proxy outbound's address
+  (`vnext/servers` entries naming the server domain) becomes the chosen IP, and address-derived
+  fields left empty (TLS/REALITY `serverName`, WS/HTTPUpgrade `host` without TLS, gRPC authority and
+  XHTTP host with security none) get the domain. An exception to "runs as written", applied only
+  when resolution succeeds (M9-C spec §3; evidence in
+  `docs/agent/research/2026-10-15-m9c-xray-address-fallbacks.md`).
 - `stats`/`policy`/`metrics` stripped — a config's own listener is an
   unaudited open port. **M8.5 exception, this branch only:** with the per-tag
   traffic breakdown switched on (off by default, §14.4), the same three
@@ -1688,6 +1694,13 @@ Mandatory rules:
   allowed, a fallback is tried when the main address fails and a move applies at most once per
   refresh. Targets must be public `https` hosts.
 
+  **M9-C adds the third.** The provider's `server-address-resolve-*` directives (enable, DoH URL,
+  bootstrap IP) are `Consumer.CensorshipResistance` and confirmed `Dangerous`: they name a resolver
+  that will see every server name the app looks up. The first fetch carrying them raises a
+  per-subscription consent card naming the DoH host; the grant is bound to that host, so a different
+  host asks again. Without the grant the directives do nothing. The user's own switch under
+  Censorship resistance needs no card. (M9-C spec §1.3, §4.2.)
+
 ---
 
 ## A.2 Tier 1 — table stakes (MVP)
@@ -1978,6 +1991,8 @@ above cosmetic parity:
       — M9-B, under the per-subscription trust grant. Verified on device 2026-10-15.
 - [ ] **Domain pre-resolution**: resolve the server domain over a specified
       DoH server before connecting, pick the lowest-latency IP
+      — M9-C: implemented (user switch, or the provider's resolver after consent); verified on
+      device before ticking.
 - [ ] **User-Agent override** for subscription fetch and for geo file
       downloads (`safari-mac`, `chrome-win`, `chrome-android`, ...)
 - [ ] **Configurable request timeout** (Happ: 5–15s, default 9)
