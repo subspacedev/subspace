@@ -3,8 +3,14 @@
 package space.getsub.core.network.preresolve
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.Inet4Address
 import java.net.InetAddress
 
@@ -38,7 +44,16 @@ public class ServerAddressResolver(
     private val lookups: DohLookupFactory,
     private val racer: ConnectRacer,
     private val nanoTime: () -> Long = System::nanoTime,
+    lookupDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    /**
+     * Where the DoH lookup runs, outside the caller's structure. Without a bootstrap IP, OkHttp resolves
+     * the DoH host through the system resolver, which blocks a thread and ignores both `callTimeout` and
+     * coroutine cancellation. A structured child would hold `withTimeout` until that call returned; a
+     * detached one is abandoned at the budget and its late result is discarded (M9-C spec §2.2, §2.3).
+     */
+    private val lookupScope = CoroutineScope(SupervisorJob() + lookupDispatcher)
+
     public suspend fun resolve(host: String, port: Int, config: ResolverConfig): PreResolution {
         if (IpLiteral.isLiteral(host)) return PreResolution.Skipped(PreResolveReason.AlreadyIp)
         val start = nanoTime()
@@ -57,24 +72,31 @@ public class ServerAddressResolver(
         }
     }
 
-    private suspend fun lookup(host: String, config: ResolverConfig): Result<List<InetAddress>> =
-        try {
-            Result.success(withTimeout(DOH_TIMEOUT_MILLIS) { lookups.create(config).lookup(host) })
-        } catch (e: TimeoutCancellationException) {
-            Result.failure(e)
+    /** The answers, or why there are none. Never throws but for the caller's own cancellation. */
+    private suspend fun lookup(host: String, config: ResolverConfig): Result<List<InetAddress>> {
+        val pending = lookupScope.async { lookups.create(config).lookup(host) }
+        return try {
+            // await() returns as soon as the budget elapses or the caller is cancelled, blocked thread or not.
+            // withTimeoutOrNull gives null only for its own budget, so a timeout the lookup throws is DohError.
+            withTimeoutOrNull(DOH_TIMEOUT_MILLIS) { pending.await() }
+                ?.let { Result.success(it) }
+                ?: Result.failure(BudgetElapsed())
         } catch (e: CancellationException) {
-            throw e
+            // The caller was cancelled: propagate. Otherwise the lookup itself ended in a cancellation.
+            currentCoroutineContext().ensureActive()
+            Result.failure(e)
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             // IOException, a malformed URL reaching OkHttp, anything else: pre-resolution never fails a connect.
             Result.failure(e)
+        } finally {
+            pending.cancel()
         }
+    }
+
+    private class BudgetElapsed : Exception()
 
     private fun Result<*>.reasonOrNull(): PreResolveReason =
-        if (exceptionOrNull() is TimeoutCancellationException) {
-            PreResolveReason.DohTimeout
-        } else {
-            PreResolveReason.DohError
-        }
+        if (exceptionOrNull() is BudgetElapsed) PreResolveReason.DohTimeout else PreResolveReason.DohError
 
     private fun interleave(all: List<InetAddress>): List<InetAddress> {
         val v4 = all.filterIsInstance<Inet4Address>()
