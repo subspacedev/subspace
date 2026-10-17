@@ -62,7 +62,6 @@ import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
 import space.getsub.core.ui.component.SectionTitle
-import space.getsub.core.ui.component.SwitchRow
 import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.textRes
@@ -85,6 +84,9 @@ internal const val EDITOR_RAW_JSON_TEST_TAG = "editor-raw-json"
 
 /** Identifies the "the core would refuse this server" line under Security. */
 internal const val EDITOR_SECURITY_REFUSED_TEST_TAG = "editor-security-refused"
+
+/** Identifies the "insecure in the source was ignored" note under TLS to instrumented tests. */
+internal const val EDITOR_TLS_INSECURE_IGNORED_TEST_TAG = "editor-tls-insecure-ignored"
 
 /** Identifies the duplicate-identity banner (Task 21 fix round 1) to instrumented tests. */
 internal const val EDITOR_DUPLICATE_IDENTITY_TEST_TAG = "editor-duplicate-identity"
@@ -162,7 +164,6 @@ fun EditorScreen(
             onSecurityKindChanged = viewModel::onSecurityKindChanged,
             onTlsServerNameChanged = viewModel::onTlsServerNameChanged,
             onTlsFingerprintChanged = viewModel::onTlsFingerprintChanged,
-            onTlsAllowInsecureChanged = viewModel::onTlsAllowInsecureChanged,
             onRealityServerNameChanged = viewModel::onRealityServerNameChanged,
             onRealityPublicKeyChanged = viewModel::onRealityPublicKeyChanged,
             onRealityShortIdChanged = viewModel::onRealityShortIdChanged,
@@ -221,7 +222,6 @@ internal data class EditorActions(
     val onSecurityKindChanged: (EditorSecurityKind) -> Unit,
     val onTlsServerNameChanged: (String) -> Unit,
     val onTlsFingerprintChanged: (String) -> Unit,
-    val onTlsAllowInsecureChanged: (Boolean) -> Unit,
     val onRealityServerNameChanged: (String) -> Unit,
     val onRealityPublicKeyChanged: (String) -> Unit,
     val onRealityShortIdChanged: (String) -> Unit,
@@ -671,11 +671,14 @@ private fun TlsFields(
             value = state.tlsFingerprint,
             onValueChange = actions.onTlsFingerprintChanged,
         )
-        EditorSwitchField(
-            label = stringResource(R.string.editor_tls_allow_insecure_label),
-            checked = state.tlsAllowInsecure,
-            onCheckedChange = actions.onTlsAllowInsecureChanged,
-        )
+        if (state.tlsInsecureIgnored) {
+            TonalBanner(
+                icon = SubspaceIcons.Info,
+                text = stringResource(R.string.editor_tls_insecure_ignored),
+                tone = BannerTone.Neutral,
+                modifier = Modifier.testTag(EDITOR_TLS_INSECURE_IGNORED_TEST_TAG),
+            )
+        }
     }
 }
 
@@ -843,6 +846,7 @@ private fun PassthroughRejection.messageRes(): Int =
         PassthroughRejection.NoOutbounds -> R.string.editor_raw_json_rejected_no_outbounds
         PassthroughRejection.SeveralServers -> R.string.editor_raw_json_rejected_several_servers
         PassthroughRejection.CarriesReverseProxy -> R.string.editor_raw_json_rejected_reverse
+        PassthroughRejection.SkipsCertificateChecks -> R.string.editor_raw_json_rejected_skips_cert_checks
         PassthroughRejection.CoreRejected -> R.string.editor_raw_json_rejected_core_rejected
     }
 
@@ -903,23 +907,6 @@ private fun EditorField(
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         textStyle = MaterialTheme.typography.bodyLarge.let { if (mono) it.mono() else it },
         shape = MaterialTheme.shapes.large,
-        modifier = modifier.fillMaxWidth(),
-    )
-}
-
-@Composable
-private fun EditorSwitchField(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    SwitchRow(
-        icon = null,
-        label = label,
-        supporting = null,
-        checked = checked,
-        onCheckedChange = onCheckedChange,
         modifier = modifier.fillMaxWidth(),
     )
 }

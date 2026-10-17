@@ -253,6 +253,45 @@ class PassthroughAnalysisTest {
         analysePassthrough(json).rejection shouldBe PassthroughRejection.CarriesReverseProxy
     }
 
+    // Xray-core v26.3.27+ removed TLS `allowInsecure` and fails the whole build when it is true
+    // (`infra/conf/transport_security.go`, PrintRemovedFeatureError). Named here so the editor can
+    // say why, instead of the core's generic refusal.
+    @Test
+    fun `a TLS allowInsecure true is rejected by name`() {
+        val json =
+            """
+            {
+              "outbounds": [
+                {
+                  "tag": "proxy",
+                  "protocol": "vless",
+                  "streamSettings": { "security": "tls", "tlsSettings": { "allowInsecure": true } }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        analysePassthrough(json).rejection shouldBe PassthroughRejection.SkipsCertificateChecks
+    }
+
+    @Test
+    fun `a TLS allowInsecure false is not rejected`() {
+        val json =
+            """
+            {
+              "outbounds": [
+                {
+                  "tag": "proxy",
+                  "protocol": "vless",
+                  "streamSettings": { "security": "tls", "tlsSettings": { "allowInsecure": false } }
+                }
+              ]
+            }
+            """.trimIndent()
+
+        analysePassthrough(json).rejection shouldBe null
+    }
+
     // `"reverse": null` is not a reverse block: the core reads it as absent.
     @Test
     fun `an explicit reverse null is not rejected`() {

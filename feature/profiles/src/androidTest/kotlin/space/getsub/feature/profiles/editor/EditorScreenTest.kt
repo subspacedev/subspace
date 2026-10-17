@@ -97,7 +97,6 @@ class EditorScreenTest {
             onSecurityKindChanged = {},
             onTlsServerNameChanged = {},
             onTlsFingerprintChanged = {},
-            onTlsAllowInsecureChanged = {},
             onRealityServerNameChanged = {},
             onRealityPublicKeyChanged = {},
             onRealityShortIdChanged = {},
@@ -505,16 +504,18 @@ class EditorScreenTest {
     }
 
     @Test
-    fun theAllowInsecureSwitchRowTogglesFromItsLabel() {
-        var checked: Boolean? = null
-        setContent(
-            state = typedState.copy(securityKind = EditorSecurityKind.Tls),
-            actions = noOpActions().copy(onTlsAllowInsecureChanged = { checked = it }),
-        )
+    fun aTlsServerWhoseSourceAskedForInsecureShowsItWasIgnored() {
+        setContent(state = typedState.copy(securityKind = EditorSecurityKind.Tls, tlsAllowInsecure = true))
 
-        composeRule.onNodeWithText("Allow insecure").performScrollTo().performClick()
+        composeRule.onNodeWithTag(EDITOR_TLS_INSECURE_IGNORED_TEST_TAG).performScrollTo().assertExists()
+        composeRule.onNodeWithText("Allow insecure").assertDoesNotExist()
+    }
 
-        checked shouldBe true
+    @Test
+    fun aTlsServerWithoutTheFlagShowsNoNote() {
+        setContent(state = typedState.copy(securityKind = EditorSecurityKind.Tls))
+
+        composeRule.onNodeWithTag(EDITOR_TLS_INSECURE_IGNORED_TEST_TAG).assertDoesNotExist()
     }
 
     @Test

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /**
  * Why a stored config cannot run as written.
@@ -59,6 +60,14 @@ public enum class PassthroughRejection {
      * match time. Rejecting is safe either way.
      */
     CarriesReverseProxy,
+
+    /**
+     * An outbound's `tlsSettings.allowInsecure` is `true`. Xray-core v26.3.27+ removed the option
+     * and fails the whole build on it (`infra/conf/transport_security.go`, PrintRemovedFeatureError,
+     * pointing at `pinnedPeerCertSha256`), so the file cannot run as written. Named so the editor
+     * says why instead of the core's generic refusal.
+     */
+    SkipsCertificateChecks,
 
     /**
      * xray-core refused the composed config.
@@ -379,6 +388,7 @@ private fun analyseOutbounds(
     val rejection =
         when {
             carriesReverse -> PassthroughRejection.CarriesReverseProxy
+            objects.any(::skipsCertificateChecks) -> PassthroughRejection.SkipsCertificateChecks
             serverCount > 1 && !isBalancer -> PassthroughRejection.SeveralServers
             else -> null
         }
@@ -393,6 +403,13 @@ private fun analyseOutbounds(
         balancers = balancerSpecs(routing),
         catchAllBalancerRefs = catchAllBalancerRefs(routing),
     )
+}
+
+/** `streamSettings.tlsSettings.allowInsecure: true` — the shape the core now refuses at build. */
+private fun skipsCertificateChecks(outbound: JsonObject): Boolean {
+    val tls = ((outbound["streamSettings"] as? JsonObject)?.get("tlsSettings") as? JsonObject)
+    val value = tls?.get("allowInsecure") as? JsonPrimitive
+    return value != null && !value.isString && value.booleanOrNull == true
 }
 
 private fun rejectedAs(reason: PassthroughRejection): PassthroughAnalysis =

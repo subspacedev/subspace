@@ -259,6 +259,37 @@ class XrayControllerTest {
         }
 
     /**
+     * Xray-core v26.3.27+ fails the whole build on `"allowInsecure": true`. A TLS server whose
+     * source asked for it must still generate a config the real core accepts.
+     */
+    @Test
+    fun aTlsServerWhoseSourceAskedForInsecureIsAcceptedByTheRealCore() =
+        runTest {
+            val controller = XrayController()
+            val tls = Security.Tls(serverName = "example.com", fingerprint = "chrome", allowInsecure = true)
+            val settings =
+                TunnelSettings(
+                    socksPort = controller.allocatePort(),
+                    dnsServer = "1.1.1.1",
+                    enableSniffing = true,
+                )
+            val profile =
+                Profile(
+                    id = "id",
+                    name = "n",
+                    outbound = outbound.copy(flow = "", stream = StreamSettings("tcp", tls)),
+                )
+            val result = XrayConfigGenerator.generate(profile, settings)
+            check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
+
+            try {
+                controller.validate(result.json)
+            } catch (e: XrayException) {
+                fail("the core rejected a TLS config whose source asked for insecure: ${e.javaClass.simpleName}")
+            }
+        }
+
+    /**
      * Subspace's mirror of the core's no-TLS rule ([refusedWithoutTransportSecurity]) must
      * agree with the core itself: whatever the mirror refuses, `testXray` refuses, and
      * whatever it allows, `testXray` accepts. Checked on public and private addresses of

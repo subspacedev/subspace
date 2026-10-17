@@ -302,6 +302,19 @@ class XrayConfigGeneratorTest {
         json.shouldBeNonInjectable()
     }
 
+    // Xray-core v26.3.27+ fails the whole config build on `"allowInsecure": true`
+    // (`infra/conf/transport_security.go`, PrintRemovedFeatureError). A link that asked for it
+    // is recorded on the model but never emitted: certificate checks stay on.
+    @Test
+    fun `a TLS server whose source asked for insecure emits no allowInsecure key`() {
+        val tls = Security.Tls(serverName = "tls.example", fingerprint = "chrome", allowInsecure = true)
+
+        val json = generateJson(outbound.copy(stream = StreamSettings("tcp", tls)), settings)
+
+        json shouldNotContain "allowInsecure"
+        Json.parseToJsonElement(json) // still valid JSON with the key gone
+    }
+
     @Test
     fun `escapes WebSocket path header names and header values`() {
         val webSocket =

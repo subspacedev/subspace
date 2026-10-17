@@ -174,6 +174,11 @@ internal data class EditorState(
     val securityKind: EditorSecurityKind = EditorSecurityKind.None,
     val tlsServerName: String = "",
     val tlsFingerprint: String = "",
+    /**
+     * The source asked to skip certificate checks ([Security.Tls.allowInsecure]). Not editable:
+     * Xray-core v26.3.27+ removed the option, so the generator never emits it. Carried through
+     * a save so [tlsInsecureIgnored] keeps telling the user.
+     */
     val tlsAllowInsecure: Boolean = false,
     val realityServerName: String = "",
     val realityPublicKey: String = "",
@@ -222,6 +227,10 @@ internal data class EditorState(
      */
     val refusedWithoutTransportSecurity: Boolean
         get() = fieldsEditable && address.isNotBlank() && toOutbound().refusedWithoutTransportSecurity()
+
+    /** TLS whose source asked for `allowInsecure`: shown as ignored, certificate checks stay on. */
+    val tlsInsecureIgnored: Boolean
+        get() = securityKind == EditorSecurityKind.Tls && tlsAllowInsecure
 }
 
 /**
@@ -350,8 +359,6 @@ constructor(
     fun onTlsServerNameChanged(value: String) = update { it.copy(tlsServerName = value) }
 
     fun onTlsFingerprintChanged(value: String) = update { it.copy(tlsFingerprint = value) }
-
-    fun onTlsAllowInsecureChanged(value: Boolean) = update { it.copy(tlsAllowInsecure = value) }
 
     fun onRealityServerNameChanged(value: String) = update { it.copy(realityServerName = value) }
 
