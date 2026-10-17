@@ -5,6 +5,7 @@ package space.getsub.core.xray
 import androidx.test.platform.app.InstrumentationRegistry
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -17,6 +18,7 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.refusedWithoutTransportSecurity
 import java.io.File
 
 /**
@@ -232,7 +234,16 @@ class XrayControllerTest {
                         dnsServer = "1.1.1.1",
                         enableSniffing = true,
                     )
-                val profile = Profile(id = "id", name = "n", outbound = outbound.copy(stream = stream))
+                // Xray-core v26.10.10 (a1bf968) refuses VLESS without TLS/REALITY to a public
+                // address, so the plaintext cases dial a private one: this test is about the
+                // transport blocks, not that rule — [thePlaintextRefusalMatchesTheRealCore] is.
+                val address = if (stream.security == Security.None) "10.0.0.1" else outbound.address
+                val profile =
+                    Profile(
+                        id = "id",
+                        name = "n",
+                        outbound = outbound.copy(address = address, stream = stream),
+                    )
                 val result = XrayConfigGenerator.generate(profile, settings)
                 check(result is ConfigResult.Ok) { "expected ConfigResult.Ok for ${stream.network}, got $result" }
 
@@ -244,6 +255,46 @@ class XrayControllerTest {
                     // user's, and is what identifies which case failed.
                     fail("the core rejected an emitted ${stream.network} config: ${e.javaClass.simpleName}")
                 }
+            }
+        }
+
+    /**
+     * Subspace's mirror of the core's no-TLS rule ([refusedWithoutTransportSecurity]) must
+     * agree with the core itself: whatever the mirror refuses, `testXray` refuses, and
+     * whatever it allows, `testXray` accepts. Checked on public and private addresses of
+     * every kind the rule distinguishes.
+     */
+    @Test
+    fun thePlaintextRefusalMatchesTheRealCore() =
+        runTest {
+            val controller = XrayController()
+            val addresses =
+                listOf(
+                    "example.com",
+                    "1.1.1.1",
+                    "2606:4700::1111",
+                    "10.0.0.1",
+                    "192.168.1.1",
+                    "fd00::1",
+                    "host.example",
+                    "router",
+                )
+            addresses.forEach { address ->
+                val plain = outbound.copy(address = address, flow = "", stream = StreamSettings("tcp", Security.None))
+                val settings =
+                    TunnelSettings(
+                        socksPort = controller.allocatePort(),
+                        dnsServer = "1.1.1.1",
+                        enableSniffing = true,
+                    )
+                val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = plain), settings)
+                check(result is ConfigResult.Ok) { "expected ConfigResult.Ok for $address, got $result" }
+                val accepted = runCatching { controller.validate(result.json) }.isSuccess
+                assertEquals(
+                    "mirror and core disagree for $address",
+                    !plain.refusedWithoutTransportSecurity(),
+                    accepted,
+                )
             }
         }
 
