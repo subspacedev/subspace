@@ -2232,7 +2232,7 @@ class TunnelService : VpnService() {
             is ConfigResult.Unsupported ->
                 ConfigJsonOutcome.Failed(
                     FailureReason.ProtocolNotSupported,
-                    IllegalArgumentException("${config.protocol} is not supported yet"),
+                    IllegalArgumentException("generator refused: ${config.protocol}"),
                 )
 
             is ConfigResult.Ok ->

@@ -120,8 +120,9 @@ class ServersViewModelTest {
             lastConnectedAt = 1_000L,
         )
 
-    // Tokyo: Trojan — :core:xray only emits VLESS, so this is the
-    // not-connectable fixture. Never connected, so it anchors the LastUsed tie.
+    // Tokyo: Trojan. A decoded Trojan outbound is connectable (M9-D2a); this fixture has none
+    // (outbound defaults to null), so it stays the not-connectable one.
+    // Never connected, so it anchors the LastUsed tie.
     private val tokyo =
         storedProfile(
             id = 2L,
@@ -431,7 +432,7 @@ class ServersViewModelTest {
         }
 
     @Test
-    fun `a profile whose protocol the core cannot emit is not connectable`() =
+    fun `a profile whose outbound did not decode is not connectable`() =
         runTest {
             val trojan = viewModel.state.value.groups.flatMap { it.profiles }.single { it.protocol == "trojan" }
             trojan.connectable shouldBe false

@@ -161,11 +161,13 @@ public enum class FailureReason {
     Revoked,
 
     /**
-     * The profile parsed cleanly but names a protocol `:core:xray` cannot emit
-     * yet. M2 added five protocols to the model; the generator still writes only
-     * VLESS. Distinct from ConfigGenerationFailed because the user can act on it
-     * — pick a different server — and a generic config error would send them
-     * looking for a bug that is not there.
+     * The profile parsed cleanly but `:core:xray` refuses to write a config for
+     * its settings. Since M9-D2a the generator writes all five protocols, so this
+     * is reached only by a Shadowsocks row whose cipher or 2022 key Xray-core
+     * would refuse, and only when the row changed after the UI checked it (the
+     * UI gates on `connectable`). Distinct from ConfigGenerationFailed because the
+     * user can act on it — fix the row or pick a different server — and a generic
+     * config error would send them looking for a bug that is not there.
      */
     ProtocolNotSupported,
 
@@ -174,7 +176,7 @@ public enum class FailureReason {
      * security discriminant it has no name for.
      *
      * Distinct from [ProtocolNotSupported], which means the profile decoded
-     * fine and names a protocol the generator cannot emit yet. This one means
+     * fine and the generator refuses its settings. This one means
      * the bytes themselves were unreadable, so nothing is known about the
      * server at all. Refusing is the point: guessing a default would connect
      * to something other than what the user chose.

@@ -22,6 +22,7 @@ import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
+import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
@@ -29,6 +30,7 @@ import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.refusedWithoutTransportSecurity
+import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.OverrideBlocker
@@ -227,6 +229,18 @@ internal data class EditorState(
      */
     val refusedWithoutTransportSecurity: Boolean
         get() = fieldsEditable && address.isNotBlank() && toOutbound().refusedWithoutTransportSecurity()
+
+    /**
+     * Why Xray-core v26.10.10 would refuse the Shadowsocks server as currently entered, or null.
+     * Typed Shadowsocks rows only. The row still saves; it just is not connectable (M9-D2a spec §1).
+     */
+    val shadowsocksRefusal: ShadowsocksRefusal?
+        get() =
+            if (fieldsEditable && protocol == "shadowsocks") {
+                shadowsocksCoreRefusal(method, primaryCredential)
+            } else {
+                null
+            }
 
     /** TLS whose source asked for `allowInsecure`: shown as ignored, certificate checks stay on. */
     val tlsInsecureIgnored: Boolean

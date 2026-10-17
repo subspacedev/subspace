@@ -236,7 +236,8 @@ private fun trojan(
                 FailureDetail.Missing(DetailField.Password),
             )
 
-    // Trojan is TLS-only by definition — see TrojanLink.kt.
+    // Always TLS: Mihomo's `TrojanOption` has no TLS switch (adapter/outbound/trojan.go, `Meta`
+    // branch, read 2026-10-17). Only a `trojan://` link can say `security=none` — see TrojanLink.kt.
     val stream =
         StreamSettings(
             network = common.network,

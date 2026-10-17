@@ -37,10 +37,17 @@ internal fun parseTrojanLink(
         )
     }
 
-    val serverName = uri.query["sni"]?.takeIf { it.isNotBlank() } ?: uri.host
-    val fingerprint = uri.query["fp"]?.takeIf { it.isNotBlank() } ?: "chrome"
-    val allowInsecure = uri.query["allowInsecure"] == "1"
-    val security = Security.Tls(serverName, fingerprint, allowInsecure)
+    // TLS unless the link says `security=none`: Trojan is TLS by convention, so an absent or
+    // blank value keeps TLS. A plaintext row is still refused at connect when its address is
+    // public (Xray-core v26.10.10 a1bf968, mirrored by `refusedWithoutTransportSecurity`).
+    val security =
+        if (uri.query["security"].equals("none", ignoreCase = true)) {
+            Security.None
+        } else {
+            val serverName = uri.query["sni"]?.takeIf { it.isNotBlank() } ?: uri.host
+            val fingerprint = uri.query["fp"]?.takeIf { it.isNotBlank() } ?: "chrome"
+            Security.Tls(serverName, fingerprint, allowInsecure = uri.query["allowInsecure"] == "1")
+        }
     val network = uri.query["type"]?.takeIf { it.isNotBlank() } ?: "tcp"
     val stream =
         StreamSettings(

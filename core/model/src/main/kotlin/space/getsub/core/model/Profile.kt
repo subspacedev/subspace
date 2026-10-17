@@ -35,9 +35,9 @@ public data class Profile(
  * One server, in one protocol.
  *
  * Sealed so a `when` that misses a protocol fails to compile. `:core:xray`
- * currently emits only [VlessOutbound] and must refuse the rest explicitly —
- * a profile that silently generates a config connecting to nothing is worse
- * than one that says it is unsupported.
+ * emits all five subtypes; where it cannot write a working config (a transport or a
+ * Shadowsocks method the core refuses) it must say so explicitly — a profile that silently
+ * generates a config connecting to nothing is worse than one that says it is unsupported.
  */
 public sealed interface Outbound {
     public val address: String

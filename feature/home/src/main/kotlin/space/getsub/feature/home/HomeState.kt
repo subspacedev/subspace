@@ -77,7 +77,7 @@ internal data class HomeState(
      * False whenever there is nothing to connect to ([activeProfile] is
      * `null`), that row's persisted config failed to decode
      * ([StoredProfile.outbound] `null` — a corrupt row, per its own KDoc), or
-     * [StoredProfile.connectable] is false — a stored profile whose protocol or transport
+     * [StoredProfile.connectable] is false — a stored profile whose transport or Shadowsocks cipher
      * `:core:xray` cannot yet generate a working config for (fix round 2, Important finding
      * 4: this used to check only that an outbound existed, so a row whose transport the
      * generator could not emit passed here, prompted for VPN permission, started the
