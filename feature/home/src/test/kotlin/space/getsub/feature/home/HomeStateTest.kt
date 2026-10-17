@@ -184,4 +184,38 @@ class HomeStateTest {
         val reconnecting = ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 2, blocked = false)
         HomeState(connection = reconnecting, activeProfile = profile("tcp")).canConnect shouldBe false
     }
+
+    // ── M9-D1 spec §2: the static certificate note (final review I2) ─────────
+
+    private fun hysteria2(
+        skipChecks: Boolean,
+        pins: List<String> = emptyList(),
+    ) = profile("tcp").copy(
+        protocol = "hysteria2",
+        outbound =
+        space.getsub.core.model.Hysteria2Outbound(
+            address = "198.51.100.1",
+            port = 443,
+            password = "pw",
+            tls = space.getsub.core.model.Hysteria2Tls("h.example", pins = pins, skipChecksRequested = skipChecks),
+        ),
+    )
+
+    @Test
+    fun `a hysteria2 row that asked to skip checks and has no pin shows the certificate note`() {
+        HomeState(activeProfile = hysteria2(skipChecks = true)).checksStayOnWithoutPin shouldBe true
+        HomeState(
+            connection = ConnectionState.Connecting(StartupStage.entries.first()),
+            activeProfile = hysteria2(skipChecks = true),
+        ).checksStayOnWithoutPin shouldBe true
+    }
+
+    @Test
+    fun `no certificate note with a pin, without the request, for other protocols, or with no row`() {
+        HomeState(activeProfile = hysteria2(skipChecks = true, pins = listOf("ab".repeat(32))))
+            .checksStayOnWithoutPin shouldBe false
+        HomeState(activeProfile = hysteria2(skipChecks = false)).checksStayOnWithoutPin shouldBe false
+        HomeState(activeProfile = profile("tcp")).checksStayOnWithoutPin shouldBe false
+        HomeState().checksStayOnWithoutPin shouldBe false
+    }
 }

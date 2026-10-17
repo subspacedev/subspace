@@ -4,6 +4,7 @@ package space.getsub.feature.home
 
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.ConnectionState
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TrafficSample
@@ -139,4 +140,16 @@ internal data class HomeState(
      */
     val activeProfileUnsupported: Boolean
         get() = activeProfile?.let { it.outbound != null && !it.connectable } == true
+
+    /**
+     * M9-D1 spec §2: the active row is Hysteria2, its source asked to skip certificate checks, and it has
+     * no pin. Xray v26 cannot skip them, so a self-signed server will fail; Home shows the same static
+     * note as the editor next to the connection state. Whatever the connection state: the note is about
+     * the server, not about one attempt.
+     */
+    val checksStayOnWithoutPin: Boolean
+        get() {
+            val tls = (activeProfile?.outbound as? Hysteria2Outbound)?.tls ?: return false
+            return tls.skipChecksRequested && tls.pins.isEmpty()
+        }
 }

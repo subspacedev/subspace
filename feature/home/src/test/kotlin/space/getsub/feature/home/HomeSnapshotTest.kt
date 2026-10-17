@@ -9,6 +9,8 @@ import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
+import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TagTraffic
@@ -85,6 +87,28 @@ class HomeSnapshotTest {
                     throughput = List(ThroughputWindow.BUCKET_COUNT) { i -> (i % 7 + 1) * 1_000_000L },
                 ),
                 trafficHidden = true,
+            ),
+        )
+
+    /** M9-D1 spec §2: a Hysteria2 row that asked to skip checks and has no pin shows the static note. */
+    @Test
+    fun hysteria2ChecksStayOn() =
+        shoot(
+            "home-hysteria2-checks-stay-on",
+            HomeState(
+                activeProfile =
+                snapshotProfile("Hysteria").copy(
+                    protocol = "hysteria2",
+                    transport = "QUIC · 443",
+                    outbound =
+                    Hysteria2Outbound(
+                        address = "198.51.100.1",
+                        port = 443,
+                        password = "pw",
+                        tls = Hysteria2Tls("h.example", skipChecksRequested = true),
+                    ),
+                ),
+                hasAnyProfile = true,
             ),
         )
 }

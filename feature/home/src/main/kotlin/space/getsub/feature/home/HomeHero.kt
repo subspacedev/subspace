@@ -133,6 +133,16 @@ internal fun HomeHero(
 
         HomeStatusLine(label, status.detail, nowMillis)
 
+        // M9-D1 spec §2: same note as the editor, next to the connection state.
+        if (state.checksStayOnWithoutPin) {
+            Text(
+                text = stringResource(R.string.home_checks_stay_on),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
+        }
+
         if (state.activeProfileUnsupported) {
             Text(
                 text = stringResource(R.string.home_active_server_unsupported),
