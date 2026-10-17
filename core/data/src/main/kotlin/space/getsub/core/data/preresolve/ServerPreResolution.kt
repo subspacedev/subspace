@@ -43,10 +43,19 @@ internal constructor(
         rawJsonRunsAsWritten: String?,
         configNamesHost: (rawJson: String, host: String) -> Boolean,
         protect: (Socket) -> Boolean,
+        udpServer: Boolean = false,
     ): PreResolveOutcome {
         val socketProtect = SocketProtect { socket -> protect(socket) }
         val resolver = ServerAddressResolver(OkHttpDohLookupFactory(socketProtect), TcpConnectRacer(socketProtect))
-        return runPreResolution(rowId, host, port, rawJsonRunsAsWritten, configNamesHost, ::decide, resolver::resolve)
+        return runPreResolution(
+            rowId,
+            host,
+            port,
+            rawJsonRunsAsWritten,
+            configNamesHost,
+            ::decide,
+            udpServer,
+        ) { h, p, c, race -> resolver.resolve(h, p, c, race) }
     }
 
     internal suspend fun decide(rowId: Long): PreResolveDecision {

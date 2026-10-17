@@ -30,8 +30,15 @@ public enum class PreResolveReason {
 }
 
 public sealed interface PreResolution {
-    public data class Resolved(val ip: String, val candidates: Int, val millis: Long) : PreResolution {
-        override fun toString(): String = "Resolved(ip=<redacted>, candidates=$candidates, millis=$millis)"
+    /** [raced] is false when the first answer was taken unprobed (a UDP/QUIC server: a TCP connect proves nothing). */
+    public data class Resolved(
+        val ip: String,
+        val candidates: Int,
+        val millis: Long,
+        val raced: Boolean = true,
+    ) : PreResolution {
+        override fun toString(): String =
+            "Resolved(ip=<redacted>, candidates=$candidates, millis=$millis, raced=$raced)"
     }
 
     public data class Skipped(val reason: PreResolveReason) : PreResolution
@@ -54,16 +61,24 @@ public class ServerAddressResolver(
      */
     private val lookupScope = CoroutineScope(SupervisorJob() + lookupDispatcher)
 
-    public suspend fun resolve(host: String, port: Int, config: ResolverConfig): PreResolution {
+    /**
+     * [race] false is for a server that speaks UDP (Hysteria2): a TCP connect to its port says nothing about
+     * a QUIC listener, and with port hopping the probed port is not the one in use. The first DoH answer, in
+     * the order the resolver gave it, is taken without probing (M9-D1 spec §5, §10.3).
+     */
+    public suspend fun resolve(host: String, port: Int, config: ResolverConfig, race: Boolean = true): PreResolution {
         if (IpLiteral.isLiteral(host)) return PreResolution.Skipped(PreResolveReason.AlreadyIp)
         val start = nanoTime()
         val answered = lookup(host, config)
         val answers = answered.getOrNull()
-        val candidates = interleave(answers.orEmpty().distinct()).take(MAX_CANDIDATES)
+        val distinct = answers.orEmpty().distinct()
+        val candidates = interleave(distinct).take(MAX_CANDIDATES)
         val elapsed = { (nanoTime() - start) / NANOS_PER_MILLI }
         return when {
             answers == null -> PreResolution.Failed(answered.reasonOrNull(), 0, elapsed())
             candidates.isEmpty() -> PreResolution.Failed(PreResolveReason.NoAddresses, 0, elapsed())
+            !race ->
+                PreResolution.Resolved(distinct.first().hostAddress.orEmpty(), distinct.size, elapsed(), raced = false)
             candidates.size == 1 -> PreResolution.Resolved(candidates.single().hostAddress.orEmpty(), 1, elapsed())
             else ->
                 racer.firstToConnect(candidates, port, PROBE_TIMEOUT_MILLIS)

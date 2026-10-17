@@ -34,7 +34,8 @@ internal suspend fun runPreResolution(
     rawJsonRunsAsWritten: String?,
     configNamesHost: (rawJson: String, host: String) -> Boolean,
     decide: suspend (Long) -> PreResolveDecision,
-    resolve: suspend (String, Int, ResolverConfig) -> PreResolution,
+    udpServer: Boolean = false,
+    resolve: suspend (String, Int, ResolverConfig, Boolean) -> PreResolution,
 ): PreResolveOutcome {
     val decision = decide(rowId)
     if (decision is PreResolveDecision.Off) {
@@ -51,7 +52,7 @@ internal suspend fun runPreResolution(
             logLine = logLine(decision.source, PreResolution.Skipped(PreResolveReason.ConfigNotRecognised)),
         )
     }
-    val result = resolve(host, port, decision.config)
+    val result = resolve(host, port, decision.config, !udpServer)
     val silent = result is PreResolution.Skipped && result.reason == PreResolveReason.AlreadyIp
     return PreResolveOutcome(
         ip = (result as? PreResolution.Resolved)?.ip,
@@ -59,13 +60,17 @@ internal suspend fun runPreResolution(
     )
 }
 
+/** The M9-C status line's reason for a Hysteria2 row: the first DoH answer, taken without a TCP race. */
+internal const val FIRST_ANSWER_UNRACED: String = "first answer, UDP server, not raced"
+
 internal fun logLine(
     source: PreResolveSource?,
     result: PreResolution,
 ): String =
     when (result) {
         is PreResolution.Resolved ->
-            "preresolve outcome=Resolved source=$source candidates=${result.candidates} ms=${result.millis}"
+            "preresolve outcome=Resolved source=$source candidates=${result.candidates} ms=${result.millis}" +
+                if (result.raced) "" else " reason=$FIRST_ANSWER_UNRACED"
         is PreResolution.Failed ->
             "preresolve outcome=Failed source=$source reason=${result.reason} " +
                 "candidates=${result.candidates} ms=${result.millis}"

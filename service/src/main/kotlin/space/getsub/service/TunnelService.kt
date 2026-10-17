@@ -50,6 +50,7 @@ import space.getsub.core.data.preresolve.ServerPreResolution
 import space.getsub.core.data.toProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
@@ -586,6 +587,9 @@ internal suspend fun planLatency(
     return when {
         foreignVpnHoldsRoute() -> LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.FOREIGN_VPN))
         balancerLatencyRefusal(rawJson) != null -> unsupported
+        // A TCP connect to a QUIC server's port proves nothing about it (M9-D1 spec §5): no number,
+        // and no connect attempt. A raw hysteria row reaches here as its Hysteria2Outbound projection.
+        options.mode == PingMode.TCP && outbound is Hysteria2Outbound -> unsupported
         options.mode == PingMode.TCP -> LatencyPlan.InPlace
         outbound == null -> unsupported
         // The core would answer a proxy-head ping of this server with its build error; TCP mode
@@ -2129,6 +2133,8 @@ class TunnelService : VpnService() {
                 rawJsonRunsAsWritten = rawJsonRunsAsWritten(rowId),
                 configNamesHost = AddressPinInjector::matches,
                 protect = { socket -> protect(socket) },
+                // A QUIC server: a TCP connect race proves nothing about it (M9-D1 spec §5, §10.3).
+                udpServer = profile.outbound is Hysteria2Outbound,
             )
         outcome.logLine?.let { Log.i(TAG, it) }
         return outcome.ip?.let { ServerAddressPin(domain = host, ip = it) }
