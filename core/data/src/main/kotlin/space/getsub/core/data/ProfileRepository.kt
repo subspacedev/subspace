@@ -23,6 +23,7 @@ import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.PassthroughAnalysis
 import space.getsub.core.parser.PassthroughRejection
 import space.getsub.core.parser.analysePassthrough
@@ -88,10 +89,12 @@ public data class StoredProfile(
     /**
      * Whether `:core:xray` can generate a working config for this row.
      *
-     * VLESS only — [space.getsub.core.xray.XrayConfigGenerator] refuses the other
-     * four protocols outright — and, within VLESS, only a transport that generator emits
-     * ([CONNECTABLE_NETWORKS]). A row whose [outbound] failed to decode is not connectable
-     * either: there is no config to generate from `null`.
+     * VLESS, VMess and Trojan rows need a transport [space.getsub.core.xray.XrayConfigGenerator] emits
+     * ([CONNECTABLE_NETWORKS]); a Shadowsocks row needs a method and key the Xray core
+     * accepts ([shadowsocksCoreRefusal]); a SOCKS row always qualifies. A row whose
+     * [outbound] failed to decode is not connectable either: there is no config to generate
+     * from `null`. A Trojan row without TLS is still connectable here: the plaintext refusal
+     * happens at connect time, not in this predicate.
      *
      * This predicate has been wrong in both directions, so the reasoning is worth keeping.
      * It first checked only `protocol == "vless"`, which promised a working config for a
@@ -109,7 +112,15 @@ public data class StoredProfile(
      * promise a config this build cannot write, which is the first version of this bug.
      */
     public val connectable: Boolean
-        get() = (outbound as? VlessOutbound)?.stream?.network?.lowercase() in CONNECTABLE_NETWORKS
+        get() =
+            when (val o = outbound) {
+                is VlessOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
+                is VmessOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
+                is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
+                is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
+                is SocksOutbound -> true
+                null -> false
+            }
 
     /**
      * Whether this row's own bytes reach the core, rather than a typed projection.
@@ -122,7 +133,8 @@ public data class StoredProfile(
 }
 
 /**
- * The `streamSettings.network` values [space.getsub.core.xray.XrayConfigGenerator]
+ * The `streamSettings.network` values (for VLESS, VMess and Trojan)
+ * [space.getsub.core.xray.XrayConfigGenerator]
  * can emit a transport block for, as Xray-core v26.7.11 spells them
  * (`infra/conf/transport_method.go`, `TransportProtocol.Build`) — including its aliases,
  * since it lowercases and accepts either name of a pair, and a stored profile keeps whatever

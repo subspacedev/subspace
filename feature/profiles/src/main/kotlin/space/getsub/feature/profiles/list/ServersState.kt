@@ -155,8 +155,9 @@ internal data class ServersGroup(
  *   hand-pasted config is not implemented (ARCHITECTURE.md §6), and "raw" alone would promise
  *   behaviour this build does not have.
  * @property connectable mirrors [space.getsub.core.data.StoredProfile.connectable] —
- *   see its own KDoc for what makes a row connectable (VLESS over `tcp`, `ws`, `grpc` or
- *   `xhttp`; other transports have no emission in `:core:xray`). Task 17 left this unchecked in
+ *   see its own KDoc for what makes a row connectable (VLESS, VMess or Trojan over `tcp`,
+ *   `ws`, `grpc` or `xhttp`; Shadowsocks with a method and key the core accepts; SOCKS; other
+ *   transports have no emission in `:core:xray`). Task 17 left this unchecked in
  *   Home's `canConnect` — surfaced here so a user can see, before picking a server, which ones
  *   this build can actually connect to. Getting that set wrong in the restrictive direction is
  *   how a working xhttp server came to be labelled unsupported, so this must never hardcode a

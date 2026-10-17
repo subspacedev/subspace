@@ -5,9 +5,12 @@ package space.getsub.core.data
 import io.kotest.matchers.shouldBe
 import org.junit.Test
 import space.getsub.core.model.Security
+import space.getsub.core.model.ShadowsocksOutbound
+import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.VmessOutbound
 
 /**
  * Covers [StoredProfile.connectable], which has now been wrong in both directions.
@@ -55,6 +58,16 @@ class StoredProfileTest {
                     address = "198.51.100.1",
                     port = 443,
                     password = "unused",
+                    stream = StreamSettings(network = network, security = Security.None),
+                )
+
+            "vmess" ->
+                VmessOutbound(
+                    address = "198.51.100.1",
+                    port = 443,
+                    uuid = "1e0f2a2e-6b2b-4b9a-9a3b-000000000000",
+                    alterId = 0,
+                    security = "auto",
                     stream = StreamSettings(network = network, security = Security.None),
                 )
 
@@ -125,8 +138,51 @@ class StoredProfileTest {
     }
 
     @Test
-    fun `a tcp non-vless profile is not connectable`() {
-        profile(protocol = "trojan", network = "tcp").connectable shouldBe false
+    fun `vmess and trojan are connectable over every network the generator emits`() {
+        // M9-D2a: the generator now writes these two, with the same transport blocks as VLESS.
+        for (protocol in listOf("vmess", "trojan")) {
+            for (network in listOf("tcp", "ws", "grpc", "xhttp")) {
+                profile(protocol = protocol, network = network).connectable shouldBe true
+            }
+        }
+    }
+
+    @Test
+    fun `a vmess profile over kcp is not connectable`() {
+        profile(protocol = "vmess", network = "kcp").connectable shouldBe false
+    }
+
+    @Test
+    fun `a plaintext trojan profile is still connectable here`() {
+        // Refused at connect time, not by this predicate.
+        profile(protocol = "trojan", network = "tcp").connectable shouldBe true
+    }
+
+    private fun shadowsocks(
+        method: String,
+        password: String,
+    ) = profile(
+        protocol = "shadowsocks",
+        outboundOverride = ShadowsocksOutbound("198.51.100.1", 8388, method, password),
+    )
+
+    @Test
+    fun `a shadowsocks profile is connectable only when the core accepts its method and key`() {
+        shadowsocks("aes-256-gcm", "pw").connectable shouldBe true
+        shadowsocks("aes-192-gcm", "pw").connectable shouldBe false
+        shadowsocks("none", "pw").connectable shouldBe false
+        shadowsocks("plain", "pw").connectable shouldBe false
+        // A 2022 method needs a PSK that is 16 bytes once base64-decoded; "pw" is not.
+        shadowsocks("2022-blake3-aes-128-gcm", "pw").connectable shouldBe false
+        shadowsocks("2022-blake3-aes-128-gcm", "AAAAAAAAAAAAAAAAAAAAAA==").connectable shouldBe true
+    }
+
+    @Test
+    fun `a socks profile is connectable`() {
+        profile(
+            protocol = "socks",
+            outboundOverride = SocksOutbound("198.51.100.1", 1080, null, null),
+        ).connectable shouldBe true
     }
 
     @Test
