@@ -159,6 +159,26 @@ class AddressPinInjectorTest {
     }
 
     @Test
+    fun hysteriaFlatSettingsAddressIsSwappedAndServerNameFilled() {
+        val raw =
+            """[{"protocol":"hysteria","settings":{"version":2,"address":"SRV.example","port":443},
+            "streamSettings":{"network":"hysteria","security":"tls","tlsSettings":{"serverName":""}}}]"""
+        val out = AddressPinInjector.apply(outbounds(raw), pin)
+        out.at(0, "settings", "address").jsonPrimitive.content shouldBe "203.0.113.5"
+        out.at(0, "settings", "version").jsonPrimitive.content shouldBe "2"
+        out.at(0, "streamSettings", "tlsSettings", "serverName").jsonPrimitive.content shouldBe "srv.example"
+        AddressPinInjector.matches("""{"outbounds":$raw}""", "srv.example") shouldBe true
+    }
+
+    @Test
+    fun flatAddressOnANonServerProtocolIsUntouched() {
+        val raw = """[{"protocol":"dns","settings":{"address":"srv.example","port":53}}]"""
+        val input = outbounds(raw)
+        (AddressPinInjector.apply(input, pin)[0] === input[0]) shouldBe true
+        AddressPinInjector.matches("""{"outbounds":$raw}""", "srv.example") shouldBe false
+    }
+
+    @Test
     fun nullPinIsIdentity() {
         val i = outbounds("""[{"settings":{}}]""")
         AddressPinInjector.apply(i, null) shouldBe i
