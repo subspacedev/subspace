@@ -4,7 +4,9 @@ package space.getsub.service
 
 import android.app.Service
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.Process
 import android.os.RemoteException
 import android.util.Log
@@ -16,6 +18,7 @@ import space.getsub.core.xray.CertificateProbeRunner
 import space.getsub.core.xray.LibXrayPingBatchCall
 import space.getsub.core.xray.PingBatch
 import space.getsub.core.xray.PingBatchCall
+import space.getsub.core.xray.sweepCertificateProbeDir
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -41,8 +44,18 @@ private const val TAG = "PingService"
  * `pingBatch` ever meets a managed instance. Its sockets go direct for the same
  * UID reason. If a stop ever fails, this process is **poisoned**
  * ([PingBatchWorker.poisoned]): it answers that batch, refuses every later one
- * without calling `pingBatch`, and ends itself after the reply; `:bg` sees the
- * death and the next run binds a fresh `:ping`.
+ * without calling `pingBatch`, and ends itself [POISON_EXIT_DELAY_MILLIS] after
+ * the reply; `:bg` sees the death and the next run binds a fresh `:ping`.
+ * Delayed rather than at once, so the `oneway` reply is out of this process
+ * before it dies; not left to [ExitWhenIdle], because `:bg`'s grace re-arms on
+ * every run and a poisoned process could then live on indefinitely, failing
+ * every server it is given.
+ *
+ * **The probe's log directory** (`cacheDir/cert-probe`, ARCHITECTURE.md §5.6's
+ * sanctioned exception) is swept when this process starts (on the worker, off
+ * the main thread), before every batch ([PingBatchWorker.answer]), around every
+ * probe ([CertificateProbeRunner]) and before the process exits on any path
+ * ([exitProcess]).
  *
  * **Lifetime (Ruling P8).** Started by `:bg`'s bind ([PingClient]). `:bg`
  * holds the binding for [IdleTimer.IDLE_GRACE_MILLIS] after its last batch and
@@ -56,6 +69,10 @@ public class PingService : Service() {
     override fun onCreate() {
         super.onCreate()
         current = this
+        val dir = File(cacheDir, CERT_PROBE_DIR)
+        probeDir = dir
+        // A probe from a process killed mid-run may have left a file; off the main thread.
+        worker.execute { sweepCertificateProbeDir(dir) }
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -97,10 +114,12 @@ public class PingService : Service() {
                     } finally {
                         exitWhenIdle.batchDone()
                     }
-                    // After the reply, so `:bg` gets this batch's answer; nothing else is queued
-                    // behind it (PingClient keeps one batch in flight), and a poisoned worker
-                    // would refuse anything that were.
-                    if (batches(probeDir).poisoned) exitProcess()
+                    // After the reply, and delayed, so `:bg` gets this batch's answer first; a
+                    // poisoned worker refuses anything queued meanwhile (see the class KDoc).
+                    if (batches(probeDir).poisoned && !exitScheduled) {
+                        exitScheduled = true
+                        Handler(Looper.getMainLooper()).postDelayed({ exitProcess() }, POISON_EXIT_DELAY_MILLIS)
+                    }
                 }
             }
         }
@@ -109,9 +128,19 @@ public class PingService : Service() {
         /** Under `cacheDir`: private to the app, and swept by every probe (see [CertificateProbeRunner]). */
         const val CERT_PROBE_DIR = "cert-probe"
 
+        /** After a failed probe stop, how long this process lives on before ending itself. */
+        const val POISON_EXIT_DELAY_MILLIS = 1_000L
+
         /** Process-wide; see the class KDoc. Only `:ping` loads this class's statics in practice. */
         @Volatile
         var current: PingService? = null
+
+        /** The probe's log directory, known once [onCreate] ran; swept by [exitProcess]. */
+        @Volatile
+        var probeDir: File? = null
+
+        /** Touched only on [worker]'s thread. */
+        private var exitScheduled = false
 
         /** Touched only on [worker]'s thread. */
         private var batchWorker: PingBatchWorker? = null
@@ -120,6 +149,7 @@ public class PingService : Service() {
             batchWorker ?: PingBatchWorker(
                 call = LibXrayPingBatchCall(),
                 probe = CertificateProbeRunner(probeDir)::probe,
+                sweep = { sweepCertificateProbeDir(probeDir) },
                 log = { Log.i(TAG, it) },
                 onError = { name -> Log.w(TAG, "ping batch failed: $name") },
             ).also { batchWorker = it }
@@ -136,6 +166,8 @@ public class PingService : Service() {
         val exitWhenIdle: ExitWhenIdle by lazy { ExitWhenIdle { exitProcess() } }
 
         fun exitProcess() {
+            // Every exit path, poison included: nothing of the probe's outlives the process.
+            probeDir?.let(::sweepCertificateProbeDir)
             // stopSelf first so the system records the service as stopped, then
             // end the process: a cached process is not reclaimed on our schedule.
             current?.stopSelf()
@@ -170,11 +202,14 @@ internal class PingBatchWorker(
     private val probe: CertificateProber?,
     private val log: (String) -> Unit = {},
     private val onError: (String) -> Unit = {},
+    /** Empties the probe's log directory; first thing in every [answer] (ARCHITECTURE.md §5.6). */
+    private val sweep: () -> Unit = {},
 ) {
     var poisoned: Boolean = false
         private set
 
     fun answer(request: PingBatchParcel): PingBatchResultParcel {
+        sweep()
         if (poisoned) return PingBatchResultParcel.from(request.keys, emptyMap())
         return answerPingBatch(request, call, probe, onProbe = ::onProbe, onError = onError)
     }

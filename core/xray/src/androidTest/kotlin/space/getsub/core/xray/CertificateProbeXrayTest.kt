@@ -95,7 +95,10 @@ class CertificateProbeXrayTest {
 
         verdict shouldNotBe CertificateProbeResult.STOP_FAILED
         verdict shouldNotBe CertificateProbeResult.UNTRUSTED
-        dir.listFiles().orEmpty().toList().shouldBeEmpty()
+        // Xray's logger goroutine closes its file asynchronously (common/log/logger.go:104-113), so
+        // give the directory up to about a second to settle. No sweep here: a file the goroutine
+        // re-created after the runner's delayed re-sweep should fail this, not be hidden by it.
+        dirSettlesEmpty() shouldBe true
         // pingBatch refuses the whole call (XrayException) while a managed instance exists; a
         // per-item failure in the returned data proves there is none.
         val request = PingBatch.request(listOf(PingTarget(1L, rowConfig(plain))), timeoutSeconds = 2, url = CHECK_URL)
@@ -106,7 +109,18 @@ class CertificateProbeXrayTest {
         LibXrayInvoke.call("getXrayState")?.optBoolean("running", false) shouldBe false
     }
 
+    private fun dirSettlesEmpty(): Boolean {
+        repeat(SETTLE_TRIES) {
+            if (dir.listFiles().orEmpty().isEmpty()) return true
+            Thread.sleep(SETTLE_STEP_MILLIS)
+        }
+        return dir.listFiles().orEmpty().isEmpty()
+    }
+
     private companion object {
+        const val SETTLE_TRIES = 10
+        const val SETTLE_STEP_MILLIS = 100L
+
         const val CHECK_URL = "https://www.gstatic.com/generate_204"
     }
 }

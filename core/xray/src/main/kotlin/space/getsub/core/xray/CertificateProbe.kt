@@ -12,12 +12,11 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.File
-import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.Proxy
 import java.net.ServerSocket
-import java.net.URL
+import java.net.Socket
+import java.net.URI
 import java.util.UUID
 
 /**
@@ -69,11 +68,14 @@ public class LibXrayProbeCore : ProbeCore {
     }
 }
 
-/** One HEAD to [url] through the HTTP proxy on loopback [proxyPort]. Throws on any failure. */
-public fun interface ProbeHead {
-    public fun head(
+/**
+ * One proxied exchange to [target] (`host:port`) through the HTTP inbound on loopback [proxyPort].
+ * Throws on any failure; the caller ignores the outcome, because the verdict is in the core's log.
+ */
+public fun interface ProbeConnect {
+    public fun exchange(
         proxyPort: Int,
-        url: String,
+        target: String,
     )
 }
 
@@ -84,7 +86,7 @@ public fun interface ProbeHead {
  * Why a probe at all: `pingBatch` reports a bad certificate, wrong auth and a down server as the
  * same `io: read/write on closed pipe`, and the core names the certificate failure only in an
  * `Info` log line. `info` also logs destinations, so it is never raised on the tunnel's own
- * instance — only here, where the one destination is the probe URL and the log is a file that
+ * instance — only here, where the one destination is the check URL's host and the log is a file that
  * never reaches logcat.
  */
 public object CertificateProbe {
@@ -92,11 +94,39 @@ public object CertificateProbe {
     public const val MAX_PER_BATCH: Int = 3
 
     /**
-     * Nominal bound on one probe: the HEAD's connect and read timeouts plus the log settle wait.
-     * The native start and stop are not bounded here; both are one quick call into Go.
+     * Bound on one probe: the exchange's single overall deadline, the log settle wait and the
+     * delayed re-sweep. The native start and stop are not bounded here; each is one quick call
+     * into Go.
      */
-    public const val BOUND_MILLIS: Long =
-        HEAD_CONNECT_TIMEOUT_MILLIS + HEAD_READ_TIMEOUT_MILLIS + LOG_SETTLE_MILLIS
+    public const val BOUND_MILLIS: Long = EXCHANGE_DEADLINE_MILLIS + LOG_SETTLE_MILLIS + RESWEEP_DELAY_MILLIS
+
+    /**
+     * The `CONNECT` target for [checkUrl]: `host:port`, the port being the URL's own or the
+     * scheme's default (443 https, 80 http), an IPv6 literal bracketed. Null when the URL has no
+     * host or another scheme. A raw `CONNECT` rather than an HTTP client, so the check URL's
+     * scheme never matters: Android's cleartext policy is checked against the *target* host, and
+     * an `http://` check URL would make `HttpURLConnection` throw before any traffic.
+     */
+    @Suppress("SwallowedException", "TooGenericExceptionCaught")
+    public fun connectTarget(checkUrl: String): String? {
+        val uri =
+            try {
+                URI(checkUrl)
+            } catch (e: Exception) {
+                null
+            }
+        val host = uri?.host?.takeIf { it.isNotEmpty() }
+        val defaultPort =
+            when (uri?.scheme?.lowercase()) {
+                "https" -> HTTPS_PORT
+                "http" -> HTTP_PORT
+                else -> null
+            }
+        val port = defaultPort?.let { uri?.port?.takeIf { p -> p in 1..MAX_PORT } ?: it }
+        if (host == null || port == null) return null
+        val bracketed = if (':' in host && !host.startsWith("[")) "[$host]" else host
+        return "$bracketed:$port"
+    }
 
     private const val PROXY_TAG = "proxy"
     private const val INBOUND_TAG = "cert-probe-in"
@@ -177,10 +207,21 @@ public object CertificateProbe {
         (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
-private const val HEAD_CONNECT_TIMEOUT_MILLIS = 2_000L
-private const val HEAD_READ_TIMEOUT_MILLIS = 4_000L
+/** One deadline across the whole proxied exchange: connect, CONNECT, status line, drain. */
+private const val EXCHANGE_DEADLINE_MILLIS = 6_000L
 
-/** After the HEAD, how long the core's asynchronous log writer gets to put the line on disk. */
+/**
+ * How long after a probe's final sweep the runner sweeps again. Xray's logger goroutine opens its
+ * file lazily with `O_CREATE` (`common/log/logger.go:104-113,173-174`), so a writer racing
+ * `stopXray` can re-create the file just after the delete.
+ */
+private const val RESWEEP_DELAY_MILLIS = 200L
+
+private const val HTTP_PORT = 80
+private const val HTTPS_PORT = 443
+private const val MAX_PORT = 65_535
+
+/** After the exchange, how long the core's asynchronous log writer gets to put the line on disk. */
 private const val LOG_SETTLE_MILLIS = 1_500L
 private const val LOG_POLL_MILLIS = 100L
 
@@ -188,24 +229,56 @@ private const val LOG_POLL_MILLIS = 100L
 private const val MAX_LOG_BYTES = 64 * 1024
 
 /**
- * Production [ProbeHead]: `HttpURLConnection` through the probe's loopback HTTP inbound. An
- * explicit [Proxy], so no system proxy setting can send the HEAD elsewhere.
+ * Production [ProbeConnect]: a raw socket to the probe's loopback HTTP inbound, one
+ * `CONNECT <target>`, the status line, one byte, then read until EOF or the deadline. Xray's http
+ * inbound dispatches the CONNECT to the outbound, which dials the server — that dial is what
+ * produces the certificate verdict; the byte only keeps the inbound's copy loop busy.
+ *
+ * One deadline ([EXCHANGE_DEADLINE_MILLIS] unless given) across the whole exchange: the connect
+ * timeout and every read's `soTimeout` are the time left, and a read loop stops when it runs out.
  */
-public val httpProxyHead: ProbeHead =
-    ProbeHead { proxyPort, url ->
-        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), proxyPort))
-        val connection = URL(url).openConnection(proxy) as HttpURLConnection
-        try {
-            connection.requestMethod = "HEAD"
-            connection.connectTimeout = HEAD_CONNECT_TIMEOUT_MILLIS.toInt()
-            connection.readTimeout = HEAD_READ_TIMEOUT_MILLIS.toInt()
-            connection.instanceFollowRedirects = false
-            connection.useCaches = false
-            connection.responseCode
-        } finally {
-            connection.disconnect()
+public class SocketProbeConnect(
+    private val deadlineMillis: Long = EXCHANGE_DEADLINE_MILLIS,
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+) : ProbeConnect {
+    override fun exchange(
+        proxyPort: Int,
+        target: String,
+    ) {
+        val deadline = nowMillis() + deadlineMillis
+        fun left(): Int = (deadline - nowMillis()).coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        Socket().use { socket ->
+            socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), proxyPort), left())
+            val output = socket.getOutputStream()
+            output.write("CONNECT $target HTTP/1.1\r\nHost: $target\r\n\r\n".toByteArray(Charsets.US_ASCII))
+            output.flush()
+            val input = socket.getInputStream()
+            // Status line and headers end at the first blank line; anything after is the tunnel.
+            var tail = 0
+            while (tail != HEADER_END && nowMillis() < deadline) {
+                socket.soTimeout = left()
+                val b = input.read()
+                if (b < 0) return
+                // An Int holds exactly the last four bytes; older ones shift out.
+                tail = (tail shl BYTE_BITS) or b
+            }
+            output.write(0)
+            output.flush()
+            val buffer = ByteArray(DRAIN_CHUNK)
+            while (nowMillis() < deadline) {
+                socket.soTimeout = left()
+                if (input.read(buffer) < 0) return
+            }
         }
     }
+
+    private companion object {
+        /** `\r\n\r\n` as the last four bytes read. */
+        const val HEADER_END = 0x0D0A0D0A
+        const val BYTE_BITS = 8
+        const val DRAIN_CHUNK = 512
+    }
+}
 
 /**
  * A free loopback port, the way libXray's `getFreePorts` finds one: bind port 0, read it, close.
@@ -214,26 +287,49 @@ public val httpProxyHead: ProbeHead =
 public fun loopbackFreePort(): Int = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
 
 /**
- * Runs one certificate probe: start a short-lived instance from [CertificateProbe.config], one HEAD
- * through its loopback inbound, stop it, read and delete the log, classify with
+ * Deletes every file in [dir] (the probe's private log directory). Never throws. `:ping` calls it
+ * at process start, before every batch, around every probe and before the process exits
+ * (ARCHITECTURE.md §5.6's sanctioned exception for this directory).
+ */
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+public fun sweepCertificateProbeDir(dir: File) {
+    try {
+        dir.listFiles()?.forEach { it.delete() }
+    } catch (e: Exception) {
+        // A sweep that cannot list is retried at the next sweep point; nothing to report.
+    }
+}
+
+/**
+ * Runs one certificate probe: start a short-lived instance from [CertificateProbe.config], one
+ * proxied `CONNECT` through its loopback inbound, stop it, read and delete the log, classify with
  * [classifyCertificateFailure].
  *
  * The caller (`:ping`'s single worker) runs this strictly between `pingBatch` calls, so no
  * managed instance outlives it: the stop is in a `finally`, and [CertificateProbeResult.STOP_FAILED]
- * tells the caller when it could not be made.
+ * tells the caller when it could not be made. A failed *start* is followed by a stop too, and a
+ * stop that then fails reports STOP_FAILED even though there may have been nothing to stop. That
+ * over-reports on purpose: the cost is one retired `:ping` process, while under-reporting would let
+ * `pingBatch` run beside an instance.
  *
- * [logDir] is private to the probe (`:ping`'s `cacheDir/cert-probe`). Every file in it is deleted
- * before and after each probe, on every path: a probe from a process killed mid-run, or the core's
- * asynchronous log writer re-creating its file just after the delete, cannot leave text behind
- * beyond the next probe. The text is read into local variables only and never returned, stored
- * or logged.
+ * **The loopback inbound is unauthenticated.** Anything on the device could proxy through it while
+ * it lives. Acceptable here: it lives for seconds (one [CertificateProbe.BOUND_MILLIS] probe), it
+ * listens on 127.0.0.1 only, its one outbound is a server that just failed to answer `pingBatch`
+ * (so it most likely carries nothing), and the access log is off, so nothing that did use it is
+ * recorded anywhere.
+ *
+ * [logDir] is private to the probe (`:ping`'s `cacheDir/cert-probe`; the core creates the file
+ * mode 0600, `common/log/logger.go`). Every file in it is deleted before and after each probe, on
+ * every path, and once more [RESWEEP_DELAY_MILLIS] after that: the core's logger goroutine can
+ * re-create its file with `O_CREATE` after `stopXray` returns. The text is read into local
+ * variables only and never returned, stored or logged.
  */
 // LongParameterList: every parameter is a seam the JVM tests replace; each defaults to production.
 @Suppress("LongParameterList")
 public class CertificateProbeRunner(
     private val logDir: File,
     private val core: ProbeCore = LibXrayProbeCore(),
-    private val head: ProbeHead = httpProxyHead,
+    private val connect: ProbeConnect = SocketProbeConnect(),
     private val freePort: () -> Int = ::loopbackFreePort,
     private val sleep: (Long) -> Unit = Thread::sleep,
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -245,27 +341,30 @@ public class CertificateProbeRunner(
         xrayJson: String,
         url: String,
     ): CertificateProbeResult {
-        sweep()
+        sweepCertificateProbeDir(logDir)
         var started = false
         var stopped = false
         return try {
+            val target = CertificateProbe.connectTarget(url) ?: return CertificateProbeResult.DID_NOT_RUN
             logDir.mkdirs()
             val file = File(logDir, "${UUID.randomUUID()}.log")
             val port = freePort()
             val config =
                 CertificateProbe.config(xrayJson, port, file.absolutePath)
                     ?: return CertificateProbeResult.DID_NOT_RUN
+            started = true
             try {
                 core.start(config)
             } catch (e: Exception) {
-                // libXray clears its instance on a failed start (xray/xray.go RunXray), so nothing to stop.
-                return CertificateProbeResult.DID_NOT_RUN
+                // libXray clears its instance on a failed start (xray/xray.go RunXray), but a stop
+                // costs nothing and proves it; see the class KDoc for why a failed one over-reports.
+                stopped = stopQuietly()
+                return if (stopped) CertificateProbeResult.DID_NOT_RUN else CertificateProbeResult.STOP_FAILED
             }
-            started = true
             var untrusted: Boolean
             try {
                 try {
-                    head.head(port, url)
+                    connect.exchange(port, target)
                 } catch (e: Exception) {
                     // Expected: an untrusted server closes the proxied connection. The verdict is in the log.
                 }
@@ -282,7 +381,11 @@ public class CertificateProbeRunner(
         } catch (e: Exception) {
             if (started && !stopped) CertificateProbeResult.STOP_FAILED else CertificateProbeResult.DID_NOT_RUN
         } finally {
-            sweep()
+            sweepCertificateProbeDir(logDir)
+            if (started) {
+                sleepQuietly(RESWEEP_DELAY_MILLIS)
+                sweepCertificateProbeDir(logDir)
+            }
         }
     }
 
@@ -295,6 +398,15 @@ public class CertificateProbeRunner(
             untrusted = logShowsUntrusted(file)
         }
         return untrusted
+    }
+
+    @Suppress("SwallowedException")
+    private fun sleepQuietly(millis: Long) {
+        try {
+            sleep(millis)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
@@ -318,10 +430,6 @@ public class CertificateProbeRunner(
         } catch (e: Exception) {
             false
         }
-
-    private fun sweep() {
-        logDir.listFiles()?.forEach { it.delete() }
-    }
 }
 
 /** `InputStream.readNBytes(n)` is API 33 on Android; this is the same, for API 26. */

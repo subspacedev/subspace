@@ -161,6 +161,28 @@ class CertificateProbeSchedulingTest {
     }
 
     @Test
+    fun theProbeDirectoryIsSweptBeforeEveryBatchPoisonedOrNot() {
+        val events = mutableListOf<String>()
+        val worker =
+            PingBatchWorker(
+                call = { payload ->
+                    events += "pingBatch"
+                    call().invoke(payload)
+                },
+                probe = { _, _ ->
+                    events += "probe"
+                    CertificateProbeResult.STOP_FAILED
+                },
+                sweep = { events += "sweep" },
+            )
+
+        worker.answer(request(listOf(1), probe = setOf(1)))
+        worker.answer(request(listOf(2), probe = setOf(2)))
+
+        events shouldContainExactly listOf("sweep", "pingBatch", "probe", "sweep")
+    }
+
+    @Test
     fun aCleanProbeLeavesTheWorkerUsable() {
         val worker = PingBatchWorker(call(), probe = { _, _ -> CertificateProbeResult.UNTRUSTED })
 
@@ -241,6 +263,31 @@ class CertificateProbeSchedulingTest {
 
             sent.map { it.certProbe } shouldContainExactly listOf(false, true)
             PingBatchParcel.of(sent, 5, url).targets()?.map { it.certProbe } shouldBe listOf(false, true)
+        }
+
+    @Test
+    fun markedServersTravelInTheirOwnBatchesAfterTheUnmarkedOnes() =
+        runTest {
+            val sent = mutableListOf<List<Long>>()
+            val runner =
+                LatencyRunner<Long>(
+                    measure = { _, _ -> error("not in place") },
+                    loadProfile = { it },
+                    scope = this,
+                    // Odd ids are Hysteria2-like (marked); listed first so order is not an accident.
+                    plan = { id, _ -> LatencyPlan.Batched("cfg-$id", PingGroup(5, url), certProbe = id % 2 == 1L) },
+                    measureBatch = { _, targets ->
+                        sent += targets.map { it.key }
+                        emptyMap()
+                    },
+                    concurrency = 1,
+                )
+
+            runner.start(1L, longArrayOf(1, 3, 2, 4, 6), { fiveSeconds }, { _, _, _ -> }, {})
+            advanceUntilIdle()
+
+            // Keys are run indices: ids 2, 4, 6 sit at indices 2, 3, 4; ids 1, 3 at 0, 1.
+            sent shouldContainExactly listOf(listOf(2L, 3L, 4L), listOf(0L, 1L))
         }
 
     // ── The outcome across the boundary ──────────────────────────────────────

@@ -116,7 +116,8 @@ latency runs in `PingService` (`android:process=":ping"`), a process that runs
 short-lived instance, strictly between batches, inside `:ping`'s single worker,
 and it always stops that instance (`finally`) before the worker takes the next
 batch. If a stop ever fails, `:ping` is poisoned: it answers that batch, refuses
-every later one without calling `pingBatch`, and ends itself after the reply.
+every later one without calling `pingBatch`, and ends itself about a second
+after the reply.
 Neither the probe nor anything else in `:ping` calls `registerDialerController`
 (the app's UID is excluded from the VPN, so its sockets go direct). This is the
 **one-Go-runtime-per-process rule**: each process
@@ -145,11 +146,14 @@ process. Never route a call to a process that holds the wrong state.
   marked (`isUdpServer`, i.e. Hysteria2, typed or raw), `:ping` runs one probe
   before answering: that server's own proxy outbound behind a loopback HTTP
   inbound, `log {loglevel: info, error: <private file in :ping's cacheDir>,
-  access: none}`, one HEAD to the check URL, stop, classify the lines
-  (`classifyCertificateFailure`), delete the file. At most 3 per batch, each
-  bounded to about 8 s, inside the single in-flight slot. The verdict alone
-  leaves the probe — `LatencyOutcome.CERT_UNTRUSTED` — never the log text, and
-  the file never reaches logcat (§5.6).
+  access: none}`, one raw `CONNECT` to the check URL's host (a raw socket, so an
+  `http://` check URL is not refused by Android's cleartext policy), stop,
+  classify the lines (`classifyCertificateFailure`), delete the file. At most 3
+  per batch, each bounded to about 8 s, inside the single in-flight slot; marked
+  servers travel in their own batches, after the unmarked ones. The verdict
+  alone leaves the probe — `LatencyOutcome.CERT_UNTRUSTED` — never the log text,
+  and the file never reaches logcat. The file is §5.6's one sanctioned
+  exception to "nothing unredacted reaches disk".
 
 **Consequence agents routinely get wrong:** the processes do **not**
 share memory. Hilt singletons, `object` declarations, static fields, and
@@ -466,6 +470,30 @@ session and survives into a device backup, readable by anyone with the
 device unlocked; redacting at capture means the secret this section warns
 about was never written there at all. Source:
 `docs/agent/specs/2026-09-17-m8.5-observability-design.md` §3.2.
+
+**The one sanctioned exception: the certificate probe's file (M9-D1 spec §2).**
+To name an untrusted certificate, `:ping` runs a short-lived core with
+`loglevel: info` writing to a file, because the core reports the certificate
+failure nowhere else. That file holds raw Info lines — the server's IP and port,
+the check URL's host — unredacted. The owner accepted this for the probe, and
+only within these bounds:
+
+- It lives only in `:ping`'s `cacheDir/cert-probe` (app-private; the core creates
+  it mode 0600, `common/log/logger.go`), never in `filesDir`, never in logcat.
+  `access: none`, so no access log exists at all.
+- It contains the probe's own traffic only: one `CONNECT` to the check host
+  through the row's own outbound.
+- Its text is read into local variables, classified to a Boolean, and never
+  returned, stored or logged.
+- It is deleted on every path, and the directory is swept (a) when `:ping`
+  starts, off the main thread; (b) before every batch and before every probe;
+  (c) after every probe, and again about 200 ms later — Xray's logger goroutine
+  opens its file lazily with `O_CREATE` and can re-create it after `stopXray`
+  returns (`common/log/logger.go:104-113,173-174`); and (d) before `:ping` exits,
+  on every exit path including the poison exit.
+
+Anything else that would put unredacted text on disk needs its own decision; this
+exception does not generalise.
 
 **Necessary-condition gates and the IPv6 candidate scanner (M8.5 Part 3,
 Tasks 13/21).** `redactEveryPattern` (`core/model/Redaction.kt`) checks a

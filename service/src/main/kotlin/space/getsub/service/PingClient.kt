@@ -170,7 +170,12 @@ internal class PingClient(
         val settled =
             scope.async {
                 try {
-                    withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { reply.await() }
+                    val outcome = withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { Settled(reply.await()) }
+                    // The watchdog fired: `:ping` is wedged. Drop the session rather than keep sending
+                    // to it — every later batch would otherwise sit behind the wedged one for a full
+                    // watchdog each. The next measure binds again.
+                    if (outcome == null) drop(s)
+                    outcome?.reply
                 } finally {
                     synchronized(lock) { s.inFlight.remove(reply) }
                 }
@@ -236,6 +241,11 @@ internal class PingClient(
         pending.forEach { it.complete(null) }
         binding?.unbind()
     }
+
+    /** A reply that arrived, possibly null ([PingRemote] sent none), told apart from the watchdog's null. */
+    private class Settled(
+        val reply: PingBatchResultParcel?,
+    )
 
     companion object {
         /** `onServiceConnected` normally lands within a process start; past this, `:ping` is not coming. */

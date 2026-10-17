@@ -147,6 +147,23 @@ class PingClientTest {
         }
 
     @Test
+    fun aWatchdogTimeoutDropsTheWedgedSessionSoTheNextBatchBindsAgain() =
+        runTest {
+            val connector = FakePingConnector(remote = { _, _ -> })
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            val first = async { client.measure(batch, 5, "https://x.invalid") }
+            advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
+            first.await() shouldContainExactly bothFailed
+            connector.unbinds shouldBe 1
+
+            val second = async { client.measure(batch, 5, "https://x.invalid") }
+            runCurrent()
+            connector.binds shouldBe 2
+            second.cancel()
+        }
+
+    @Test
     fun closeUnbindsAtOnceAndFailsWhatIsStillWaiting() =
         runTest {
             val connector = FakePingConnector(remote = { _, _ -> })

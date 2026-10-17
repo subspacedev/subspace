@@ -147,17 +147,21 @@ class CertificateProbeTest {
 
     private fun runner(
         core: ProbeCore,
-        head: ProbeHead = ProbeHead { _, _ -> throw IOException("closed") },
+        connect: ProbeConnect = ProbeConnect { _, _ -> throw IOException("closed") },
         dir: File = temp.newFolder(),
+        onSleep: (Long) -> Unit = {},
     ): CertificateProbeRunner {
         // A clock that moves only when the runner sleeps, so the settle wait is bounded and instant.
         var now = 0L
         return CertificateProbeRunner(
             logDir = dir,
             core = core,
-            head = head,
+            connect = connect,
             freePort = { 34567 },
-            sleep = { now += it },
+            sleep = {
+                onSleep(it)
+                now += it
+            },
             nowMillis = { now },
         )
     }
@@ -186,11 +190,11 @@ class CertificateProbeTest {
     }
 
     @Test
-    fun theInstanceIsStoppedEvenWhenTheHeadThrowsSomethingUnexpected() {
+    fun theInstanceIsStoppedEvenWhenTheExchangeThrowsSomethingUnexpected() {
         lateinit var core: FakeCore
         core = FakeCore(onStart = { core.logFile().writeText(untrustedLine) })
 
-        val throwing = runner(core, head = { _, _ -> throw IllegalStateException(password) })
+        val throwing = runner(core, connect = { _, _ -> throw IllegalStateException(password) })
 
         throwing.probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.UNTRUSTED
         core.events shouldContainExactly listOf("start", "stop")
@@ -198,11 +202,11 @@ class CertificateProbeTest {
     }
 
     @Test
-    fun aHeadThatSucceedsStillStopsAndDeletes() {
+    fun anExchangeThatSucceedsStillStopsAndDeletes() {
         lateinit var core: FakeCore
         core = FakeCore(onStart = { core.logFile().writeText("[Info] tunnelling\n") })
 
-        runner(core, head = { _, _ -> }).probe(rowConfig, "https://x.invalid") shouldBe
+        runner(core, connect = { _, _ -> }).probe(rowConfig, "https://x.invalid") shouldBe
             CertificateProbeResult.NOT_A_CERTIFICATE_FAILURE
         core.events shouldContainExactly listOf("start", "stop")
         core.logFile().exists() shouldBe false
@@ -214,8 +218,30 @@ class CertificateProbeTest {
         val dir = temp.newFolder("probe-start")
 
         runner(core, dir = dir).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.DID_NOT_RUN
-        core.events shouldContainExactly listOf("start")
+        // A stop after a failed start costs nothing and proves no instance is left.
+        core.events shouldContainExactly listOf("start", "stop")
         dir.listFiles().orEmpty().toList().shouldBeEmpty()
+    }
+
+    @Test
+    fun aFailedStartWhoseStopAlsoFailsIsReportedAsAFailedStop() {
+        val core = FakeCore(startThrows = true, stopThrows = true)
+
+        // Over-reports on purpose (one retired :ping), never under-reports.
+        runner(core).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.STOP_FAILED
+    }
+
+    @Test
+    fun aFileTheCoreReCreatesAfterTheFinalSweepIsSweptAgain() {
+        val dir = temp.newFolder("probe-resweep")
+        val late = File(dir, "late.log")
+        // The resweep's sleep is when Xray's logger goroutine could re-create its file (O_CREATE).
+        val probe =
+            runner(FakeCore(), dir = dir, onSleep = { if (it == RESWEEP) late.writeText(untrustedLine) })
+
+        probe.probe(rowConfig, "https://x.invalid")
+
+        late.exists() shouldBe false
     }
 
     @Test
@@ -246,12 +272,35 @@ class CertificateProbeTest {
     }
 
     @Test
-    fun theHeadGoesThroughTheProbesOwnLoopbackPortAndTheRowsUrl() {
+    fun theExchangeGoesThroughTheProbesOwnLoopbackPortToTheCheckHost() {
         val seen = mutableListOf<Pair<Int, String>>()
+        val probe = runner(FakeCore(), connect = { port, target -> seen += port to target })
 
-        runner(FakeCore(), head = { port, url -> seen += port to url }).probe(rowConfig, "https://u.invalid/204")
+        probe.probe(rowConfig, "https://u.invalid/204")
+        probe.probe(rowConfig, "http://cleartext.invalid/generate_204")
 
-        seen shouldContainExactly listOf(34567 to "https://u.invalid/204")
+        seen shouldContainExactly listOf(34567 to "u.invalid:443", 34567 to "cleartext.invalid:80")
+    }
+
+    @Test
+    fun aCheckUrlWithNoUsableTargetNeverStartsTheCore() {
+        val core = FakeCore()
+
+        runner(core).probe(rowConfig, "ftp://x.invalid/") shouldBe CertificateProbeResult.DID_NOT_RUN
+        runner(core).probe(rowConfig, "not a url") shouldBe CertificateProbeResult.DID_NOT_RUN
+        core.events.shouldBeEmpty()
+    }
+
+    @Test
+    fun theConnectTargetFollowsTheUrlsPortOrItsSchemesDefault() {
+        CertificateProbe.connectTarget("https://www.gstatic.com/generate_204") shouldBe "www.gstatic.com:443"
+        CertificateProbe.connectTarget("http://cp.cloudflare.com/") shouldBe "cp.cloudflare.com:80"
+        CertificateProbe.connectTarget("HTTP://cp.cloudflare.com") shouldBe "cp.cloudflare.com:80"
+        CertificateProbe.connectTarget("http://example.com:8080/x") shouldBe "example.com:8080"
+        CertificateProbe.connectTarget("https://[2001:db8::1]/x") shouldBe "[2001:db8::1]:443"
+        CertificateProbe.connectTarget("ftp://example.com/") shouldBe null
+        CertificateProbe.connectTarget("ftp://example.com:21/") shouldBe null
+        CertificateProbe.connectTarget("https:///nohost") shouldBe null
     }
 
     @Test
@@ -263,12 +312,18 @@ class CertificateProbeTest {
                 override fun stop() = throw IllegalStateException(password)
             }
 
-        runner(core).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.DID_NOT_RUN
+        // Start and stop both fail: reported as a failed stop, never thrown.
+        runner(core).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.STOP_FAILED
         CertificateProbeRunner(
             logDir = temp.newFolder(),
             core = FakeCore(),
-            head = { _, _ -> },
+            connect = { _, _ -> },
             freePort = { throw IOException(password) },
         ).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.DID_NOT_RUN
+    }
+
+    private companion object {
+        /** The runner's delayed re-sweep (CertificateProbe.kt RESWEEP_DELAY_MILLIS). */
+        const val RESWEEP = 200L
     }
 }

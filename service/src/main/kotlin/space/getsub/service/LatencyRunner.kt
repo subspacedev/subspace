@@ -217,8 +217,13 @@ internal class LatencyRunner<T>(
 
     /**
      * Groups [items]' batched servers by [PingGroup] — libXray takes one timeout
-     * and one URL per call — and schedules each chunk of [PingBatch.MAX_CONFIGS]
-     * under the [gate].
+     * and one URL per call — and by [LatencyPlan.Batched.certProbe], and schedules
+     * each chunk of [PingBatch.MAX_CONFIGS] under the [gate], unmarked chunks first.
+     *
+     * Marked servers may each cost `:ping` a certificate probe before their batch
+     * answers (M9-D1 spec §2). Kept in their own chunks and sent last, they never
+     * hold up an ordinary server's result: batches run one at a time in `:ping`, and
+     * [gate] and [PingClient]'s lock are both FIFO, so launch order is send order.
      */
     private fun CoroutineScope.scheduleBatches(
         items: List<Item<T>>,
@@ -226,8 +231,10 @@ internal class LatencyRunner<T>(
     ): List<Deferred<Unit>> =
         items
             .filter { it.plan is LatencyPlan.Batched }
-            .groupBy { (it.plan as LatencyPlan.Batched).group }
-            .flatMap { (group, members) -> members.chunked(PingBatch.MAX_CONFIGS).map { group to it } }
+            .groupBy { (it.plan as LatencyPlan.Batched).let { plan -> plan.group to plan.certProbe } }
+            .entries
+            .sortedBy { (key, _) -> key.second } // stable: false (unmarked) first, otherwise first-seen order
+            .flatMap { (key, members) -> members.chunked(PingBatch.MAX_CONFIGS).map { key.first to it } }
             .map { (group, chunk) ->
                 async {
                     gate.withPermit {
