@@ -7,7 +7,9 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.maps.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -258,5 +260,86 @@ class PingClientTest {
             client.measure(batch, 5, "https://x.invalid")
 
             connector.binds shouldBe 2
+        }
+
+    // ── Abandoned batches keep the slot (review fix round 1) ──────────────────
+
+    /** Three superseded callers, each cancelled after its batch reached an unanswering :ping. */
+    private fun TestScope.abandonThree(
+        client: PingClient,
+    ): List<Job> =
+        List(3) {
+            val caller = launch { client.measure(batch, 5, "https://x.invalid") }
+            runCurrent()
+            caller.cancel()
+            runCurrent()
+            caller
+        }
+
+    @Test
+    fun cancelledCallersReturnAtOnceButTheNextBatchWaitsForTheAbandonedOneToSettle() =
+        runTest {
+            val replies = mutableListOf<(PingBatchResultParcel?) -> Unit>()
+            val connector = FakePingConnector(remote = { _, reply -> replies += reply })
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            val abandoned = abandonThree(client)
+            // Each cancelled caller returned promptly…
+            abandoned.all { it.isCompleted } shouldBe true
+            // …but only the first batch was ever sent: the other two were still
+            // queued in :bg when their runs were superseded.
+            replies.size shouldBe 1
+
+            val live = async { client.measure(batch, 5, "https://x.invalid") }
+            runCurrent()
+            replies.size shouldBe 1 // not sent behind a batch :ping is still running
+
+            replies[0](PingBatchResultParcel(longArrayOf(1, 2), intArrayOf(9, 9), intArrayOf(0, 0)))
+            runCurrent()
+            replies.size shouldBe 2
+            replies[1](PingBatchResultParcel(longArrayOf(1, 2), intArrayOf(30, 40), intArrayOf(0, 0)))
+
+            live.await() shouldContainExactly mapOf(1L to LatencyResult.ok(30), 2L to LatencyResult.ok(40))
+        }
+
+    @Test
+    fun anAbandonedBatchThatNeverAnswersHoldsTheSlotOnlyUntilItsWatchdog() =
+        runTest {
+            val replies = mutableListOf<(PingBatchResultParcel?) -> Unit>()
+            val connector = FakePingConnector(remote = { _, reply -> replies += reply })
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            abandonThree(client)
+            val live = async { client.measure(batch, 5, "https://x.invalid") }
+            advanceTimeBy(PingClient.replyWatchdogMillis(5) - 1)
+            runCurrent()
+            replies.size shouldBe 1
+
+            advanceTimeBy(1)
+            runCurrent()
+            replies.size shouldBe 2
+            // The live batch gets a full watchdog of its own, not the remainder.
+            replies[1](PingBatchResultParcel(longArrayOf(1, 2), intArrayOf(5, 6), intArrayOf(0, 0)))
+            live.await() shouldContainExactly mapOf(1L to LatencyResult.ok(5), 2L to LatencyResult.ok(6))
+        }
+
+    @Test
+    fun deathOfAnAbandonedBatchFreesTheSlot() =
+        runTest {
+            val replies = mutableListOf<(PingBatchResultParcel?) -> Unit>()
+            val connector = FakePingConnector(remote = { _, reply -> replies += reply })
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            abandonThree(client)
+            val live = async { client.measure(batch, 5, "https://x.invalid") }
+            runCurrent()
+            connector.listener!!.onDisconnected() // :ping killed mid-batch
+            runCurrent()
+
+            // The live batch rebinds and is sent.
+            connector.binds shouldBe 2
+            replies.size shouldBe 2
+            replies[1](PingBatchResultParcel(longArrayOf(1, 2), intArrayOf(5, 6), intArrayOf(0, 0)))
+            live.await() shouldContainExactly mapOf(1L to LatencyResult.ok(5), 2L to LatencyResult.ok(6))
         }
 }

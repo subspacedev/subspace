@@ -852,7 +852,7 @@ class TunnelService : VpnService() {
     }
 
     /** `:bg`'s binding to `:ping`: bound by a run's first proxy-head batch, held for the grace after the run. */
-    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext), idleScope = scope) }
+    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext), scope = scope) }
 
     // All guarded by `lock`.
     private var controller: XrayController? = null

@@ -10,6 +10,8 @@ import android.os.IBinder
 import android.os.RemoteException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -69,18 +71,28 @@ internal fun interface PingRemote {
  * whole call, so batches in `:ping` run strictly one after another. Sending
  * more than one would only queue them there, beyond the reach of cancellation:
  * a superseded run would then delay the next by every batch it had queued, not
- * just the one already running (spec §9.3). [calls] keeps the queue here, where
- * cancelling a run removes its waiting batches.
+ * just the one already running (spec §9.3). So at most one batch is ever sent
+ * and unsettled. [calls] queues the rest here, where cancelling a run removes
+ * its unsent batches, and [sentBatch] keeps the slot occupied after a caller is
+ * cancelled: the batch it sent is still running in `:ping`, so the next one
+ * waits until that batch's reply, `:ping`'s death or the watchdog settles it.
+ * The cancelled caller itself returns at once; only the slot stays held. This
+ * is what bounds a live batch's wait to one batch ahead of it, the assumption
+ * [replyWatchdogMillis] is sized on.
  */
 internal class PingClient(
     private val connector: PingConnector,
-    idleScope: CoroutineScope,
+    /** Owns the idle timer and the settle-wait for sent batches; outlives any one caller. */
+    private val scope: CoroutineScope,
     graceMillis: Long = IdleTimer.IDLE_GRACE_MILLIS,
     private val bindTimeoutMillis: Long = BIND_TIMEOUT_MILLIS,
 ) {
     private val calls = Mutex()
     private val lock = Any()
-    private val idle = IdleTimer(idleScope, graceMillis) { dropCurrent() }
+    private val idle = IdleTimer(scope, graceMillis) { dropCurrent() }
+
+    /** Settles when the last sent batch has. Read and written only while holding [calls]. */
+    private var sentBatch: Job? = null
 
     // Guarded by `lock`.
     private var session: Session? = null
@@ -107,7 +119,12 @@ internal class PingClient(
     ): Map<Long, LatencyResult> {
         if (batch.isEmpty()) return emptyMap()
         idle.disarm()
-        val reply = calls.withLock { exchange(PingBatchParcel.of(batch, timeoutSeconds, url), timeoutSeconds) }
+        val reply =
+            calls.withLock {
+                // An abandoned batch may still be running in :ping; never queue behind it there.
+                sentBatch?.join()
+                exchange(PingBatchParcel.of(batch, timeoutSeconds, url), timeoutSeconds)
+            }
         val results = reply?.toResults().orEmpty()
         return batch.associate { it.key to (results[it.key] ?: LatencyResult.failed(LatencyOutcome.UNREACHABLE)) }
     }
@@ -134,19 +151,31 @@ internal class PingClient(
         if (remote == null) drop(s)
         val reply = CompletableDeferred<PingBatchResultParcel?>()
         val tracked = remote != null && synchronized(lock) { !s.dropped && s.inFlight.add(reply) }
-        return if (remote == null || !tracked) {
-            null
-        } else {
-            try {
-                if (send(s, remote, request, reply)) {
+        val sent = remote != null && tracked && send(s, remote, request, reply)
+        if (tracked && !sent) synchronized(lock) { s.inFlight.remove(reply) }
+        return if (sent) settle(s, reply, timeoutSeconds) else null
+    }
+
+    /**
+     * Awaits a sent batch's answer in [scope], not in the caller: if the caller is
+     * cancelled the batch still runs in `:ping`, and [sentBatch] must stay held
+     * until its reply, `:ping`'s death or the watchdog settles it.
+     */
+    private suspend fun settle(
+        s: Session,
+        reply: CompletableDeferred<PingBatchResultParcel?>,
+        timeoutSeconds: Int,
+    ): PingBatchResultParcel? {
+        val settled =
+            scope.async {
+                try {
                     withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { reply.await() }
-                } else {
-                    null
+                } finally {
+                    synchronized(lock) { s.inFlight.remove(reply) }
                 }
-            } finally {
-                synchronized(lock) { s.inFlight.remove(reply) }
             }
-        }
+        sentBatch = settled
+        return settled.await()
     }
 
     // Deliberate: a RemoteException here means `:ping` is gone, and that is
