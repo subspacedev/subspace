@@ -94,4 +94,8 @@ internal fun DetailField.labelRes(): Int =
         DetailField.Credential -> R.string.import_detail_field_credential
         DetailField.AlterId -> R.string.import_detail_field_alter_id
         DetailField.Plugin -> R.string.import_detail_field_plugin
+        DetailField.Pin -> R.string.import_detail_field_pin
+        DetailField.Obfuscation -> R.string.import_detail_field_obfuscation
+        DetailField.Bandwidth -> R.string.import_detail_field_bandwidth
+        DetailField.HopInterval -> R.string.import_detail_field_hop_interval
     }

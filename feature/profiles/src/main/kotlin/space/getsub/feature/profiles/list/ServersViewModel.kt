@@ -562,6 +562,7 @@ private fun String.toProtocolDisplayName(): String =
         "trojan" -> "Trojan"
         "shadowsocks" -> "Shadowsocks"
         "socks" -> "SOCKS"
+        "hysteria2" -> "Hysteria2"
         else -> this
     }
 

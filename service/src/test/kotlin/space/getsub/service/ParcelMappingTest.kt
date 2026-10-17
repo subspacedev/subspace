@@ -11,6 +11,12 @@ import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
+import space.getsub.core.model.Hysteria2Congestion
+import space.getsub.core.model.Hysteria2Obfuscation
+import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Tls
+import space.getsub.core.model.Hysteria2Unsupported
+import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
@@ -198,6 +204,54 @@ class ParcelMappingTest {
                 parcelWith(ProfileParcel.PROTOCOL_VLESS, code).toProfile().shouldNotBeNull()
             }
         }
+    }
+
+    private val hysteria2Tls =
+        Hysteria2Tls(
+            serverName = "sni.example",
+            alpn = listOf("h3", "h3-29"),
+            pins = listOf("ab".repeat(32)),
+            skipChecksRequested = true,
+        )
+
+    private val hysteria2 =
+        Hysteria2Outbound(
+            address = "hy.example.com",
+            port = 443,
+            password = "hy-s3cret-pw",
+            tls = hysteria2Tls,
+            hopping = PortHopping(ports = listOf(20000..30000, 40000..40000), intervalSeconds = 45),
+            obfuscation = Hysteria2Obfuscation.Gecko("obfs-pw-1", 100, 1200),
+            congestion = Hysteria2Congestion.Brutal("100 mbps", "50 mbps"),
+            notConnectableReason = Hysteria2Unsupported.UnknownCongestion,
+        )
+
+    @Test
+    fun `a fully populated hysteria2 profile survives a round trip`() {
+        val p = Profile(id = "h1", name = "Hy", outbound = hysteria2)
+        val parcel = ProfileParcel.from(p, rowId = 9L)
+        parcel.protocol shouldBe ProfileParcel.PROTOCOL_HYSTERIA2
+        parcel.toProfile() shouldBe p
+    }
+
+    @Test
+    fun `a minimal hysteria2 profile survives a round trip`() {
+        val p = Profile("h2", "Hy", Hysteria2Outbound("hy.example.com", 8443, "pw", Hysteria2Tls("sni.example")))
+        ProfileParcel.from(p).toProfile() shouldBe p
+    }
+
+    @Test
+    fun `a hysteria2 parcel without its payload does not decode`() {
+        parcelWith(ProfileParcel.PROTOCOL_HYSTERIA2, ProfileParcel.SECURITY_NONE).toProfile().shouldBeNull()
+    }
+
+    @Test
+    fun `hysteria2 parcel toString does not leak secrets`() {
+        val rendered = ProfileParcel.from(Profile("h1", "Hy", hysteria2)).toString()
+        rendered shouldNotContain "hy-s3cret-pw"
+        rendered shouldNotContain "obfs-pw-1"
+        rendered shouldNotContain "abab"
+        rendered shouldNotContain "hy.example.com"
     }
 
     @Test

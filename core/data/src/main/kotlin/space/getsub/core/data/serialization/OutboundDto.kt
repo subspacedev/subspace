@@ -63,6 +63,81 @@ internal sealed interface OutboundDto {
         val username: String? = null,
         val password: String? = null,
     ) : OutboundDto
+
+    /**
+     * Hysteria2. Every field after [password] has a default, so a row written by an older
+     * build keeps decoding as fields are added (the same extension rule as [TransportDto.Xhttp]).
+     * [unsupported] holds a `Hysteria2Unsupported` name; it is a string so a newer reason read
+     * by an older build still decodes (as not connectable) rather than failing the row.
+     */
+    @Serializable
+    @SerialName("hysteria2")
+    data class Hysteria2(
+        val address: String,
+        val port: Int,
+        val password: String,
+        val tls: Hysteria2TlsDto,
+        val hopping: Hysteria2HoppingDto? = null,
+        val obfuscation: Hysteria2ObfuscationDto = Hysteria2ObfuscationDto.None,
+        val congestion: Hysteria2CongestionDto = Hysteria2CongestionDto.Default,
+        val unsupported: String? = null,
+    ) : OutboundDto
+}
+
+@Serializable
+internal data class Hysteria2TlsDto(
+    val serverName: String,
+    val alpn: List<String> = listOf("h3"),
+    val pins: List<String> = emptyList(),
+    val skipChecksRequested: Boolean = false,
+)
+
+/** [ports] are `[from, to]` pairs, flattened so the stored JSON needs no IntRange adapter. */
+@Serializable
+internal data class Hysteria2HoppingDto(
+    val ports: List<List<Int>>,
+    val intervalSeconds: Int = 30,
+)
+
+@Serializable
+internal sealed interface Hysteria2ObfuscationDto {
+    @Serializable
+    @SerialName("none")
+    data object None : Hysteria2ObfuscationDto
+
+    @Serializable
+    @SerialName("salamander")
+    data class Salamander(
+        val password: String,
+    ) : Hysteria2ObfuscationDto
+
+    @Serializable
+    @SerialName("gecko")
+    data class Gecko(
+        val password: String,
+        val minPacket: Int,
+        val maxPacket: Int,
+    ) : Hysteria2ObfuscationDto
+}
+
+@Serializable
+internal sealed interface Hysteria2CongestionDto {
+    @Serializable
+    @SerialName("default")
+    data object Default : Hysteria2CongestionDto
+
+    @Serializable
+    @SerialName("bbr")
+    data class Bbr(
+        val profile: String = "",
+    ) : Hysteria2CongestionDto
+
+    @Serializable
+    @SerialName("brutal")
+    data class Brutal(
+        val up: String,
+        val down: String,
+    ) : Hysteria2CongestionDto
 }
 
 @Serializable

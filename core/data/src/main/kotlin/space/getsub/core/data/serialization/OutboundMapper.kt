@@ -99,8 +99,7 @@ private fun Outbound.toDto(): OutboundDto =
                 password = password,
             )
 
-        // Task 5 (storage) replaces this stub.
-        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
+        is Hysteria2Outbound -> toHysteria2Dto()
     }
 
 private fun OutboundDto.toDomain(): Outbound =
@@ -147,6 +146,8 @@ private fun OutboundDto.toDomain(): Outbound =
                 username = username,
                 password = password,
             )
+
+        is OutboundDto.Hysteria2 -> toHysteria2Domain()
     }
 
 private fun StreamSettings.toDto(): StreamDto =

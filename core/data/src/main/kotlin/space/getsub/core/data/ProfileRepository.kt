@@ -598,6 +598,12 @@ internal fun Outbound.transportSummary(): String {
             is SocksOutbound -> null
             is Hysteria2Outbound -> null
         }
+    // Hysteria2 always runs over QUIC and has no StreamSettings; show the hop ranges when it hops.
+    if (this is Hysteria2Outbound) {
+        val ports =
+            hopping?.ports?.joinToString(", ") { if (it.first == it.last) "${it.first}" else "${it.first}–${it.last}" }
+        return listOf("QUIC", ports ?: port.toString()).joinToString(" · ")
+    }
     val parts = mutableListOf(stream?.network ?: "tcp")
     when (stream?.security) {
         is Security.Reality -> parts += "reality"

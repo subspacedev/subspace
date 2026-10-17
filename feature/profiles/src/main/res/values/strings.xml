@@ -147,6 +147,10 @@
     <string name="import_detail_field_credential">Credential</string>
     <string name="import_detail_field_alter_id">Alter ID</string>
     <string name="import_detail_field_plugin">Plugin</string>
+    <string name="import_detail_field_pin">Certificate pin</string>
+    <string name="import_detail_field_obfuscation">Obfuscation</string>
+    <string name="import_detail_field_bandwidth">Bandwidth</string>
+    <string name="import_detail_field_hop_interval">Hop interval</string>
 
     <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
          input box. ARCHITECTURE.md §5.6 applies here
