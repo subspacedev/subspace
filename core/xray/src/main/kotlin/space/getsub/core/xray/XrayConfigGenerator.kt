@@ -445,8 +445,9 @@ public object XrayConfigGenerator {
                         """"password": ${jsonString(out.password)}""",
                 )
 
-            // A blank username means no authentication, mirroring SocksClientConfig.Build, which
-            // attaches a user only when one is named: a password alone is dropped.
+            // A blank username means no authentication: a password alone is dropped. Stricter than
+            // SocksClientConfig.Build, which attaches a user when len(user) > 0, so it would send
+            // a whitespace-only name that we drop.
             is SocksOutbound ->
                 appendServerSettings(
                     sb,

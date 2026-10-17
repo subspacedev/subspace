@@ -1006,10 +1006,13 @@ well as VLESS (M9-D2a spec §1), so a share link, base64 list or Clash entry of
 any of the five protocols becomes a profile that connects. The exceptions are
 rows the core itself would refuse. A Shadowsocks row with a cipher v26.10.10
 no longer has, or a 2022 key the core would reject, stays marked "Can't
-connect with this build" with the reason. Plaintext Trojan to a public
+connect with this build" in the Servers list (only the profile editor names
+the reason). Plaintext Trojan to a public
 address is refused at connect time (§14.10 of this document).
 Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
-traffic and measures latency in both modes.
+traffic and measures latency (Proxy mode HEADs through the server; TCP mode
+ran, but over the adb-reverse loopback it measured that loopback, not a server
+round-trip).
 
 **M3 fills two of the six gaps that remained, not all of them:** Clash
 `vless` and `socks5`. The Clash column is now complete — every protocol Clash
