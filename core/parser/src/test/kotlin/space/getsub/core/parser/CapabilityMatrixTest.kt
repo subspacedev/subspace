@@ -12,8 +12,8 @@ private const val MATRIX_UUID = "70cc48c5-b2f4-4a1e-9f3d-0123456789ab"
 /**
  * The protocol × container support matrix, as a test rather than a claim.
  *
- * ARCHITECTURE.md §7 lists five link protocols and four container shapes, which
- * reads as twenty working combinations. It is sixteen. The remaining gaps are
+ * ARCHITECTURE.md §7 lists six link protocols and four container shapes, which
+ * reads as twenty-four working combinations. It is twenty. The remaining gaps are
  * not bugs — nobody has written those branches — but ARCHITECTURE.md §7 stated the capability
  * unqualified, so the table there and this test exist to keep the real shape
  * visible and to fail if a cell silently changes.
@@ -40,6 +40,7 @@ class CapabilityMatrixTest {
             "trojan" to "trojan://s3cret@host.example:443",
             "ss" to "ss://" + base64("aes-256-gcm:s3cret") + "@host.example:8388",
             "socks" to "socks://host.example:1080",
+            "hysteria2" to "hysteria2://s3cret@host.example:443",
         )
 
     private val clash =
@@ -51,6 +52,7 @@ class CapabilityMatrixTest {
                 "proxies:\n  - {name: N, type: ss, server: host.example, port: 8388, " +
                 "cipher: aes-256-gcm, password: s3cret}",
             "socks" to "proxies:\n  - {name: N, type: socks5, server: host.example, port: 1080}",
+            "hysteria2" to "proxies:\n  - {name: N, type: hysteria2, server: host.example, port: 443, password: s3cret}",
         )
 
     private val xrayJson =
@@ -70,6 +72,10 @@ class CapabilityMatrixTest {
             "socks" to
                 """{"outbounds":[{"protocol":"socks","settings":{"servers":[""" +
                 """{"address":"host.example","port":1080}]}}]}""",
+            "hysteria2" to
+                """{"outbounds":[{"protocol":"hysteria","settings":{"version":2,"address":"host.example","port":443},""" +
+                """"streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"s3cret"},""" +
+                """"security":"tls","tlsSettings":{"serverName":"host.example"}}}]}""",
         )
 
     @Test
@@ -89,17 +95,17 @@ class CapabilityMatrixTest {
     }
 
     @Test
-    fun `clash yaml supports vmess, trojan, ss, vless and socks5`() {
-        val supported = setOf("vmess", "trojan", "ss", "vless", "socks")
+    fun `clash yaml supports vmess, trojan, ss, vless, socks5 and hysteria2`() {
+        val supported = setOf("vmess", "trojan", "ss", "vless", "socks", "hysteria2")
         clash.forEach { (protocol, yaml) ->
             withClue("clash $protocol") { yieldsProfile(yaml) shouldBe (protocol in supported) }
         }
     }
 
     @Test
-    fun `raw xray json supports vless only`() {
+    fun `raw xray json supports vless and hysteria2 only`() {
         xrayJson.forEach { (protocol, json) ->
-            withClue("xray json $protocol") { yieldsProfile(json) shouldBe (protocol == "vless") }
+            withClue("xray json $protocol") { yieldsProfile(json) shouldBe (protocol in setOf("vless", "hysteria2")) }
         }
     }
 

@@ -150,7 +150,8 @@ process. Never route a call to a process that holds the wrong state.
   `http://` check URL is not refused by Android's cleartext policy), stop,
   classify the lines (`classifyCertificateFailure`), delete the file. At most 3
   per batch, each bounded to about 8 s, inside the single in-flight slot; marked
-  servers travel in their own batches, after the unmarked ones. The verdict
+  servers travel in their own batches of at most 3, sent after the unmarked ones
+  as a best effort (launch order, not a guarantee; nothing depends on it). The verdict
   alone leaves the probe — `LatencyOutcome.CERT_UNTRUSTED` — never the log text,
   and the file never reaches logcat. The file is §5.6's one sanctioned
   exception to "nothing unredacted reaches disk".
@@ -483,8 +484,11 @@ only within these bounds:
 - It lives only in `:ping`'s `cacheDir/cert-probe` (app-private; the core creates
   it mode 0600, `common/log/logger.go`), never in `filesDir`, never in logcat.
   `access: none`, so no access log exists at all.
-- It contains the probe's own traffic only: one `CONNECT` to the check host
-  through the row's own outbound.
+- It is meant to hold the probe's own traffic: one `CONNECT` to the check host
+  through the row's own outbound. It is not guaranteed to: the loopback inbound is
+  unauthenticated, so another app on the device that connects to it during the
+  probe's few-second window would have its `CONNECT` logged there too. The file
+  stays private (0600, `:ping`'s cache dir) and is deleted as below.
 - Its text is read into local variables, classified to a Boolean, and never
   returned, stored or logged.
 - It is deleted on every path, and the directory is swept (a) when `:ping`
@@ -1078,14 +1082,15 @@ assuming a bug in this codebase, and check the Xray-core issue tracker.
 `:core:parser` handles four container shapes:
 
 - Base64-encoded newline-separated lists
-- `vless://`, `vmess://` (base64 JSON body), `trojan://`, `ss://`, `socks://`
+- `vless://`, `vmess://` (base64 JSON body), `trojan://`, `ss://`, `socks://`,
+  `hysteria2://` / `hy2://`
 - Clash / Clash.Meta YAML
 - Raw Xray JSON
 
 ### What actually parses, per container
 
-Five protocols across four containers reads as twenty combinations. It is
-sixteen. The gaps are not bugs — nobody has written those branches — but they
+Six protocols across four containers reads as twenty-four combinations. It is
+twenty. The gaps are not bugs — nobody has written those branches — but they
 are load-bearing enough that guessing from the list above will mislead you:
 
 | | share link | base64 list | Clash YAML | raw Xray JSON |
@@ -1095,6 +1100,7 @@ are load-bearing enough that guessing from the list above will mislead you:
 | trojan | ✓ | ✓ | ✓ | ✗ |
 | ss | ✓ | ✓ | ✓ | ✗ |
 | socks | ✓ | ✓ | ✓ | ✗ |
+| hysteria2 | ✓ | ✓ | ✓ | ✓ |
 
 The base64 column can never differ from the share-link column: a blob is
 decoded and re-fed through detection, which lands on the link-list path.
@@ -1115,7 +1121,12 @@ rows the core itself would refuse. A Shadowsocks row with a cipher v26.10.10
 no longer has, or a 2022 key the core would reject, stays marked "Can't
 connect with this build" in the Servers list (only the profile editor names
 the reason). Plaintext Trojan to a public
-address is refused at connect time (§14.10 of this document).
+address is refused at connect time (§14.10 of this document). Hysteria2 (M9-D1)
+is the one protocol whose raw Xray JSON cell is also filled: a raw `hysteria`
+outbound runs as written and gets a typed projection for latency, address pinning
+and details. A Hysteria2 row whose source carried a mask or congestion this
+build cannot write, or a BBR profile the core does not know, imports but is not
+connectable, with the reason named in the editor.
 Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
 traffic and measures latency (Proxy mode HEADs through the server; TCP mode
 ran, but over the adb-reverse loopback it measured that loopback, not a server
