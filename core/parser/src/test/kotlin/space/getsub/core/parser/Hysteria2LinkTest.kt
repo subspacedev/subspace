@@ -407,6 +407,35 @@ class Hysteria2LinkTest {
     }
 
     @Test
+    fun `fm brutal bandwidth without a congestion name is brutal`() {
+        // Xray's dialer treats congestion "" with brutalUp set as Brutal (hysteria/dialer.go:205-209).
+        for (name in listOf("", null)) {
+            val congestion = name?.let { "\"congestion\":\"$it\"," }.orEmpty()
+            val json = """{"quicParams":{$congestion"brutalUp":"20 mbps","brutalDown":"100 mbps"}}"""
+            val out = ok("hysteria2://pw@h.example:443?up=1&down=2&fm=${fm(json)}")
+            out.congestion shouldBe Hysteria2Congestion.Brutal("20 mbps", "100 mbps")
+            out.notConnectableReason shouldBe null
+        }
+        val upOnly = """{"quicParams":{"brutalUp":"20 mbps"}}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(upOnly)}").congestion shouldBe
+            Hysteria2Congestion.Brutal("20 mbps", "")
+        val badUp = """{"quicParams":{"brutalUp":"1 bps"}}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(badUp)}").notConnectableReason shouldBe
+            Hysteria2Unsupported.UnknownCongestion
+    }
+
+    @Test
+    fun `fm bbr profile without a congestion name is bbr`() {
+        val json = """{"quicParams":{"bbrProfile":"Aggressive"}}"""
+        val out = ok("hysteria2://pw@h.example:443?up=10&down=20&fm=${fm(json)}")
+        out.congestion shouldBe Hysteria2Congestion.Bbr("aggressive")
+        out.notConnectableReason shouldBe null
+        val bad = """{"quicParams":{"congestion":"","bbrProfile":"turbo"}}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(bad)}").notConnectableReason shouldBe
+            Hysteria2Unsupported.UnknownCongestion
+    }
+
+    @Test
     fun `fm noise mask is not connectable`() {
         val json = """{"udp":[{"type":"noise","settings":{"noise":[{"rand":"10-20"}]}}]}"""
         ok("hysteria2://pw@h.example:443?fm=${fm(json)}").notConnectableReason shouldBe

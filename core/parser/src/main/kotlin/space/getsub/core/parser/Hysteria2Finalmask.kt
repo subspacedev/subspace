@@ -118,9 +118,23 @@ private fun readCongestion(quic: JsonObject): CongestionRead? {
     }
     val name = (quic["congestion"] as? JsonPrimitive)
     return when {
-        quic["congestion"] == null || name?.stringContent()?.isEmpty() == true -> null
+        quic["congestion"] == null || name?.stringContent()?.isEmpty() == true -> readUnnamedCongestion(quic)
         name?.stringContent() == null -> CongestionRead.Unsupported
         else -> readNamedCongestion(name.content, quic)
+    }
+}
+
+/**
+ * `congestion` absent or `""`: the core's dialer runs Brutal when `brutalUp` is set and BBR with
+ * `bbrProfile` otherwise (Xray-core v26.10.10 `transport/internet/hysteria/dialer.go:205-209`), so a
+ * bandwidth means Brutal and a lone profile means BBR. Nothing set is null, letting the link query win.
+ */
+private fun readUnnamedCongestion(quic: JsonObject): CongestionRead? {
+    fun present(key: String) = quic[key] != null && (quic[key] as? JsonPrimitive)?.stringContent() != ""
+    return when {
+        present("brutalUp") || present("brutalDown") -> readNamedCongestion("brutal", quic)
+        present("bbrProfile") -> readNamedCongestion("bbr", quic)
+        else -> null
     }
 }
 
