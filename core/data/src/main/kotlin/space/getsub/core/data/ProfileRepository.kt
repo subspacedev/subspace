@@ -15,6 +15,7 @@ import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
 import space.getsub.core.data.serialization.toOutbound
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
@@ -25,6 +26,7 @@ import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.PassthroughAnalysis
@@ -126,6 +128,8 @@ public data class StoredProfile(
                 // means the source carried something the generator cannot write. A BBR profile outside
                 // BBR_PROFILES mirrors the generator's refusal (the core fails `unknown bbr profile`).
                 is Hysteria2Outbound -> o.notConnectableReason == null && !o.hasUnknownBbrProfile()
+                // M9-D2 Task 2 stubs: refused until the generator task writes them.
+                is WireGuardOutbound, is HttpOutbound -> false
                 null -> false
             }
 
@@ -566,6 +570,8 @@ internal fun Outbound.protocolName(): String =
         is ShadowsocksOutbound -> "shadowsocks"
         is SocksOutbound -> "socks"
         is Hysteria2Outbound -> "hysteria2"
+        is WireGuardOutbound -> "wireguard"
+        is HttpOutbound -> "http"
     }
 
 /**
@@ -597,9 +603,8 @@ internal fun Outbound.transportSummary(): String {
             is VlessOutbound -> stream
             is VmessOutbound -> stream
             is TrojanOutbound -> stream
-            is ShadowsocksOutbound -> null
-            is SocksOutbound -> null
-            is Hysteria2Outbound -> null
+            is ShadowsocksOutbound, is SocksOutbound, is Hysteria2Outbound -> null
+            is WireGuardOutbound, is HttpOutbound -> null
         }
     // Hysteria2 always runs over QUIC and has no StreamSettings; show the hop ranges when it hops.
     if (this is Hysteria2Outbound) {

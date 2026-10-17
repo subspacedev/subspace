@@ -125,6 +125,45 @@ public data class Hysteria2Outbound(
             "obfuscation=${obfuscation::class.simpleName}, congestion=$congestion, secrets=<redacted>)"
 }
 
+/**
+ * A WireGuard server (one peer). Not a [StreamSettings] protocol, like [Hysteria2Outbound].
+ *
+ * Keys are stored as given (base64, any form [WireGuardRules.keyValid] accepts).
+ *
+ * @property address the peer endpoint host.
+ * @property localAddresses the interface addresses (CIDR).
+ * @property reserved empty, or exactly three values 0..255.
+ * @property notConnectableReason non-null when the source parsed but cannot be written; the profile stays listed.
+ */
+public data class WireGuardOutbound(
+    override val address: String,
+    override val port: Int,
+    val secretKey: String,
+    val localAddresses: List<String>,
+    val peerPublicKey: String,
+    val preSharedKey: String?,
+    val mtu: Int = WireGuardRules.DEFAULT_MTU,
+    val reserved: List<Int> = emptyList(),
+    val keepAlive: Int? = null,
+    val allowedIps: List<String> = listOf("0.0.0.0/0", "::/0"),
+    val notConnectableReason: WireGuardUnsupported? = null,
+) : Outbound {
+    override fun toString(): String =
+        "WireGuardOutbound(port=$port, mtu=$mtu, reserved=${reserved.size}, keepAlive=$keepAlive, " +
+            "psk=${preSharedKey != null}, secrets=<redacted>)"
+}
+
+/** An HTTP(S) proxy server (CONNECT, TCP only). TLS, if any, is [security]. */
+public data class HttpOutbound(
+    override val address: String,
+    override val port: Int,
+    val username: String?,
+    val password: String?,
+    val security: Security,
+) : Outbound {
+    override fun toString(): String = "HttpOutbound(port=$port, security=${security.renderType()}, secrets=<redacted>)"
+}
+
 public data class StreamSettings(
     /** Xray transport: `tcp`, `ws`, `grpc`, … M1 exercises `tcp`. */
     val network: String,
@@ -176,6 +215,8 @@ private fun Security.renderType(): String =
 private fun TransportOptions.renderType(): String =
     when (this) {
         TransportOptions.None -> "None"
+        is TransportOptions.Kcp -> "Kcp"
+        is TransportOptions.HttpUpgrade -> "HttpUpgrade"
         is TransportOptions.Grpc -> "Grpc"
         is TransportOptions.WebSocket -> "WebSocket"
         is TransportOptions.Xhttp -> "Xhttp"
@@ -187,5 +228,7 @@ private fun String.renderNetworkType(): String =
         "ws", "websocket" -> "ws"
         "grpc" -> "grpc"
         "xhttp", "splithttp" -> "xhttp"
+        "kcp", "mkcp" -> "kcp"
+        "httpupgrade" -> "httpupgrade"
         else -> "Unknown"
     }

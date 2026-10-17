@@ -6,6 +6,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import space.getsub.core.data.serialization.decodeOutboundJson
 import space.getsub.core.data.serialization.encodeOutboundJson
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -16,6 +17,7 @@ import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 
 /**
  * Carries a [Profile] across the AIDL boundary.
@@ -324,6 +326,9 @@ public class ProfileParcel(
 
                 // Everything else Hysteria2 needs rides in [hysteria2Json]; the password is the credential.
                 is Hysteria2Outbound -> OutboundFields(PROTOCOL_HYSTERIA2, out.password, "", 0, null, null)
+
+                // M9-D2 Task 2 stub: the parcel arrives with the storage task. Nothing constructs these yet.
+                is WireGuardOutbound, is HttpOutbound -> throw IllegalArgumentException("not parcelable yet")
             }
     }
 

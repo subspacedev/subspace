@@ -54,4 +54,21 @@ public sealed interface TransportOptions {
         val host: String?,
         val mode: String?,
     ) : TransportOptions
+
+    /**
+     * mKCP (`network: "kcp"`). [mtu] and [tti] are `kcpSettings`; the obfuscation is `finalmask.udp`
+     * masks, never `kcpSettings.header`/`seed` (see [KcpRules.masks]). Null [mtu]/[tti] take Xray's defaults.
+     * Not connectable when [KcpObfuscation.unsupported] is set (see [KcpRules.notConnectableReason]).
+     */
+    public data class Kcp(
+        val mtu: Int?,
+        val tti: Int?,
+        val obfuscation: KcpObfuscation,
+    ) : TransportOptions
+
+    /** HTTPUpgrade (`network: "httpupgrade"`): `httpupgradeSettings {host, path}`; empty [host] means none. */
+    public data class HttpUpgrade(
+        val host: String,
+        val path: String,
+    ) : TransportOptions
 }

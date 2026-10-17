@@ -4,6 +4,7 @@ package space.getsub.core.data.serialization
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
@@ -14,6 +15,7 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 
 // encodeDefaults: a decoded StreamDto.transport must serialize back out even
 // when it is the default TransportDto.None, or identityHashOf(outbound) would
@@ -100,6 +102,8 @@ private fun Outbound.toDto(): OutboundDto =
             )
 
         is Hysteria2Outbound -> toHysteria2Dto()
+        // M9-D2 Task 2 stubs: storage arrives with the storage task. Nothing constructs these yet.
+        is WireGuardOutbound, is HttpOutbound -> throw IllegalArgumentException("not storable yet")
     }
 
 private fun OutboundDto.toDomain(): Outbound =
@@ -217,6 +221,7 @@ private fun TransportOptions.toDto(): TransportDto =
         is TransportOptions.WebSocket -> TransportDto.WebSocket(path = path, headers = headers.toSortedMap())
         is TransportOptions.Grpc -> TransportDto.Grpc(serviceName = serviceName)
         is TransportOptions.Xhttp -> TransportDto.Xhttp(path = path, host = host, mode = mode)
+        is TransportOptions.Kcp, is TransportOptions.HttpUpgrade -> throw IllegalArgumentException("not storable yet")
     }
 
 private fun TransportDto.toDomain(): TransportOptions =

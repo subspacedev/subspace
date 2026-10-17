@@ -4,6 +4,7 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Unsupported
@@ -20,6 +21,7 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.OverrideTarget
@@ -187,8 +189,13 @@ public object XrayConfigGenerator {
         settings: TunnelSettings,
     ): ConfigResult =
         when (val outbound = profile.outbound) {
-            is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound ->
-                ConfigResult.Ok(generateTyped(outbound, settings))
+            // M9-D2 Task 2 stubs: WireGuard, HTTP and the kcp/httpupgrade transports exist in the model;
+            // the config writer arrives with the generator task, which deletes `unwrittenRefusal`.
+            is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound, is WireGuardOutbound,
+            is HttpOutbound,
+            ->
+                outbound.unwrittenRefusal()?.let { ConfigResult.Unsupported(it) }
+                    ?: ConfigResult.Ok(generateTyped(outbound, settings))
             // A row whose source carried a mask or congestion this build cannot write would connect
             // to nothing if generated without it (M9-D1 spec §1), so it is refused by a fixed name.
             // A stored BBR profile outside BBR_PROFILES (an older row, an editor value) would fail the
@@ -395,6 +402,8 @@ public object XrayConfigGenerator {
                 appendStreamSettings(sb, PLAIN_TCP_STREAM, settings.obfuscation, pinDomain)
             // Its own stream block: the password lives in the transport, and TLS is mandatory.
             is Hysteria2Outbound -> appendHysteria2Stream(sb, out, settings.obfuscation, pinDomain)
+            // Refused in generate() until the generator task; never reached.
+            is WireGuardOutbound, is HttpOutbound -> error("generate() refuses this outbound before it is written")
         }
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
@@ -427,6 +436,7 @@ public object XrayConfigGenerator {
     ) {
         val endpoint = listOf(""""address": ${jsonString(address)}""", """"port": ${out.port}""")
         when (out) {
+            is WireGuardOutbound, is HttpOutbound -> error("generate() refuses this outbound before it is written")
             // `HysteriaClientConfig` (`infra/conf/hysteria.go`): a flat `version`/`address`/`port`, no
             // server array and no credentials. Build fails unless `version == 2`.
             is Hysteria2Outbound -> {
@@ -663,6 +673,8 @@ public object XrayConfigGenerator {
         // address, so an address pin keeps every derived name on the domain (M9-C spec §3.2).
         when (transport) {
             is TransportOptions.None -> Unit
+            is TransportOptions.Kcp, is TransportOptions.HttpUpgrade ->
+                error("generate() refuses this transport before it is written")
             is TransportOptions.WebSocket ->
                 appendWebSocketSettings(sb, transport, pinDomain.takeUnless { security is Security.Tls })
             is TransportOptions.Grpc -> {
@@ -740,7 +752,22 @@ private fun Outbound.wireProtocol(): String =
         is SocksOutbound -> "socks"
         // `hysteria` is the name `infra/conf` registers the outbound under; `hysteria2` is not one.
         is Hysteria2Outbound -> "hysteria"
+        is WireGuardOutbound -> "wireguard"
+        is HttpOutbound -> "http"
     }
+
+private fun Outbound.unwrittenRefusal(): String? =
+    when (this) {
+        is WireGuardOutbound -> "WireGuard"
+        is HttpOutbound -> "HTTP proxy"
+        is VlessOutbound -> stream.transport.unwrittenRefusal()
+        is VmessOutbound -> stream.transport.unwrittenRefusal()
+        is TrojanOutbound -> stream.transport.unwrittenRefusal()
+        else -> null
+    }
+
+private fun TransportOptions.unwrittenRefusal(): String? =
+    if (this is TransportOptions.Kcp || this is TransportOptions.HttpUpgrade) "mKCP/HTTPUpgrade transport" else null
 
 private fun Hysteria2Outbound.unknownBbrProfile(): Boolean =
     (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true

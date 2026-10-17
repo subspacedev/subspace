@@ -19,6 +19,7 @@ import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Outbound
@@ -31,6 +32,7 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.DetailField
@@ -534,6 +536,8 @@ private fun StoredProfile.toEditorState(groups: List<EditorGroupOption>): Editor
         is ShadowsocksOutbound -> base.copy(method = ob.method, primaryCredential = ob.password)
         is SocksOutbound ->
             base.copy(primaryCredential = ob.username.orEmpty(), secondaryCredential = ob.password.orEmpty())
+        // M9-D2 Task 2 stub: the editor arrives with the editor task. Nothing constructs these yet.
+        is WireGuardOutbound, is HttpOutbound -> throw IllegalArgumentException("not editable yet")
         is Hysteria2Outbound -> {
             // R11: a stored one-port hop dials that port; show it as the port, with no hopping, so a
             // save cannot silently move the row back to the outbound port.
@@ -570,6 +574,7 @@ private fun EditorState.withStream(stream: StreamSettings): EditorState {
         }
     return when (val transport = stream.transport) {
         TransportOptions.None -> withSecurity.copy(network = stream.network)
+        is TransportOptions.Kcp, is TransportOptions.HttpUpgrade -> throw IllegalArgumentException("not editable yet")
         is TransportOptions.WebSocket ->
             withSecurity.copy(network = stream.network, wsPath = transport.path, originalWsHeaders = transport.headers)
         is TransportOptions.Grpc ->
