@@ -110,8 +110,16 @@ The last hop is where the classic fatal bug lives. See §5.1.
 **`:ping` exists because of a libXray rule, not for tidiness.** `pingBatch`
 refuses to run in a process that holds a managed Xray instance
 (`runXray`), and `:bg` holds one for the whole session. So `PingMode.PROXY_HEAD`
-latency runs in `PingService` (`android:process=":ping"`), a process that never
-calls `runXray`. This is the **one-Go-runtime-per-process rule**: each process
+latency runs in `PingService` (`android:process=":ping"`), a process that runs
+`pingBatch` only while it holds no managed instance. The one exception is the
+**certificate probe** (M9-D1 spec §2): only it calls `runXray` here, for a
+short-lived instance, strictly between batches, inside `:ping`'s single worker,
+and it always stops that instance (`finally`) before the worker takes the next
+batch. If a stop ever fails, `:ping` is poisoned: it answers that batch, refuses
+every later one without calling `pingBatch`, and ends itself after the reply.
+Neither the probe nor anything else in `:ping` calls `registerDialerController`
+(the app's UID is excluded from the VPN, so its sockets go direct). This is the
+**one-Go-runtime-per-process rule**: each process
 that loads `libXray` has its own Go runtime and its own `coreServer` singleton,
 and `testXray`, `runXray` and `pingBatch` each assume the state of *their*
 process. Never route a call to a process that holds the wrong state.
@@ -130,6 +138,18 @@ process. Never route a call to a process that holds the wrong state.
   in a ping config are ignored). A failed entry is `success:false` and is never
   rendered as a number (the core's `10000`/`11000` sentinels are discarded).
   Source: `docs/agent/research/libxray-api.md`.
+- **Certificate probe.** A failed `pingBatch` item reads the same
+  `io: read/write on closed pipe` for an untrusted certificate, wrong auth and a
+  down server, and the core names a certificate failure only in an `Info` log
+  line, which would also log destinations. So for a failed server that `:bg`
+  marked (`isUdpServer`, i.e. Hysteria2, typed or raw), `:ping` runs one probe
+  before answering: that server's own proxy outbound behind a loopback HTTP
+  inbound, `log {loglevel: info, error: <private file in :ping's cacheDir>,
+  access: none}`, one HEAD to the check URL, stop, classify the lines
+  (`classifyCertificateFailure`), delete the file. At most 3 per batch, each
+  bounded to about 8 s, inside the single in-flight slot. The verdict alone
+  leaves the probe — `LatencyOutcome.CERT_UNTRUSTED` — never the log text, and
+  the file never reaches logcat (§5.6).
 
 **Consequence agents routinely get wrong:** the processes do **not**
 share memory. Hilt singletons, `object` declarations, static fields, and

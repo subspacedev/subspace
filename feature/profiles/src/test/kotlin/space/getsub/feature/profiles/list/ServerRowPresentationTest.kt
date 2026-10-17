@@ -139,6 +139,7 @@ class ServerRowPresentationTest {
         row(latency = LatencyResult.ok(42)).pill() shouldBe PillText.Ms(42)
         row(latency = LatencyResult.failed(LatencyOutcome.UNSUPPORTED)).pill() shouldBe PillText.Unsupported
         row(latency = LatencyResult.failed(LatencyOutcome.FOREIGN_VPN)).pill() shouldBe PillText.ForeignVpn
+        row(latency = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED)).pill() shouldBe PillText.CertUntrusted
         row(latency = LatencyResult.failed(LatencyOutcome.TIMEOUT)).pill() shouldBe PillText.Failed
         row(latency = LatencyResult.failed(LatencyOutcome.UNREACHABLE)).pill() shouldBe PillText.Failed
         row(latency = LatencyResult.failed(LatencyOutcome.CANCELLED)).pill() shouldBe PillText.Failed

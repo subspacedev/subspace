@@ -7,6 +7,8 @@ import org.junit.Test
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
+import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.ThroughputWindow
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.ui.component.Outcome
@@ -49,5 +51,21 @@ class HomeCardsTest {
         outcomeForTag("block", generatedConfig = true) shouldBe Outcome.Block
         outcomeForTag("my-relay", generatedConfig = true) shouldBe null
         outcomeForTag("proxy", generatedConfig = false) shouldBe null
+    }
+
+    @Test
+    fun `the latency tile names each outcome`() {
+        HomeState(isMeasuringLatency = true, latency = LatencyResult.ok(5)).latencyLabel() shouldBe LatencyLabel.Testing
+        HomeState(latency = null).latencyLabel() shouldBe LatencyLabel.None
+        HomeState(latency = LatencyResult.ok(42)).latencyLabel() shouldBe LatencyLabel.Ms(42)
+        HomeState(latency = LatencyResult.failed(LatencyOutcome.UNSUPPORTED)).latencyLabel() shouldBe
+            LatencyLabel.Unsupported
+        HomeState(latency = LatencyResult.failed(LatencyOutcome.FOREIGN_VPN)).latencyLabel() shouldBe
+            LatencyLabel.ForeignVpn
+        HomeState(latency = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED)).latencyLabel() shouldBe
+            LatencyLabel.CertUntrusted
+        HomeState(latency = LatencyResult.failed(LatencyOutcome.UNREACHABLE)).latencyLabel() shouldBe
+            LatencyLabel.Failed
+        HomeState(latency = LatencyResult.failed(LatencyOutcome.TIMEOUT)).latencyLabel() shouldBe LatencyLabel.Failed
     }
 }

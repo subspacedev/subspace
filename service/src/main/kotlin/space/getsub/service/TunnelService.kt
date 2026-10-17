@@ -602,9 +602,17 @@ internal suspend fun planLatency(
         // The core would answer a proxy-head ping of this server with its build error; TCP mode
         // (above) measures a connect and is unaffected.
         outbound.refusedWithoutTransportSecurity() -> unsupported
+        // A UDP server's failure may be an untrusted certificate, which pingBatch cannot tell from
+        // a down server; `:ping` probes it to say which (M9-D1 spec §2). Hysteria2 only, typed or raw.
         else ->
             pingConfig(outbound)
-                ?.let { LatencyPlan.Batched(it, PingGroup(options.timeoutSeconds, options.checkUrl)) }
+                ?.let {
+                    LatencyPlan.Batched(
+                        it,
+                        PingGroup(options.timeoutSeconds, options.checkUrl),
+                        certProbe = isUdpServer(outbound),
+                    )
+                }
                 ?: unsupported
     }
 }

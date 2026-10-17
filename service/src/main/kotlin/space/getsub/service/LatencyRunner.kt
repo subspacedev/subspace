@@ -33,13 +33,18 @@ internal sealed interface LatencyPlan {
         val result: LatencyResult,
     ) : LatencyPlan
 
-    /** Sent to `:ping` in a `pingBatch` with every other server in [group]. */
+    /**
+     * Sent to `:ping` in a `pingBatch` with every other server in [group]. [certProbe]: if it
+     * fails, `:ping` may run the certificate probe on it (M9-D1 spec §2) — `:bg` decides who,
+     * `:ping` never inspects a config to decide.
+     */
     class Batched(
         val xrayJson: String,
         val group: PingGroup,
+        val certProbe: Boolean = false,
     ) : LatencyPlan {
         // ARCHITECTURE.md §5.6: the config carries the address, UUID and keys.
-        override fun toString(): String = "Batched(group=$group, xrayJson=<redacted>)"
+        override fun toString(): String = "Batched(group=$group, xrayJson=<redacted>, certProbe=$certProbe)"
     }
 }
 
@@ -226,7 +231,11 @@ internal class LatencyRunner<T>(
             .map { (group, chunk) ->
                 async {
                     gate.withPermit {
-                        val targets = chunk.map { PingTarget(it.key, (it.plan as LatencyPlan.Batched).xrayJson) }
+                        val targets =
+                            chunk.map {
+                                val batched = it.plan as LatencyPlan.Batched
+                                PingTarget(it.key, batched.xrayJson, batched.certProbe)
+                            }
                         val results = guardedOr(emptyMap()) { measureBatch(group, targets) }
                         chunk.forEach { deliver(it.profileId, results[it.key] ?: FAILED) }
                     }

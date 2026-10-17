@@ -50,6 +50,9 @@ internal sealed interface PillText {
     data object Unsupported : PillText
 
     data object ForeignVpn : PillText
+
+    /** M9-D1 spec §2: the certificate probe named the failure; the fix is the server's pin. */
+    data object CertUntrusted : PillText
 }
 
 /** Mirrors Home's latency tile. `delayMillis` is read on `OK` alone (M8.5 spec §10.1). */
@@ -61,6 +64,7 @@ internal fun ServerRow.pill(): PillText {
         result.outcome == LatencyOutcome.OK -> PillText.Ms(result.delayMillis)
         result.outcome == LatencyOutcome.UNSUPPORTED -> PillText.Unsupported
         result.outcome == LatencyOutcome.FOREIGN_VPN -> PillText.ForeignVpn
+        result.outcome == LatencyOutcome.CERT_UNTRUSTED -> PillText.CertUntrusted
         else -> PillText.Failed
     }
 }

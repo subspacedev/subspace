@@ -81,6 +81,38 @@ internal fun outcomeForTag(
         }
     }
 
+/** What the latency tile says; [StatTilesRow] maps each to a string. Mirrors the server list's pill. */
+internal sealed interface LatencyLabel {
+    data object Testing : LatencyLabel
+
+    data object None : LatencyLabel
+
+    data class Ms(val ms: Int) : LatencyLabel
+
+    data object Unsupported : LatencyLabel
+
+    data object ForeignVpn : LatencyLabel
+
+    /** M9-D1 spec §2: the certificate probe named the failure; the fix is the server's pin. */
+    data object CertUntrusted : LatencyLabel
+
+    data object Failed : LatencyLabel
+}
+
+/** `delayMillis` is read on `OK` alone (M8.5 spec §10.1). */
+internal fun HomeState.latencyLabel(): LatencyLabel {
+    val result = latency
+    return when {
+        isMeasuringLatency -> LatencyLabel.Testing
+        result == null -> LatencyLabel.None
+        result.outcome == LatencyOutcome.OK -> LatencyLabel.Ms(result.delayMillis)
+        result.outcome == LatencyOutcome.UNSUPPORTED -> LatencyLabel.Unsupported
+        result.outcome == LatencyOutcome.FOREIGN_VPN -> LatencyLabel.ForeignVpn
+        result.outcome == LatencyOutcome.CERT_UNTRUSTED -> LatencyLabel.CertUntrusted
+        else -> LatencyLabel.Failed
+    }
+}
+
 /**
  * DOWN, UP and LATENCY, in that order, at equal height.
  *
@@ -101,15 +133,15 @@ internal fun StatTilesRow(
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val latency = state.latency
     val latencyValue =
-        when {
-            state.isMeasuringLatency -> stringResource(R.string.home_latency_testing)
-            latency == null -> stringResource(R.string.home_latency_none)
-            latency.outcome == LatencyOutcome.OK -> stringResource(R.string.home_latency_ms, latency.delayMillis)
-            latency.outcome == LatencyOutcome.UNSUPPORTED -> stringResource(R.string.home_latency_unsupported)
-            latency.outcome == LatencyOutcome.FOREIGN_VPN -> stringResource(R.string.home_latency_foreign_vpn)
-            else -> stringResource(R.string.home_latency_failed)
+        when (val label = state.latencyLabel()) {
+            LatencyLabel.Testing -> stringResource(R.string.home_latency_testing)
+            LatencyLabel.None -> stringResource(R.string.home_latency_none)
+            is LatencyLabel.Ms -> stringResource(R.string.home_latency_ms, label.ms)
+            LatencyLabel.Unsupported -> stringResource(R.string.home_latency_unsupported)
+            LatencyLabel.ForeignVpn -> stringResource(R.string.home_latency_foreign_vpn)
+            LatencyLabel.CertUntrusted -> stringResource(R.string.home_latency_cert_untrusted)
+            LatencyLabel.Failed -> stringResource(R.string.home_latency_failed)
         }
     val latencyHint = stringResource(R.string.home_latency_test_description)
     val none = stringResource(R.string.home_latency_none)

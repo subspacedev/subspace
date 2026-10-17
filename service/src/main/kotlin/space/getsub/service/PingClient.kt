@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.xray.CertificateProbe
 import space.getsub.core.xray.PingTarget
 
 /**
@@ -243,11 +244,15 @@ internal class PingClient(
         /**
          * How long one batch may take before its servers are failed. A batch can
          * wait in `:ping` behind one abandoned batch (a superseded run's, which
-         * cancellation cannot stop) and then run its own: twice the timeout, plus
-         * room for two instance starts. Only a wedged `:ping` reaches it.
+         * cancellation cannot stop) and then run its own: twice the timeout and
+         * twice the certificate probes a batch may run before answering (M9-D1
+         * spec §2), plus room for two instance starts. Only a wedged `:ping`
+         * reaches it.
          */
         fun replyWatchdogMillis(timeoutSeconds: Int): Long =
-            2L * timeoutSeconds * MILLIS_PER_SECOND + WATCHDOG_SLACK_MILLIS
+            2L * (timeoutSeconds * MILLIS_PER_SECOND + PROBES_PER_BATCH_MILLIS) + WATCHDOG_SLACK_MILLIS
+
+        private const val PROBES_PER_BATCH_MILLIS = CertificateProbe.MAX_PER_BATCH * CertificateProbe.BOUND_MILLIS
 
         private const val MILLIS_PER_SECOND = 1_000L
         private const val WATCHDOG_SLACK_MILLIS = 15_000L

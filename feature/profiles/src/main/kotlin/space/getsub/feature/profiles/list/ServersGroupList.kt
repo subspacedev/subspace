@@ -243,6 +243,7 @@ private fun pillText(pill: PillText): String =
         PillText.Failed -> stringResource(R.string.servers_latency_failed)
         PillText.Unsupported -> stringResource(R.string.servers_latency_unsupported)
         PillText.ForeignVpn -> stringResource(R.string.servers_latency_foreign_vpn)
+        PillText.CertUntrusted -> stringResource(R.string.servers_latency_cert_untrusted)
     }
 
 @Composable

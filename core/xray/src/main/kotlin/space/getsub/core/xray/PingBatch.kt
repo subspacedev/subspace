@@ -21,12 +21,16 @@ import space.getsub.core.model.Profile
 /**
  * One server to measure: [key] is the caller's own id (a profile id), [xrayJson]
  * the full typed config. `toString` redacts the config (ARCHITECTURE.md §5.6).
+ *
+ * [certProbe] is `:bg`'s decision that, should this server fail, `:ping` may run the
+ * certificate probe on it ([CertificateProbe]); `pingBatch` itself never reads it.
  */
 public data class PingTarget(
     val key: Long,
     val xrayJson: String,
+    val certProbe: Boolean = false,
 ) {
-    override fun toString(): String = "PingTarget(key=$key, xrayJson=<redacted>)"
+    override fun toString(): String = "PingTarget(key=$key, xrayJson=<redacted>, certProbe=$certProbe)"
 }
 
 /**
