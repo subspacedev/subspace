@@ -261,6 +261,61 @@ internal fun validationFailureReason(runsAsWritten: Boolean): FailureReason =
     if (runsAsWritten) FailureReason.PassthroughRejectedAtConnect else FailureReason.ConfigRejected
 
 /**
+ * Ruling P10(a): stops the core a failed start had already started, before the failure is
+ * published.
+ *
+ * An orphaned core costs more since libXray v26.10.10: `testXray` refuses while this process has
+ * a managed instance (`xray/validation.go:13-14`), and [validationFailureReason] names that as a
+ * Terminal `ConfigRejected`/`PassthroughRejectedAtConnect` — so every later connect would fail as
+ * "your config is bad" until `:bg` died.
+ *
+ * Only while [stillOwned] — this start's generation is current and its controller is still the
+ * service's. `stopXray` is process-global, so once a newer session has taken over, calling it could
+ * stop *that* session's core; [sweepOrphanedCore] on the newer start covers what this leaves.
+ *
+ * @return whether [stop] was called.
+ */
+internal suspend fun stopCoreLeftByFailedStart(
+    started: Boolean,
+    stillOwned: () -> Boolean,
+    stop: suspend () -> Unit,
+): Boolean {
+    if (!started || !stillOwned()) return false
+    stop()
+    return true
+}
+
+/**
+ * Ruling P10(b): before `testXray`, stops a running core that no live session owns.
+ *
+ * [ownsStartSlot] is true while this start's generation is current and the service's controller is
+ * this start's own, not-yet-started one — so any core `getXrayState` reports running then belongs
+ * to no session: one orphaned by a failed start or by a stop that raced a start. Left running, it
+ * makes `testXray` refuse (see [stopCoreLeftByFailedStart]). Ownership is re-read after the state
+ * call, which can take long enough for a newer session to take the slot.
+ *
+ * A state read that fails is not thrown: `validate` runs next and names its own failure.
+ *
+ * @return whether [stop] was called.
+ */
+internal suspend fun sweepOrphanedCore(
+    ownsStartSlot: () -> Boolean,
+    isRunning: suspend () -> Boolean,
+    stop: suspend () -> Unit,
+): Boolean {
+    val orphaned =
+        ownsStartSlot() &&
+            try {
+                isRunning()
+            } catch (_: XrayException) {
+                false
+            } &&
+            ownsStartSlot()
+    if (orphaned) stop()
+    return orphaned
+}
+
+/**
  * The refusal a **typed** row's start is stopped with before any config is generated, or null.
  *
  * Xray-core v26.10.10 refuses plaintext VLESS/Trojan to a public address with no opt-out, so the
@@ -1854,8 +1909,11 @@ class TunnelService : VpnService() {
         gen: Int,
         profile: Profile,
         rowId: Long,
-    ): StartedCore? =
-        try {
+    ): StartedCore? {
+        // Set once startCore has returned with the core running, so the catch below knows there is
+        // a core to stop (Ruling P10(a)). Only the lease release can still throw after that.
+        var started: XrayController? = null
+        return try {
             routingResolver.withResolution { routing ->
                 if (routing is RoutingResolution.MissingGeoData) {
                     failStart(
@@ -1890,14 +1948,25 @@ class TunnelService : VpnService() {
                 if (!ownsStart) return@withResolution null
 
                 val ports = startCore(gen, xray, profile, rowId, routing, dnsPlan) ?: return@withResolution null
+                started = xray
                 StartedCore(xray, ports, dnsPlan)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // Before failStart, which nulls `controller`: a core left running here would make
+            // every later connect's testXray refuse (see stopCoreLeftByFailedStart).
+            started?.let { xray ->
+                stopCoreLeftByFailedStart(
+                    started = true,
+                    stillOwned = { synchronized(lock) { gen == generation && controller === xray } },
+                    stop = { xray.stop() },
+                )
+            }
             failStart(gen, FailureReason.CoreStartFailed, e, rowId)
             null
         }
+    }
 
     // One early return per step is the point, not a smell: §10.4 requires each
     // stage of the start sequence to fail specifically and stop there.
@@ -1990,11 +2059,15 @@ class TunnelService : VpnService() {
         // no copy of the UUID and keys is written to disk (ARCHITECTURE.md §5.6).
         //
         // testXray refuses while this process has a managed instance (xray/validation.go:13-14).
-        // Neither caller leaves one running: a fresh start gets past startTunnel's state guard
-        // only after the previous session's teardown (which stops its core) has published, and
-        // restartCoreRetainingTun stops the old core (`handoff.oldXray?.stopBlocking()`) before
-        // calling resolveAndStartCore.
+        // Neither caller leaves one running on purpose: a fresh start gets past startTunnel's
+        // state guard only after the previous session's teardown (which stops its core) has
+        // published, and restartCoreRetainingTun stops the old core
+        // (`handoff.oldXray?.stopBlocking()`) before calling resolveAndStartCore. A core can
+        // still be orphaned — a stop that raced an earlier start, or a failure that escaped one
+        // — so Ruling P10(b) sweeps any running core while this start owns the slot, and no live
+        // session can own it then.
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.ValidatingConfig))) return null
+        sweepOrphanedCoreBefore(gen, xray)
         try {
             xray.validate(json)
         } catch (e: XrayException) {
@@ -2015,6 +2088,22 @@ class TunnelService : VpnService() {
         }
 
         return StartedPorts(socksPort, httpPort)
+    }
+
+    /**
+     * [sweepOrphanedCore] for [startCore]: [xray] is this start's own, not-yet-started controller,
+     * so while [gen] is current and [controller] is still [xray], no live session owns whatever core
+     * is running. `stop` goes through [xray] because `stopXray` is process-global.
+     */
+    private suspend fun sweepOrphanedCoreBefore(
+        gen: Int,
+        xray: XrayController,
+    ) {
+        sweepOrphanedCore(
+            ownsStartSlot = { synchronized(lock) { gen == generation && controller === xray } },
+            isRunning = { xray.isRunning() },
+            stop = { xray.stop() },
+        )
     }
 
     /**
