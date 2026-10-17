@@ -15,6 +15,7 @@ import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
 import space.getsub.core.data.serialization.toOutbound
+import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -24,6 +25,7 @@ import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.PassthroughAnalysis
 import space.getsub.core.parser.PassthroughRejection
@@ -121,8 +123,9 @@ public data class StoredProfile(
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
                 // Plan ruling R2: its own branch, never `hysteria` in CONNECTABLE_NETWORKS. A reason
-                // means the source carried something the generator cannot write.
-                is Hysteria2Outbound -> o.notConnectableReason == null
+                // means the source carried something the generator cannot write. A BBR profile outside
+                // BBR_PROFILES mirrors the generator's refusal (the core fails `unknown bbr profile`).
+                is Hysteria2Outbound -> o.notConnectableReason == null && !o.hasUnknownBbrProfile()
                 null -> false
             }
 
@@ -613,3 +616,7 @@ internal fun Outbound.transportSummary(): String {
     parts += port.toString()
     return parts.joinToString(" · ")
 }
+
+private fun Hysteria2Outbound.hasUnknownBbrProfile(): Boolean =
+    (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true
+
