@@ -21,7 +21,6 @@ private val SECRET_KEY_NAMES = listOf("privatekey", "pk")
 private val PEER_KEY_NAMES = listOf("publickey", "peerpublickey", "pub", "peerpub", "peerpk")
 private val PSK_NAMES = listOf("presharedkey", "psk")
 private val ADDRESS_NAMES = listOf("address", "ip", "localaddress")
-private val ADDRESS_SHAPE = Regex("""^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$""")
 
 private data class Pieces(
     val userInfo: String,
@@ -81,11 +80,12 @@ private fun buildWireGuard(raw: String): Step<Pair<WireGuardOutbound, String>> {
 
     val addresses = first(query, ADDRESS_NAMES).split(',').map { it.trim() }.filter { it.isNotEmpty() }
     if (addresses.isEmpty()) return uriFail(FailureDetail.Missing(DetailField.LocalAddress))
-    if (addresses.any { !ADDRESS_SHAPE.matches(it) }) return uriFail(FailureDetail.Malformed(DetailField.LocalAddress))
+    if (addresses.any { !validLocalAddress(it) }) return uriFail(FailureDetail.Malformed(DetailField.LocalAddress))
 
     val reserved =
         WireGuardRules.parseReserved(query["reserved"].orEmpty())
             ?: return uriFail(FailureDetail.Malformed(DetailField.Reserved))
+    // The 1..65535 range is this parser's own limit; the core states no WireGuard mtu bound.
     val mtu = boundedInt(query["mtu"], MIN_WG_MTU, MAX_WG_MTU, DetailField.Mtu)
     if (mtu is Step.Fail) return mtu
     val keepAlive = boundedInt(query["keepalive"], 0, MAX_KEEPALIVE, DetailField.Keepalive)
@@ -174,14 +174,17 @@ private fun splitHostPort(hostPort: String): Pair<String, String>? {
     return hostPort.substring(0, colon) to hostPort.substring(colon + 1)
 }
 
-/** Keys lower-cased with `_`/`-` removed; values percent-decoded (a literal `+` stays) and trimmed. */
+/**
+ * Keys lower-cased with `_`/`-` removed; a repeated key keeps its last value, like the shared `parseQuery`;
+ * values percent-decoded (a literal `+` stays) and trimmed.
+ */
 private fun readNormalisedQuery(rawQuery: String): Map<String, String> {
     val result = LinkedHashMap<String, String>()
     for (pair in rawQuery.split('&')) {
         val equals = pair.indexOf('=')
         if (equals <= 0) continue
         val key = percentDecode(pair.substring(0, equals)).lowercase().filter { it != '_' && it != '-' }
-        result.putIfAbsent(key, percentDecode(pair.substring(equals + 1)).trim())
+        result[key] = percentDecode(pair.substring(equals + 1)).trim()
     }
     return result
 }

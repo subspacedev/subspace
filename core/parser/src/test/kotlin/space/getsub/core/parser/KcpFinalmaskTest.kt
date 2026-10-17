@@ -94,4 +94,11 @@ class KcpFinalmaskTest {
         read(udp(legacy("""{"header":"srtp","value":"b"}"""))).obfuscation!!.unsupported shouldBe
             KcpUnsupported.UnknownMask
     }
+
+    @Test
+    fun `original followed by header none is two originals and not reproducible`() {
+        // header "none" reads as {}: two originals, which KcpRules.masks never writes.
+        read(udp(legacy("{}"), legacy("""{"header":"none"}"""))).obfuscation!!.unsupported shouldBe
+            KcpUnsupported.UnknownMask
+    }
 }

@@ -156,4 +156,34 @@ class WireGuardLinkTest {
         val (_, o) = ok("wireguard://${enc(sk)}@h.example:1?publickey=${enc(pk)}&address=10.0.0.2")
         o.toString().contains(sk) shouldBe false
     }
+
+    @Test
+    fun `a repeated query key keeps the last value`() {
+        val (_, o) = ok("wg://h.example:1?pk=${enc(sk)}&pub=${enc(pk)}&ip=10.0.0.2&mtu=1300&mtu=1280")
+        o.mtu shouldBe 1280
+    }
+
+    @Test
+    fun `local addresses must be real literals with a sane prefix`() {
+        fun addr(a: String) = "wg://h.example:1?pk=${enc(sk)}&pub=${enc(pk)}&ip=${enc(a)}"
+        listOf("...", "::::", "1.2.3", "256.1.1.1", "10.0.0.2/33", "fd00::2/129", "fd00:::2", "1::2::3", "10.0.0.2/")
+            .forEach { bad(addr(it)).detail shouldBe FailureDetail.Malformed(DetailField.LocalAddress) }
+        listOf("10.0.0.2", "10.0.0.2/0", "10.0.0.2/32", "fd00::2/128", "::1", "2001:db8:0:0:0:0:0:1", "::").forEach {
+            ok(addr(it))
+        }
+    }
+
+    @Test
+    fun `a missing port is an invalid port`() {
+        val base = "?pk=${enc(sk)}&pub=${enc(pk)}&ip=10.0.0.2"
+        bad("wg://h.example$base").reason shouldBe ParseFailureReason.InvalidPort
+        bad("wg://h.example:$base").reason shouldBe ParseFailureReason.InvalidPort
+    }
+
+    @Test
+    fun `a bracketed ipv6 host without a port is malformed`() {
+        val base = "?pk=${enc(sk)}&pub=${enc(pk)}&ip=10.0.0.2"
+        bad("wg://[2001:db8::1]$base").reason shouldBe ParseFailureReason.MalformedUri
+        bad("wg://[2001:db8::1]:$base").reason shouldBe ParseFailureReason.InvalidPort
+    }
 }

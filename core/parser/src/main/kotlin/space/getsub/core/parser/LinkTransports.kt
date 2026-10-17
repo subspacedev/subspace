@@ -13,7 +13,6 @@ import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
 
 private const val MIN_KCP_MTU = 21
-private const val MAX_KCP_MTU = 65_535
 private const val MIN_KCP_TTI = 10
 private const val MAX_KCP_TTI = 1000
 
@@ -46,7 +45,7 @@ internal fun httpUpgrade(
 }
 
 private fun kcpFromQuery(query: Map<String, String>): Step<TransportOptions> {
-    val mtu = boundedInt(query["mtu"], MIN_KCP_MTU, MAX_KCP_MTU, DetailField.Mtu)
+    val mtu = boundedInt(query["mtu"], MIN_KCP_MTU, Int.MAX_VALUE, DetailField.Mtu)
     if (mtu is Step.Fail) return mtu
     val tti = boundedInt(query["tti"], MIN_KCP_TTI, MAX_KCP_TTI, DetailField.Tti)
     if (tti is Step.Fail) return tti

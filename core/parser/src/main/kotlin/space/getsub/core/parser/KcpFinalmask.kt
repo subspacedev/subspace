@@ -96,6 +96,8 @@ private fun parseHeader(
     value: String,
 ): Parsed =
     when (val h = KcpRules.headerFromLinkName(name)) {
+        // `{"header":"none"}` with no value is the same as `{}`: a second original, which KcpRules.masks cannot
+        // write (it never emits two), so `[original, none]` is UnknownMask rather than quietly one original.
         // "none" with a value is a seed written oddly; stay conservative.
         KcpHeaderResult.None -> if (value.isEmpty()) Parsed.Original else Parsed.Bad(KcpUnsupported.UnknownMask)
         KcpHeaderResult.Unsupported -> Parsed.Bad(KcpUnsupported.UnknownHeader)
