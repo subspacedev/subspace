@@ -19,6 +19,7 @@ import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -525,6 +526,8 @@ private fun StoredProfile.toEditorState(groups: List<EditorGroupOption>): Editor
         is ShadowsocksOutbound -> base.copy(method = ob.method, primaryCredential = ob.password)
         is SocksOutbound ->
             base.copy(primaryCredential = ob.username.orEmpty(), secondaryCredential = ob.password.orEmpty())
+        // Task 7 (editor) replaces this stub.
+        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
     }
 }
 

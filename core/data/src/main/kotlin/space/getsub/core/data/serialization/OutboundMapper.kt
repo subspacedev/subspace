@@ -4,6 +4,7 @@ package space.getsub.core.data.serialization
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -97,6 +98,9 @@ private fun Outbound.toDto(): OutboundDto =
                 username = username,
                 password = password,
             )
+
+        // Task 5 (storage) replaces this stub.
+        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
     }
 
 private fun OutboundDto.toDomain(): Outbound =

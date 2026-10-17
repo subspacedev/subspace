@@ -4,6 +4,7 @@ package space.getsub.service
 
 import android.os.Parcel
 import android.os.Parcelable
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
@@ -304,6 +305,9 @@ public class ProfileParcel(
 
                 is SocksOutbound ->
                     OutboundFields(PROTOCOL_SOCKS, out.username.orEmpty(), out.password.orEmpty(), 0, null, null)
+
+                // Task 7 replaces this stub.
+                is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
             }
     }
 

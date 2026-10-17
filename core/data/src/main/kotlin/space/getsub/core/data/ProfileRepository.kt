@@ -15,6 +15,7 @@ import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
 import space.getsub.core.data.serialization.toOutbound
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
@@ -119,6 +120,8 @@ public data class StoredProfile(
                 is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
+                // Final rule is `o.notConnectableReason == null`; Task 6 (generation) flips it once the generator can write it.
+                is Hysteria2Outbound -> false
                 null -> false
             }
 
@@ -558,6 +561,7 @@ internal fun Outbound.protocolName(): String =
         is TrojanOutbound -> "trojan"
         is ShadowsocksOutbound -> "shadowsocks"
         is SocksOutbound -> "socks"
+        is Hysteria2Outbound -> "hysteria2"
     }
 
 /**
@@ -591,6 +595,7 @@ internal fun Outbound.transportSummary(): String {
             is TrojanOutbound -> stream
             is ShadowsocksOutbound -> null
             is SocksOutbound -> null
+            is Hysteria2Outbound -> null
         }
     val parts = mutableListOf(stream?.network ?: "tcp")
     when (stream?.security) {

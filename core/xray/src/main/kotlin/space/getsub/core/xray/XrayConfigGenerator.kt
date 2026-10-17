@@ -4,6 +4,7 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -185,6 +186,8 @@ public object XrayConfigGenerator {
         when (val outbound = profile.outbound) {
             is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound ->
                 ConfigResult.Ok(generateTyped(outbound, settings))
+            // Task 6 (generation) replaces this stub.
+            is Hysteria2Outbound -> ConfigResult.Unsupported("Hysteria2")
             is ShadowsocksOutbound ->
                 when (shadowsocksCoreRefusal(outbound.method, outbound.password)) {
                     null -> ConfigResult.Ok(generateTyped(outbound, settings))
@@ -370,6 +373,7 @@ public object XrayConfigGenerator {
                 is VmessOutbound -> out.stream
                 is TrojanOutbound -> out.stream
                 is ShadowsocksOutbound, is SocksOutbound -> PLAIN_TCP_STREAM
+                is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
             }
         sb.appendLine("""  "outbounds": [""")
         sb.appendLine("""    {""")
@@ -408,6 +412,7 @@ public object XrayConfigGenerator {
     ) {
         val endpoint = listOf(""""address": ${jsonString(address)}""", """"port": ${out.port}""")
         when (out) {
+            is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
             // VLESS has no transport encryption of its own; "none" is required, not
             // a weakening — TLS/REALITY in streamSettings is what secures it.
             is VlessOutbound ->
@@ -661,6 +666,7 @@ private fun Outbound.wireProtocol(): String =
         is TrojanOutbound -> "trojan"
         is ShadowsocksOutbound -> "shadowsocks"
         is SocksOutbound -> "socks"
+        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
     }
 
 private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this

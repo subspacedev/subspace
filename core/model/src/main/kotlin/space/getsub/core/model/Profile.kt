@@ -103,6 +103,28 @@ public data class SocksOutbound(
     override fun toString(): String = "SocksOutbound(port=$port, secrets=<redacted>)"
 }
 
+/**
+ * A Hysteria2 server (QUIC). Not a [StreamSettings] protocol: its transport and TLS are part of
+ * the outbound itself.
+ *
+ * @property notConnectableReason non-null when the link parsed but uses something this build
+ *   cannot write (an unknown obfuscation or congestion control); the profile stays listed.
+ */
+public data class Hysteria2Outbound(
+    override val address: String,
+    override val port: Int,
+    val password: String,
+    val tls: Hysteria2Tls,
+    val hopping: PortHopping? = null,
+    val obfuscation: Hysteria2Obfuscation = Hysteria2Obfuscation.None,
+    val congestion: Hysteria2Congestion = Hysteria2Congestion.Default,
+    val notConnectableReason: Hysteria2Unsupported? = null,
+) : Outbound {
+    override fun toString(): String =
+        "Hysteria2Outbound(port=$port, tls=$tls, hopping=${hopping != null}, " +
+            "obfuscation=${obfuscation::class.simpleName}, congestion=$congestion, secrets=<redacted>)"
+}
+
 public data class StreamSettings(
     /** Xray transport: `tcp`, `ws`, `grpc`, … M1 exercises `tcp`. */
     val network: String,
