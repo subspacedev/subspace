@@ -16,7 +16,7 @@ class RetryabilityTest {
     fun everyReasonIsClassified() {
         // No reason may be left out. If this fails after a new FailureReason is
         // added, classify it in Retryability.kt — do not widen the assertion.
-        FailureReason.entries.size shouldBe 14
+        FailureReason.entries.size shouldBe 15
         FailureReason.entries.forEach { reason -> reason.retryability() }
     }
 
@@ -31,6 +31,7 @@ class RetryabilityTest {
             FailureReason.PassthroughRejectedAtConnect,
             FailureReason.PassthroughOverrideUnavailable,
             FailureReason.PerAppAllowListEmpty,
+            FailureReason.CoreRefusesPlaintextTransport,
             FailureReason.Revoked,
         ).forEach { reason -> reason.retryability() shouldBe Retryability.Terminal }
     }

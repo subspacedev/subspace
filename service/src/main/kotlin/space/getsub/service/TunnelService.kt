@@ -60,6 +60,7 @@ import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.failure
+import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.retryability
 import space.getsub.core.parser.OverrideTarget
 import space.getsub.core.parser.analysePassthrough
@@ -258,6 +259,17 @@ internal fun runsAsWrittenAtConnect(
  */
 internal fun validationFailureReason(runsAsWritten: Boolean): FailureReason =
     if (runsAsWritten) FailureReason.PassthroughRejectedAtConnect else FailureReason.ConfigRejected
+
+/**
+ * The refusal a **typed** row's start is stopped with before any config is generated, or null.
+ *
+ * Xray-core v26.10.10 refuses plaintext VLESS/Trojan to a public address with no opt-out, so the
+ * start is refused here with the cause named and the core is never called. Raw rows are not
+ * routed through this: they run as written and the core's own verdict stands
+ * ([validationFailureReason]); the core's error text is never parsed (ARCHITECTURE.md §5.6).
+ */
+internal fun typedConnectRefusal(outbound: Outbound): FailureReason? =
+    FailureReason.CoreRefusesPlaintextTransport.takeIf { outbound.refusedWithoutTransportSecurity() }
 
 /**
  * The tags already on a stored config's own `outbounds`, so
@@ -521,6 +533,9 @@ internal suspend fun planLatency(
         balancerLatencyRefusal(rawJson) != null -> unsupported
         options.mode == PingMode.TCP -> LatencyPlan.InPlace
         outbound == null -> unsupported
+        // The core would answer a proxy-head ping of this server with its build error; TCP mode
+        // (above) measures a connect and is unaffected.
+        outbound.refusedWithoutTransportSecurity() -> unsupported
         else ->
             pingConfig(outbound)
                 ?.let { LatencyPlan.Batched(it, PingGroup(options.timeoutSeconds, options.checkUrl)) }
@@ -2104,6 +2119,11 @@ class TunnelService : VpnService() {
                         IllegalStateException("stored config did not compose: ${composed.reason}"),
                     )
             }
+        }
+        // The core would refuse this at validate with its own text; name it here instead. Typed
+        // rows only: a raw row ran above, as written, and its refusal (if any) stays the core's.
+        typedConnectRefusal(profile.outbound)?.let { reason ->
+            return ConfigJsonOutcome.Failed(reason, IllegalStateException("plaintext VLESS/Trojan to a public server"))
         }
         return when (val config = XrayConfigGenerator.generate(profile, settings)) {
             is ConfigResult.Unsupported ->

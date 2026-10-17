@@ -83,6 +83,9 @@ internal const val EDITOR_LOADING_TEST_TAG = "editor-loading"
 /** Identifies the raw-JSON read-only view to instrumented tests. */
 internal const val EDITOR_RAW_JSON_TEST_TAG = "editor-raw-json"
 
+/** Identifies the "the core would refuse this server" line under Security. */
+internal const val EDITOR_SECURITY_REFUSED_TEST_TAG = "editor-security-refused"
+
 /** Identifies the duplicate-identity banner (Task 21 fix round 1) to instrumented tests. */
 internal const val EDITOR_DUPLICATE_IDENTITY_TEST_TAG = "editor-duplicate-identity"
 
@@ -617,6 +620,14 @@ private fun SecuritySection(
             selected = kinds.indexOf(state.securityKind),
             onSelect = { index -> actions.onSecurityKindChanged(kinds[index]) },
         )
+        if (state.refusedWithoutTransportSecurity) {
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
+                text = stringResource(R.string.editor_security_refused_without_tls),
+                tone = BannerTone.Warning,
+                modifier = Modifier.testTag(EDITOR_SECURITY_REFUSED_TEST_TAG),
+            )
+        }
         when (state.securityKind) {
             EditorSecurityKind.None -> Unit
             EditorSecurityKind.Tls -> TlsFields(state = state, actions = actions)

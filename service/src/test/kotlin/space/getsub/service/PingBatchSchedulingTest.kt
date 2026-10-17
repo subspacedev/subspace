@@ -254,6 +254,17 @@ class PingBatchSchedulingTest {
         }
 
     @Test
+    fun plaintextVlessToAPublicServerIsUnsupportedForProxyHeadOnly() =
+        runTest {
+            val plaintext: Outbound =
+                VlessOutbound("vpn.example.org", 443, "u", null, StreamSettings("tcp", Security.None))
+
+            planLatency(fiveSeconds, { false }, null, plaintext) { error("never generated") } shouldBe
+                LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+            planLatency(tcp, { false }, null, plaintext) { error("never generated") } shouldBe LatencyPlan.InPlace
+        }
+
+    @Test
     fun aProxyHeadServerIsBatchedUnderItsTimeoutAndUrl() =
         runTest {
             val plan = planLatency(fiveSeconds, { false }, null, vless) { "the-config" }
