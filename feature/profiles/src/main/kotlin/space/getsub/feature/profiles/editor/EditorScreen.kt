@@ -181,6 +181,7 @@ fun EditorScreen(
             onXhttpPathChanged = viewModel::onXhttpPathChanged,
             onXhttpHostChanged = viewModel::onXhttpHostChanged,
             onXhttpModeChanged = viewModel::onXhttpModeChanged,
+            onHysteria2Changed = viewModel::onHysteria2Changed,
             onSave = viewModel::save,
             // Task 15: stores the conversion in the M6-style in-memory holder
             // ([space.getsub.core.data.PendingRoutingConversion]) first,
@@ -239,6 +240,7 @@ internal data class EditorActions(
     val onXhttpPathChanged: (String) -> Unit,
     val onXhttpHostChanged: (String) -> Unit,
     val onXhttpModeChanged: (String) -> Unit,
+    val onHysteria2Changed: (Hysteria2Draft) -> Unit,
     val onSave: () -> Unit,
     /** The "Use this file's routing rules" action — see [EditorScreen]'s own KDoc. */
     val onConvertRouting: () -> Unit,
@@ -389,7 +391,7 @@ private fun EditorForm(
 
 /** A [SectionTitle] over a `surfaceContainer` card — each group of fields in the form sits on one. */
 @Composable
-private fun SectionCard(
+internal fun SectionCard(
     title: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
@@ -444,6 +446,10 @@ private fun TypedSections(
 
     SectionCard(title = stringResource(R.string.editor_section_credentials)) {
         CredentialFields(state = state, actions = actions)
+    }
+
+    if (state.protocol == "hysteria2") {
+        Hysteria2Sections(state = state, onChanged = actions.onHysteria2Changed)
     }
 
     if (state.protocol in STREAM_PROTOCOLS) {
@@ -504,7 +510,7 @@ private fun CredentialFields(
                     onSelected = actions.onVmessSecurityChanged,
                 )
             }
-            "trojan" ->
+            "trojan", "hysteria2" ->
                 EditorField(
                     label = stringResource(R.string.editor_password_label),
                     value = state.primaryCredential,
@@ -956,7 +962,7 @@ private fun EditorField(
 // Same reasoning as EditorField's own suppression just above.
 @Suppress("LongParameterList")
 @Composable
-private fun EditorDropdownField(
+internal fun EditorDropdownField(
     label: String,
     selected: String,
     options: List<String>,

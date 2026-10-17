@@ -204,6 +204,10 @@ internal data class EditorState(
     /** Preserved from the loaded outbound, unedited — see [toOutbound]'s KDoc. */
     val originalWsHeaders: Map<String, String> = emptyMap(),
     val errors: Map<EditorFieldKey, FailureDetail> = emptyMap(),
+    /** Hysteria2 only: everything its form edits beyond address, port and password. */
+    val hysteria2: Hysteria2Draft = Hysteria2Draft(),
+    /** Hysteria2 form fields the last [EditorViewModel.save] rejected. */
+    val hysteria2Errors: Set<Hysteria2Field> = emptySet(),
     /**
      * `true` when the last [EditorViewModel.save] was rejected because the edited outbound
      * (or the destination group, for a group change) already holds an identical profile —
@@ -395,6 +399,8 @@ constructor(
 
     fun onXhttpModeChanged(value: String) = update { it.copy(xhttpMode = value) }
 
+    fun onHysteria2Changed(value: Hysteria2Draft) = update { it.copy(hysteria2 = value) }
+
     /**
      * Persists the current draft.
      *
@@ -420,8 +426,9 @@ constructor(
             _state.update { it.copy(duplicateIdentity = false) }
             if (current.fieldsEditable) {
                 val validationErrors = current.validate()
-                if (validationErrors.isNotEmpty()) {
-                    _state.update { it.copy(errors = validationErrors) }
+                val hysteria2Errors = current.validateHysteria2()
+                if (validationErrors.isNotEmpty() || hysteria2Errors.isNotEmpty()) {
+                    _state.update { it.copy(errors = validationErrors, hysteria2Errors = hysteria2Errors) }
                     return@launch
                 }
                 if (current.groupId != current.loadedGroupId) {
@@ -437,7 +444,7 @@ constructor(
             } else {
                 profileSource.rename(current.id, current.name)
             }
-            _state.update { it.copy(errors = emptyMap(), saved = true) }
+            _state.update { it.copy(errors = emptyMap(), hysteria2Errors = emptySet(), saved = true) }
         }
     }
 
@@ -526,8 +533,7 @@ private fun StoredProfile.toEditorState(groups: List<EditorGroupOption>): Editor
         is ShadowsocksOutbound -> base.copy(method = ob.method, primaryCredential = ob.password)
         is SocksOutbound ->
             base.copy(primaryCredential = ob.username.orEmpty(), secondaryCredential = ob.password.orEmpty())
-        // Task 7 (editor) replaces this stub.
-        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
+        is Hysteria2Outbound -> base.copy(primaryCredential = ob.password, hysteria2 = Hysteria2Draft.from(ob))
     }
 }
 
@@ -585,7 +591,7 @@ private fun EditorState.validate(): Map<EditorFieldKey, FailureDetail> {
 
     when (protocol) {
         "vless", "vmess" -> validateUuid(primaryCredential)?.let { errors[EditorFieldKey.Credential] = it }
-        "trojan", "shadowsocks" ->
+        "trojan", "shadowsocks", "hysteria2" ->
             if (primaryCredential.isEmpty()) {
                 errors[EditorFieldKey.Credential] = FailureDetail.Missing(DetailField.Password)
             }
@@ -599,6 +605,10 @@ private fun EditorState.validate(): Map<EditorFieldKey, FailureDetail> {
     }
     return errors
 }
+
+/** The Hysteria2 form's own checks (the shared port and password checks are in [validate]). */
+private fun EditorState.validateHysteria2(): Set<Hysteria2Field> =
+    if (protocol == "hysteria2") hysteria2.validate() else emptySet()
 
 /**
  * Reconstructs the [Outbound] [EditorViewModel.save] persists — only called after
@@ -633,6 +643,7 @@ private fun EditorState.toTransportOptions(): TransportOptions =
 
 private fun EditorState.toOutbound(): Outbound {
     val portValue = port.toIntOrNull() ?: 0
+    if (protocol == "hysteria2") return hysteria2.toOutbound(address, portValue, primaryCredential)
     val security: Security =
         when (securityKind) {
             EditorSecurityKind.None -> Security.None
