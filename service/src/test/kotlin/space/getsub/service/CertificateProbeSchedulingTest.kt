@@ -290,6 +290,34 @@ class CertificateProbeSchedulingTest {
             sent shouldContainExactly listOf(listOf(2L, 3L, 4L), listOf(0L, 1L))
         }
 
+    @Test
+    fun markedServersAreChunkedByTheProbeCapSoEveryOneCanBeProbed() =
+        runTest {
+            val sent = mutableListOf<List<Long>>()
+            val runner =
+                LatencyRunner<Long>(
+                    measure = { _, _ -> error("not in place") },
+                    loadProfile = { it },
+                    scope = this,
+                    // Ids 1..5 marked, 6..12 unmarked.
+                    plan = { id, _ -> LatencyPlan.Batched("cfg-$id", PingGroup(5, url), certProbe = id <= 5L) },
+                    measureBatch = { _, targets ->
+                        sent += targets.map { it.key }
+                        emptyMap()
+                    },
+                    concurrency = 1,
+                )
+
+            runner.start(1L, LongArray(12) { it + 1L }, { fiveSeconds }, { _, _, _ -> }, {})
+            advanceUntilIdle()
+
+            // :ping probes at most CertificateProbe.MAX_PER_BATCH per batch (final review I5), so a
+            // marked chunk never exceeds it; unmarked chunks still fill PingBatch.MAX_CONFIGS.
+            sent shouldContainExactly
+                listOf(listOf(5L, 6L, 7L, 8L, 9L), listOf(10L, 11L), listOf(0L, 1L, 2L), listOf(3L, 4L))
+            sent.drop(2).forEach { (it.size <= CertificateProbe.MAX_PER_BATCH) shouldBe true }
+        }
+
     // ── The outcome across the boundary ──────────────────────────────────────
 
     @Test
