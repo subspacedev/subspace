@@ -68,6 +68,15 @@ private val LEGACY_CIPHERS: Set<String> =
 public fun shadowsocks2022KeyLength(method: String): Int? = METHODS_2022[method.lowercase()]
 
 /**
+ * Whether [method] accepts several `:`-joined keys: the two AES 2022 methods do; ChaCha20 2022 does
+ * not (`outbound.go:48-50`), and a non-2022 method has no key list at all.
+ */
+public fun shadowsocks2022TakesSeveralKeys(method: String): Boolean {
+    val name = method.lowercase()
+    return name in METHODS_2022 && name != CHACHA_2022
+}
+
+/**
  * Whether Xray-core v26.10.10 refuses a Shadowsocks outbound with this [method] and [password].
  *
  * Order follows `infra/conf/shadowsocks.go:56` and :242: a 2022 method (`GetCipherMethod`) is tried
@@ -88,7 +97,7 @@ public fun shadowsocksCoreRefusal(
     return when {
         keyLength != null -> {
             val parts = password.split(':')
-            val multiKeyChaCha = parts.size > 1 && method.lowercase() == CHACHA_2022
+            val multiKeyChaCha = parts.size > 1 && !shadowsocks2022TakesSeveralKeys(method)
             if (!multiKeyChaCha && parts.all { isAcceptedKey(it, keyLength) }) null else ShadowsocksRefusal.Key
         }
         method.lowercase() in LEGACY_CIPHERS -> null

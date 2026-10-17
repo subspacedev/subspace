@@ -75,6 +75,16 @@ class ShadowsocksCoreTest {
     }
 
     @Test
+    fun `only the AES 2022 methods take several keys`() {
+        shadowsocks2022TakesSeveralKeys("2022-blake3-aes-128-gcm") shouldBe true
+        shadowsocks2022TakesSeveralKeys("2022-BLAKE3-AES-256-GCM") shouldBe true
+        shadowsocks2022TakesSeveralKeys("2022-blake3-chacha20-poly1305") shouldBe false
+        shadowsocks2022TakesSeveralKeys("2022-BLAKE3-CHACHA20-POLY1305") shouldBe false
+        shadowsocks2022TakesSeveralKeys("aes-256-gcm") shouldBe false
+        shadowsocks2022TakesSeveralKeys("") shouldBe false
+    }
+
+    @Test
     fun `2022 chacha20 takes exactly one key`() {
         // outbound.go NewClient: "multi-key is not supported for chacha20-poly1305". Found on the device.
         val good = b64(32)

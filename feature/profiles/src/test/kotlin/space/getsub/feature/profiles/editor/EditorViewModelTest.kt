@@ -41,6 +41,7 @@ import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.R
 
 /**
  * Covers what Task 21 builds: a field editor for `TYPED` profiles and a read-only-plus-rename
@@ -458,6 +459,21 @@ class EditorViewModelTest {
 
             viewModel.onPrimaryCredentialChanged("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
             viewModel.state.value.shadowsocksRefusal shouldBe null
+        }
+
+    @Test
+    fun `a chacha 2022 row with two valid keys is refused for its key and gets the single-key copy`() =
+        runTest {
+            val key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            val profile = shadowsocksProfile("2022-blake3-chacha20-poly1305", "$key:$key")
+            val viewModel = editorViewModel(FakeProfileSource(listOf(profile)))
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.shadowsocksRefusal shouldBe ShadowsocksRefusal.Key
+            shadowsocksKeyRefusedText("2022-blake3-chacha20-poly1305") shouldBe
+                R.string.editor_shadowsocks_key_refused_single
+            shadowsocksKeyRefusedText("2022-blake3-aes-256-gcm") shouldBe R.string.editor_shadowsocks_key_refused
         }
 
     @Test

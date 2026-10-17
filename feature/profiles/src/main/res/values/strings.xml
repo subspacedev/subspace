@@ -212,6 +212,7 @@
     <string name="editor_section_raw_json">Raw JSON</string>
     <string name="editor_security_none">None</string>
     <string name="editor_shadowsocks_cipher_refused">This build\'s core doesn\'t support this cipher. Pick another.</string>
+    <string name="editor_shadowsocks_key_refused_single">This cipher needs exactly one base64 key of %1$d bytes.</string>
     <string name="editor_shadowsocks_key_refused">A 2022 cipher needs a base64 key of %1$d bytes (several joined with \':\').</string>
     <string name="editor_security_refused_without_tls">The core refuses VLESS or Trojan without TLS to a public server. Choose TLS or Reality, or use a private address.</string>
     <string name="editor_tls_server_name_label">Server name (SNI)</string>

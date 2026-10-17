@@ -12,6 +12,7 @@
 
 package space.getsub.feature.profiles.editor
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,7 @@ import space.getsub.core.data.ObfuscationOrigin
 import space.getsub.core.model.SHADOWSOCKS_CORE_METHODS
 import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.shadowsocks2022KeyLength
+import space.getsub.core.model.shadowsocks2022TakesSeveralKeys
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.OverrideBlocker
@@ -545,6 +547,15 @@ private fun CredentialFields(
 private fun shadowsocksMethodOptions(current: String): List<String> =
     SHADOWSOCKS_CORE_METHODS + listOfNotNull(current.takeIf { it.isNotBlank() && it !in SHADOWSOCKS_CORE_METHODS })
 
+/** The key-refusal copy for [method]: multi-key advice only where the core accepts several keys. */
+@StringRes
+internal fun shadowsocksKeyRefusedText(method: String): Int =
+    if (shadowsocks2022TakesSeveralKeys(method)) {
+        R.string.editor_shadowsocks_key_refused
+    } else {
+        R.string.editor_shadowsocks_key_refused_single
+    }
+
 /** Names why the core refuses this Shadowsocks row; never echoes the key itself. */
 @Composable
 private fun ShadowsocksRefusedBanner(state: EditorState) {
@@ -554,7 +565,7 @@ private fun ShadowsocksRefusedBanner(state: EditorState) {
             ShadowsocksRefusal.Cipher -> stringResource(R.string.editor_shadowsocks_cipher_refused)
             ShadowsocksRefusal.Key ->
                 stringResource(
-                    R.string.editor_shadowsocks_key_refused,
+                    shadowsocksKeyRefusedText(state.method),
                     shadowsocks2022KeyLength(state.method) ?: 0,
                 )
         }
