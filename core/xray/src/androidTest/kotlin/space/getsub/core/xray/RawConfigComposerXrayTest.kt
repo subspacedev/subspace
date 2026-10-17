@@ -82,7 +82,11 @@ class RawConfigComposerXrayTest {
         val controller = XrayController()
         val result = RawConfigComposer.compose(raw, settings, assetDir.absolutePath, override)
         check(result is ComposeResult.Ok) { "composer refused the fixture: $result" }
-        return runCatching { controller.validate(result.json) }
+        return try {
+            runCatching { controller.validate(result.json) }
+        } finally {
+            assetDir.deleteRecursively()
+        }
     }
 
     /**
