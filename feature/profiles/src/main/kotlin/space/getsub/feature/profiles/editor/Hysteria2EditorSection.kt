@@ -188,7 +188,7 @@ private fun CongestionFields(
     )
     when (draft.congestionKind) {
         Hysteria2CongestionKind.Default -> Unit
-        Hysteria2CongestionKind.Bbr ->
+        Hysteria2CongestionKind.Bbr -> {
             // A closed list: the core fails the whole config on a profile it does not know.
             EditorDropdownField(
                 label = stringResource(R.string.editor_hysteria2_bbr_profile_label),
@@ -199,6 +199,15 @@ private fun CongestionFields(
                     profile.ifEmpty { stringResource(R.string.editor_hysteria2_bbr_profile_default) }
                 },
             )
+            // Storage does not validate, so a stored profile outside the list can reach the form.
+            if (Hysteria2Field.BbrProfile in errors) {
+                Text(
+                    text = stringResource(R.string.editor_hysteria2_bbr_profile_error),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
         Hysteria2CongestionKind.Brutal -> {
             Hysteria2TextField(
                 label = stringResource(R.string.editor_hysteria2_brutal_up_label),

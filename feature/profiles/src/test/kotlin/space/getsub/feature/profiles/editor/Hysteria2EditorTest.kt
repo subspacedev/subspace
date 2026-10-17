@@ -453,20 +453,60 @@ class Hysteria2EditorTest {
         }
 
     @Test
-    fun `a new server from the protocol picker has h3 and no hopping, obfuscation or congestion`() =
+    fun `the same pin as hex and as base64 is saved once`() =
         runTest {
-            val blank = newHysteria2Outbound()
-            blank.tls.alpn shouldBe listOf("h3")
-            blank.hopping shouldBe null
-            blank.obfuscation shouldBe Hysteria2Obfuscation.None
-            blank.congestion shouldBe Hysteria2Congestion.Default
-            blank.notConnectableReason shouldBe null
-
-            val (viewModel, source) = loaded(blank.copy(address = "198.51.100.2", password = "pw"))
+            val (viewModel, source) = loaded(full.copy(tls = full.tls.copy(pins = emptyList())))
             advanceUntilIdle()
+            val cdHex = "cd".repeat(32)
+            viewModel.edit { it.copy(pinsText = "$cdHex\nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc0=") }
             viewModel.save()
             advanceUntilIdle()
 
-            source.lastUpdate shouldBe blank.copy(address = "198.51.100.2", password = "pw")
+            (source.lastUpdate as Hysteria2Outbound).tls.pins shouldBe listOf(cdHex)
+        }
+
+    @Test
+    fun `switching obfuscation to none and congestion to default saves none and default`() =
+        runTest {
+            val (viewModel, source) = loaded()
+            advanceUntilIdle()
+            viewModel.edit {
+                it.copy(obfsKind = Hysteria2ObfsKind.None, congestionKind = Hysteria2CongestionKind.Default)
+            }
+            viewModel.save()
+            advanceUntilIdle()
+
+            val saved = source.lastUpdate as Hysteria2Outbound
+            saved.obfuscation shouldBe Hysteria2Obfuscation.None
+            saved.congestion shouldBe Hysteria2Congestion.Default
+        }
+
+    @Test
+    fun `salamander switched to none also saves none`() =
+        runTest {
+            val (viewModel, source) = loaded(full.copy(obfuscation = Hysteria2Obfuscation.Salamander(obfsSecret)))
+            advanceUntilIdle()
+            viewModel.edit { it.copy(obfsKind = Hysteria2ObfsKind.None) }
+            viewModel.save()
+            advanceUntilIdle()
+
+            (source.lastUpdate as Hysteria2Outbound).obfuscation shouldBe Hysteria2Obfuscation.None
+        }
+
+    @Test
+    fun `a stored bare bandwidth saves, reloads and saves again to the same outbound`() =
+        runTest {
+            val (first, firstSource) = loaded(full.copy(congestion = Hysteria2Congestion.Brutal("800000", "900000")))
+            advanceUntilIdle()
+            first.save()
+            advanceUntilIdle()
+            val once = firstSource.lastUpdate as Hysteria2Outbound
+
+            val (second, secondSource) = loaded(once)
+            advanceUntilIdle()
+            second.save()
+            advanceUntilIdle()
+
+            secondSource.lastUpdate shouldBe once
         }
 }

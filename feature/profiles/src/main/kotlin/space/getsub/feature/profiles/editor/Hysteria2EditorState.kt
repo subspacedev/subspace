@@ -30,9 +30,6 @@ internal enum class Hysteria2ObfsKind { None, Salamander, Gecko }
 
 internal enum class Hysteria2CongestionKind { Default, Bbr, Brutal }
 
-/** The port a new Hysteria2 server starts with. */
-private const val DEFAULT_PORT = 443
-
 private val PIN_SEPARATORS = Regex("[,\\s]+")
 
 /**
@@ -131,7 +128,7 @@ internal data class Hysteria2Draft(
             Hysteria2Tls(
                 serverName = serverName,
                 alpn = alpn,
-                pins = pinTokens.mapNotNull { (normalisePin(it) as? PinResult.Ok)?.hex },
+                pins = pinTokens.mapNotNull { (normalisePin(it) as? PinResult.Ok)?.hex }.distinct(),
                 skipChecksRequested = skipChecksRequested,
             ),
             hopping = hopping(),
@@ -239,16 +236,3 @@ internal data class Hysteria2Draft(
 
 /** The BBR profiles the dropdown offers, in the order the core documents them. */
 internal val BBR_PROFILE_OPTIONS: List<String> = BBR_PROFILES.toList()
-
-/**
- * What the protocol picker creates for "Hysteria2": TLS with `h3`, and no hopping, obfuscation or
- * congestion. The editor has no picker yet, so nothing in the app calls this; it is the one place the
- * defaults are written down for when one exists.
- */
-internal fun newHysteria2Outbound(): Hysteria2Outbound =
-    Hysteria2Outbound(
-        address = "",
-        port = DEFAULT_PORT,
-        password = "",
-        tls = Hysteria2Tls(serverName = "", alpn = listOf("h3")),
-    )
