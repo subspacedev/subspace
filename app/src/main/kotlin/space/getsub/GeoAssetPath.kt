@@ -34,11 +34,11 @@ import java.io.File
  * on a Pixel 8 by `AssetLocationProbeTest`:
  * `docs/agent/research/2026-08-11-geo-assets-and-xray-routing.md` §2b.
  *
- * The only route that works is a Go-side `os.Setenv`, which libXray performs
- * when the invoke request carries an `env` object — upstream's own PR #133,
- * restored by a local patch that has since been dropped.
- * `XrayController` sends it on every `testXray`/`runXray` call, built from the
- * directory this function returns. See `XrayController`'s KDoc for why a
- * constructor parameter and not a call here.
+ * The only route that works is a Go-side `os.Setenv`, which libXray v26.10.10
+ * performs when the *config* carries a root `env` object (`xray.location.asset`).
+ * Every config handed to `testXray`/`runXray` names this directory there:
+ * `XrayConfigGenerator` for a typed profile (`TunnelSettings.geoAssetDir`),
+ * `RawConfigComposer` for a raw one. The invoke envelope's own `env` is ignored.
+ * See ARCHITECTURE.md §6 (geo databases) and §10.2.
  */
 public fun geoAssetDirectory(context: Context): File = File(context.filesDir, "geo")

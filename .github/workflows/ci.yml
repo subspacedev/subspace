@@ -67,7 +67,8 @@ jobs:
       - name: Install Android SDK platform 37
         uses: android-actions/setup-android@v4
         with:
-          # NDK r29 is what the hev-socks5-tunnel JNI build is verified against.
+          # Pinned NDK: r29 was chosen for the libXray build and is kept for continuity
+          # (the AAR is now prebuilt; this NDK builds hev-socks5-tunnel's JNI).
           packages: 'platform-tools platforms;android-37.1 build-tools;37.0.0 ndk;29.0.14206865'
 
       - uses: gradle/actions/setup-gradle@v4

@@ -6,7 +6,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Compose-Material%203-4285F4?logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![Android](https://img.shields.io/badge/Android-min%2026%20%E2%80%A2%20target%2036-3DDC84?logo=android)](https://developer.android.com)
-[![Xray-core](https://img.shields.io/badge/Xray--core-v26.7.11-FF6B00)](https://github.com/XTLS/Xray-core)
+[![Xray-core](https://img.shields.io/badge/Xray--core-v26.10.10-FF6B00)](https://github.com/XTLS/Xray-core)
 
 Subspace tunnels all device traffic through a **user-supplied Xray-core server** — VLESS/REALITY, VMess, Trojan, Shadowsocks, SOCKS, Hysteria2. It never ships server lists, never phones home, and never shows an ad.
 
@@ -105,7 +105,7 @@ app socket → TUN fd → hev-socks5-tunnel → 127.0.0.1:<socks port>
 | DI | Hilt |
 | Persistence | Room (profiles, groups, subscriptions **and settings**) |
 | Async | Coroutines + Flow |
-| Proxy core | [`XTLS/libXray`](https://github.com/XTLS/libXray) v26.7.11 (MIT) via prebuilt AAR |
+| Proxy core | [`XTLS/libXray`](https://github.com/XTLS/libXray) v26.10.10 (MIT) via prebuilt AAR |
 | TUN → SOCKS | [`hev-socks5-tunnel`](https://github.com/heiher/hev-socks5-tunnel) v2.16.0 (C, JNI) |
 | QR | ZXing `core` + CameraX — no ML Kit (proprietary → blocks F-Droid/IzzyOnDroid) |
 | HTTP | OkHttp 5.2.1 (subscription fetch, HWID headers) |

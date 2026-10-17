@@ -52,7 +52,7 @@ Do not add these without explicit instruction:
 | DI | Hilt | |
 | Persistence | Room — profiles, groups, subscriptions **and settings** | No DataStore; see §3. |
 | Async | Coroutines + Flow | No RxJava, no callbacks in new code |
-| Proxy core | `XTLS/libXray` as an AAR, pinned v26.7.11 | MIT. Prebuilt AAR from the release; see §14. |
+| Proxy core | `XTLS/libXray` as an AAR, pinned v26.10.10 | MIT. The official, unmodified `libxray-android.zip` from the release; see §14. |
 | TUN → SOCKS | `hev-socks5-tunnel` via JNI | C library |
 | QR scan | ZXing + CameraX | **Not ML Kit.** ML Kit is proprietary and disqualifies the app from F-Droid and IzzyOnDroid. |
 | Nav | Navigation Compose, type-safe routes | |
@@ -76,6 +76,11 @@ Get this right and most of the codebase follows from it.
 │    ├── starts libXray with a generated JSON config          │
 │    └── starts hev-socks5-tunnel on the TUN fd               │
 └──────────────────────────┬──────────────────────────────────┘
+                           │  bound on demand, PROXY_HEAD latency only
+┌──────────────────────────▼──────────────────────────────────┐
+│  Latency process (:ping)                                    │
+│  PingService ── libXray pingBatch (its own Go runtime)      │
+└──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
 │  Native                                                     │
@@ -93,7 +98,7 @@ app socket → TUN fd → hev-socks5-tunnel → 127.0.0.1:<socks port>
 
 The last hop is where the classic fatal bug lives. See §5.1.
 
-### Why two processes
+### Why three processes (`:main`, `:bg`, `:ping`)
 
 `TunnelService` runs in `android:process=":bg"`. This is deliberate:
 
@@ -102,7 +107,31 @@ The last hop is where the classic fatal bug lives. See §5.1.
 - A native crash in tun2socks kills the tunnel, not the app.
 - It forces a clean IPC boundary instead of shared mutable singletons.
 
-**Consequence agents routinely get wrong:** the two processes do **not**
+**`:ping` exists because of a libXray rule, not for tidiness.** `pingBatch`
+refuses to run in a process that holds a managed Xray instance
+(`runXray`), and `:bg` holds one for the whole session. So `PingMode.PROXY_HEAD`
+latency runs in `PingService` (`android:process=":ping"`), a process that never
+calls `runXray`. This is the **one-Go-runtime-per-process rule**: each process
+that loads `libXray` has its own Go runtime and its own `coreServer` singleton,
+and `testXray`, `runXray` and `pingBatch` each assume the state of *their*
+process. Never route a call to a process that holds the wrong state.
+
+- `:ping` is **on demand**. `:bg`'s `PingClient` binds it for a run and, once
+  the run ends, unbinds after a 30 s idle grace (`IdleTimer.IDLE_GRACE_MILLIS`);
+  a new run cancels the timer. `:ping` ends itself on unbind once no batch is
+  in flight, so the process (and its Go heap) is gone shortly after the work.
+  The grace lives in `:bg` because a `BIND_AUTO_CREATE` binding held by `:bg`
+  would make Android recreate the service after `:ping` exits itself.
+- Only `PROXY_HEAD` moves. `PingMode.TCP` (`TcpProbe`) needs no libXray and
+  depends on `VpnService.protect` in `:bg`, so it stays there.
+- `pingBatch` holds `coreServerMu` for the whole batch, so batches in `:ping`
+  run one at a time. It takes at most 5 configs, one timeout (seconds) and one
+  URL per call, and decodes only `outbounds` (`env`, `dns`, inbounds and routing
+  in a ping config are ignored). A failed entry is `success:false` and is never
+  rendered as a number (the core's `10000`/`11000` sentinels are discarded).
+  Source: `docs/agent/research/libxray-api.md`.
+
+**Consequence agents routinely get wrong:** the processes do **not**
 share memory. Hilt singletons, `object` declarations, static fields, and
 in-memory caches exist twice. Any state that must be consistent goes through
 Room, DataStore, or IPC — never through a shared object reference.
@@ -312,7 +341,7 @@ tunnel.** `https+local://`, `h2c+local://`, `tcp+local://`, `quic+local://`
 and `localhost` are constructed without the dispatcher, so no routing rule
 can pull their queries back — for a remote resolver that is a leak by
 construction. Never emit one. Note there is no plain `quic://` at all at the
-pinned v26.7.11: DoQ is local-only there, so it cannot be used for a remote
+v26.7.11 (not re-checked at v26.10.10): DoQ is local-only there, so it cannot be used for a remote
 resolver — established by reading the scheme switch at that one tag, and not
 claimed beyond it. Sourced in
 `docs/agent/research/2026-08-23-xray-dns.md` §2.
@@ -525,7 +554,7 @@ branch below is taken:
   `Inbounds.kt` so both paths call one definition rather than two that can
   drift apart silently.
 - `env` set to the resolved geo asset directory — Go cannot see a Java
-  `setenv` (§6's `XrayEnv` note above still applies).
+  `setenv` (the geo-databases paragraph below still applies).
 - `log` forced to `access: "none"`, `loglevel: "warning"` (§5.6 — the device-
   found logcat leak, one line per destination).
 - `api` stripped — believed from upstream documentation, not verified against
@@ -835,28 +864,21 @@ Rules:
   **atomically**: same-filesystem renames move the `.json` sidecar into place
   first and the `.dat` file last, so a process killed mid-install can only
   ever leave a stale-but-consistent live pair, never a half-written one.
-  xray-core is pointed at the install directory through the invoke `env`
-  object PR #133 restored upstream (carried by the local patch until v26.10.10) —
-  `XrayController` builds it from `GeoAssetRepository.geoDirectory()` and
-  sends it on every `testXray`/`runXray` call. **`testXray` (import-time
-  validation) does not consult this channel at all — measured on a Pixel 8,
-  2026-08-31**
-  (`docs/agent/research/2026-08-25-m7-device-verification.md` finding F8,
-  all five rows calling `XrayController.validate`, i.e. `testXray`; none
-  exercise `runXray`): it resolves geo files from the composed config's own
-  `env["xray.location.asset"]` alone, never from this invoke envelope, which
-  is why `RawConfigComposer.compose` writes that key into the JSON it hands
-  `BoundPassthroughValidator` (`service/.../PassthroughValidator.kt`) rather
-  than relying on `XrayController`'s `geoAssetDir` to reach it. **`runXray`
-  (a running tunnel) is not measured by F8** — that is a separate claim,
-  carried by inference rather than by the same evidence: the typed-config
-  generation path never writes an `env["xray.location.asset"]` key into its
-  own JSON (only `RawConfigComposer`'s passthrough path does), so for a typed
-  profile's tunnel the invoke envelope is the only channel available to name
-  a geo directory at all, which is why the codebase relies on it there. An
-  earlier version of this paragraph claimed the invoke envelope was what
-  mattered for both calls alike; believing that for `testXray` produced a
-  validator that refused every config carrying a `geosite:`/`geoip:` rule.
+  xray-core is pointed at the install directory through the config's own root
+  `env` block — `"env": {"xray.location.asset": <GeoAssetRepository.geoDirectory()>}`.
+  libXray v26.10.10 applies a config-level `env` with a Go-side `os.Setenv` for
+  both `testXray` and `runXray`, and **ignores** any `env` on the invoke
+  envelope (`docs/agent/research/libxray-api.md` §4). The block is written by
+  `XrayConfigGenerator` (`TunnelSettings.geoAssetDir`) for a typed profile and by
+  `RawConfigComposer.compose` for a raw one, so every config reaching
+  `testXray`/`runXray` carries it and `XrayController` has no geo parameter.
+  (Until v26.10.10 this channel was upstream's PR #133 invoke-level `env`,
+  carried by a local patch; upstream moved it into the config and the patch was
+  dropped. An older claim that `testXray` "does not consult" the invoke channel
+  was measured on that patched build, 2026-08-31, finding F8 of
+  `docs/agent/research/2026-08-25-m7-device-verification.md`; with the config
+  block as the single channel the distinction no longer exists.) `pingBatch`
+  ignores `env`, so a ping config needs no geo directory.
   **Not**
   `android.system.Os.setenv`: an earlier version of this design used it, every
   automated test passed, and it does not work — Go's Android shared-library
@@ -1354,7 +1376,7 @@ app does not use.
 
 ### 14.2 libXray vs AndroidLibXrayLite — RESOLVED
 
-**`XTLS/libXray`, pinned to v26.7.11.** Two reasons, in order:
+**`XTLS/libXray`, pinned to v26.10.10 (official release, no patches).** Two reasons, in order:
 
 1. **Licensing.** libXray is MIT. AndroidLibXrayLite is LGPL-3.0. For an
    AGPL-3.0 project the MIT dependency is unambiguously cleaner.
@@ -1387,25 +1409,28 @@ void    LibXray.registerProcessFinder(ProcessFinder)         // per-app, M5
 interface DialerController { boolean protectFd(long fd); }
 ```
 
-Methods dispatched through `invoke`: `getFreePorts`,
-`convertShareLinksToXrayJson`, `convertXrayJsonToShareLinks`, `countGeoData`,
-`ping`, `testXray`, `runXray`, `runXrayFromJson`, `stopXray`, `xrayVersion`,
-`getXrayState`.
+Every call is `{"apiVersion":3,"method":…,"payload":…}`. Methods dispatched
+through `invoke`: `getFreePorts`, `convertShareLinksToXrayJson`,
+`convertXrayJsonToShareLinks`, `generateAgeKeyPair` (unused), `countGeoData`,
+`pingBatch`, `testXray`, `runXray`, `stopXray`, `xrayVersion`, `getXrayState`.
+v26.10.10 removed `ping` and `runXrayFromJson`.
 
 Note `testXray` — use it to satisfy the "validate before starting" rule in §6.
-It takes a **file path**, not a config string, so the generated config must be
-written to disk before it can be validated.
+Configs go in as **JSON text** (`xrayJson`), not a file path; nothing is written
+to disk for the core. `testXray` also **refuses while a managed instance runs in
+the same process**, so no `testXray` caller may run in `:bg` mid-session (import
+validation, `BoundPassthroughValidator` and the retained-TUN restart path are
+ordered or placed accordingly).
 
-`ping` is worth one note beyond the table, because M4.5 depends on it. It runs
-`StartXray`, **not** `RunXray`, so it builds an independent core instance and
-never touches the `coreServer` singleton that `runXray`/`stopXray`/`getXrayState`
-share. Measuring latency therefore does not disturb a running tunnel, and
-`getXrayState` cannot see a measurement in progress. It also means every
-measurement needs its own config file and its own free port — §10.6 applies per
-measurement, not once per app run — and that a failed ping returns
-`success:false` *with* a sentinel `delay` of `10000`/`11000` in `data`, which
-`LibXrayInvoke` discards so it can never be rendered as a measurement (§10.1).
-Full source: `docs/agent/research/2026-08-10-libxray-ping-semantics.md`.
+`pingBatch` is what latency depends on (M4.5; the §3 `:ping` process). Like the
+old `ping` it builds an independent core instance per entry, so measuring
+latency does not disturb a running tunnel's instance — but it needs a process
+with no managed instance, hence `:ping`. A failed entry is `success:false`
+*with* a sentinel `delay` of `10000`/`11000`, which `LibXrayInvoke` discards so
+it can never be rendered as a measurement (§10.1). Sources:
+`docs/agent/research/libxray-api.md`,
+`docs/agent/research/2026-08-10-libxray-ping-semantics.md` (the v26.7.11 `ping`
+semantics, now historical).
 
 **Full verbatim signatures, and every place reality differed from the plan, are
 in `docs/agent/research/libxray-api.md`. Read it before writing `:core:xray`.**
@@ -1415,14 +1440,16 @@ initialise a Go runtime.
 
 ### 14.3 Xray-core version floor — RESOLVED
 
-**Pin v26.7.11**, which is the core version libXray v26.7.11 is built against.
+**Pin v26.10.10**, which is the core version libXray v26.10.10 is built against.
 
-Caveat worth knowing: upstream Xray-core tags v26.7.11 as a *prerelease*; the
-newest release marked stable is v26.3.27. We follow libXray's pin rather than
-upstream's stable marker, because mismatching the wrapper against the core is a
-worse failure than tracking a prerelease. Revisit whenever libXray bumps.
+Caveat worth knowing: we follow libXray's pin rather than upstream Xray-core's
+stable marker, because mismatching the wrapper against the core is a worse
+failure than tracking a prerelease. (This was checked for v26.7.11, which
+upstream marked a prerelease; it has not been re-checked for v26.10.10.) Revisit
+whenever libXray bumps. The v26.7.11 → v26.10.10 review is
+`docs/agent/research/2026-10-17-xray-core-v26.7.11-to-v26.10.10.md`.
 
-Hysteria2 inbound landed in v26.3.27, so v26.7.11 clears the §6 floor.
+Hysteria2 inbound landed in v26.3.27, so v26.10.10 clears the §6 floor.
 
 ### 14.4 Traffic stats source — RESOLVED, reversing the 2026-07-25 decision
 
@@ -1432,10 +1459,8 @@ not Xray's stats API, and not per-UID `TrafficStats`.
 This section originally resolved the opposite way, reasoning that Xray's
 per-tag stats make proxied traffic distinguishable from direct. That reasoning
 checked xray-core's capabilities and never libXray's, the wrapper this project
-actually calls. libXray v26.7.11's entire `invoke` surface is `getFreePorts`,
-`convertShareLinksToXrayJson`, `convertXrayJsonToShareLinks`, `countGeoData`,
-`ping`, `testXray`, `runXray`, `runXrayFromJson`, `stopXray`, `xrayVersion`,
-`getXrayState` (§14.2) — no stats method, and the Go `core.Instance` is never
+actually calls. libXray's `invoke` surface (v26.7.11 then, and v26.10.10 now; §14.2) has
+no stats method, and the Go `core.Instance` is never
 handed to Java. The 2026-07-25 decision named a capability with no wrapper
 call behind it. Found 2026-09-17 during M8.5; full derivation in
 `docs/agent/research/2026-09-17-traffic-stats-surface.md`.
@@ -1513,10 +1538,13 @@ nothing in the design should foreclose it.
 
 F-Droid's *main* repository builds every artifact from source on its own
 infrastructure, which would mean building the libXray AAR and its Go toolchain
-there. That is a large, separate piece of work. IzzyOnDroid accepts APKs from
-GitHub releases and is where the closest comparable project
-(`SaeedDev94/Xray`) ships. Treat F-Droid main as a stretch goal that requires
-the from-source libXray build path first.
+there. Subspace deliberately has no such path: the AAR is the official,
+unmodified `libxray-android.zip` fetched and checksum-pinned by
+`scripts/fetch-native.sh` (the earlier from-source build and its patch series
+were removed with the v26.10.10 move). F-Droid main is therefore a stretch goal
+that would first need a reproducible libXray build added back. IzzyOnDroid
+accepts APKs from GitHub releases and is where the closest comparable project
+(`SaeedDev94/Xray`) ships.
 
 The practical consequence today: **no proprietary dependencies**, which is why
 §2 specifies ZXing rather than ML Kit.
@@ -1574,6 +1602,29 @@ Android 13+ themed icons (`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`:
 supported version and there are no legacy PNG mipmaps; the monochrome layer only
 takes effect on Android 13+. Rendering on Android 8–11 is owner-pending
 (M8.6 spec §7.4 row 13).
+
+### 14.10 Stock libXray v26.10.10 — what changed for users and raw configs
+
+The move from the locally patched v26.7.11 to the official libXray v26.10.10
+(spec `docs/agent/specs/2026-10-17-libxray-stock-upgrade-design.md`) changes two
+things a user can see, both from Xray-core and not from Subspace:
+
+- **VLESS and Trojan without TLS (or REALITY) to a public address are refused at
+  config build** (`a1bf968`, `infra/conf/vless.go`, `infra/conf/xray.go`
+  `validateOutboundTransportSecurity`): `vless without TLS or other encryption
+  is prohibited unless the server address is a private IP or domain`. v26.7.11's
+  check read a field the `vnext` shape never fills, so it never fired. Subspace
+  names the refusal rather than showing the core's string:
+  `FailureReason.CoreRefusesPlaintextTransport` on connect, a warning in the
+  server editor, and `UNSUPPORTED` (not a number) for latency. A plain
+  VLESS/Trojan server on a private address still works.
+- **Outbound `proxySettings` is now a hard error** (`3e2f040`; it was accepted
+  and migrated to `streamSettings.sockopt.dialerProxy`). Subspace never emits
+  it, but a raw or Remnawave config that chains with the old key will now fail
+  to start. The core's message names the replacement.
+
+Everything else in the review is in
+`docs/agent/research/2026-10-17-xray-core-v26.7.11-to-v26.10.10.md`.
 
 ---
 
@@ -1738,7 +1789,8 @@ Mandatory rules:
       Two modes, not four, and both exclusions are load-bearing. **`icmp` is not
       implementable on unrooted Android** — raw sockets require root; M4 recorded
       that and M4.5 kept it. **`proxy` (GET) is not implementable against libXray
-      v26.7.11**: `nodep.MeasureDelay` hardcodes `http.NewRequest("HEAD", …)`, and
+      v26.7.11** (not re-checked for v26.10.10's `pingBatch`; `PROXY_HEAD` now
+      runs in the `:ping` process, §3): `nodep.MeasureDelay` hardcodes `http.NewRequest("HEAD", …)`, and
       `xray.Ping` closes its throwaway instance via `defer` before a caller could
       borrow its SOCKS port to issue a GET itself. M4.5 therefore maps an incoming
       `ping-type: proxy` onto `proxy-head` and labels it "Proxy (HEAD)" in the UI,

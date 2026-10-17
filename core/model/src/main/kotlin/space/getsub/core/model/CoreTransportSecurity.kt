@@ -103,16 +103,14 @@ private fun packBytes(bytes: ByteArray): Int =
         (acc shl Byte.SIZE_BITS) or (b.toInt() and BYTE_MASK)
     }
 
-private fun ipv4Value(address: String): Int? {
-    val parts =
-        IPV4_LITERAL
-            .matchEntire(address)
-            ?.groupValues
-            ?.drop(1)
-            ?.map { it.toInt() }
-    val valid = parts?.takeIf { p -> p.all { it <= OCTET_MAX } } ?: return null
-    return packBytes(ByteArray(IPV4_BYTES) { valid[it].toByte() })
-}
+private fun ipv4Value(address: String): Int? =
+    IPV4_LITERAL
+        .matchEntire(address)
+        ?.groupValues
+        ?.drop(1)
+        ?.map { it.toInt() }
+        ?.takeIf { parts -> parts.all { it <= OCTET_MAX } }
+        ?.let { parts -> packBytes(ByteArray(IPV4_BYTES) { parts[it].toByte() }) }
 
 private fun isPrivateIpv4(value: Int): Boolean =
     PRIVATE_IPV4_CIDRS.any { (network, prefix) ->
