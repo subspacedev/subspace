@@ -232,6 +232,60 @@ class PingBatchSchedulingTest {
             }
         }
 
+    // Final review, fix-before-merge minor: TcpProbe ignores a false protect(), so a VPN that
+    // comes up after planning would have its own endpoint timed. Each TCP probe re-checks.
+    @Test
+    fun aForeignVpnAppearingAfterPlanningRefusesTheTcpProbe() =
+        runTest {
+            var foreignVpn = false
+            planLatency(tcp, { foreignVpn }, null, vless) { error("never generated") } shouldBe LatencyPlan.InPlace
+
+            foreignVpn = true
+            var probed = false
+            guardedTcpProbe({ foreignVpn }) {
+                probed = true
+                LatencyResult.ok(42)
+            } shouldBe LatencyResult.failed(LatencyOutcome.FOREIGN_VPN)
+            probed shouldBe false
+        }
+
+    @Test
+    fun aTcpProbeRunsWhenNoForeignVpnHoldsTheRoute() =
+        runTest {
+            guardedTcpProbe({ false }) { LatencyResult.ok(42) } shouldBe LatencyResult.ok(42)
+        }
+
+    @Test
+    fun eachInPlaceProbeOfARunRechecksTheForeignVpn() =
+        runTest {
+            var foreignVpn = false
+            val results = mutableMapOf<Long, LatencyResult>()
+            val runner =
+                LatencyRunner<Long>(
+                    measure = { id, _ ->
+                        guardedTcpProbe({ foreignVpn }) {
+                            // The VPN comes up while the first server is being measured.
+                            foreignVpn = true
+                            LatencyResult.ok(id.toInt())
+                        }
+                    },
+                    loadProfile = { id -> id },
+                    scope = this,
+                    concurrency = 1,
+                    plan = { _, options -> planLatency(options, { foreignVpn }, null, vless) { null } },
+                )
+            runner.start(
+                runId = 1L,
+                profileIds = longArrayOf(1L, 2L),
+                optionsFor = { tcp },
+                onResult = { _, id, result -> results[id] = result },
+                onFinished = {},
+            )
+            advanceUntilIdle()
+
+            results shouldBe mapOf(1L to LatencyResult.ok(1), 2L to LatencyResult.failed(LatencyOutcome.FOREIGN_VPN))
+        }
+
     @Test
     fun aBalancerRowIsUnsupportedBeforeEitherMode() =
         runTest {

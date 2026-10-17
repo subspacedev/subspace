@@ -543,6 +543,20 @@ internal suspend fun planLatency(
     }
 }
 
+/**
+ * One TCP probe, refused with [LatencyOutcome.FOREIGN_VPN] if another client's VPN holds the
+ * default route **now**.
+ *
+ * [planLatency] checks once, when the run is planned, but a long TCP run can outlast that:
+ * `TcpProbe` ignores a `false` from `protect(socket)`, so a VPN that comes up mid-run would have
+ * its own endpoint timed and shown as the server's number. Re-checking right before each probe is
+ * what keeps that a failure, as it was before probes were planned up front.
+ */
+internal suspend fun guardedTcpProbe(
+    foreignVpnHoldsRoute: () -> Boolean,
+    probe: suspend () -> LatencyResult,
+): LatencyResult = if (foreignVpnHoldsRoute()) LatencyResult.failed(LatencyOutcome.FOREIGN_VPN) else probe()
+
 /** Maps composition failures to the user-actionable service reason they represent. */
 internal fun compositionFailureReason(reason: ComposeFailure): FailureReason =
     when (reason) {
@@ -3494,18 +3508,20 @@ class TunnelService : VpnService() {
      * device run, and only working at all because `TcpProbe` binds the socket
      * first so there is a file descriptor to mark.
      *
-     * It does nothing about another app's VPN; [ForeignVpn] is checked before
-     * this is reached, and refuses rather than returning the meaningless number
-     * such a measurement would produce.
+     * It does nothing about another app's VPN; [ForeignVpn] is checked again
+     * right before each probe ([guardedTcpProbe]), not only at planning, and
+     * refuses rather than returning the meaningless number such a measurement
+     * would produce.
      */
     private suspend fun measureTcp(
         profile: StoredProfile,
         options: LatencyOptions,
-    ): LatencyResult {
-        val protector = TcpSocketProtector { socket -> protect(socket) }
-        return TcpProbe(protector = protector)
-            .measure(profile.address, profile.port, options.timeoutSeconds)
-    }
+    ): LatencyResult =
+        guardedTcpProbe(foreignVpnHoldsRoute = { foreignVpn.holdsDefaultRoute(ownTunnelActive()) }) {
+            val protector = TcpSocketProtector { socket -> protect(socket) }
+            TcpProbe(protector = protector)
+                .measure(profile.address, profile.port, options.timeoutSeconds)
+        }
 
     private fun pingModeOf(wire: Int): PingMode =
         if (wire == LatencyOptionsParcel.MODE_TCP) PingMode.TCP else PingMode.PROXY_HEAD
