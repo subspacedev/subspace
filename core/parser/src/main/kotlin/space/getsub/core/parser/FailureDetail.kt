@@ -70,4 +70,10 @@ public enum class DetailField {
     Obfuscation,
     Bandwidth,
     HopInterval,
+    Mtu,
+    Tti,
+    Reserved,
+    Keepalive,
+    SecretKey,
+    LocalAddress,
 }

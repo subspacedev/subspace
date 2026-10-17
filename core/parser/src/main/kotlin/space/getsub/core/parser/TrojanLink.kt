@@ -49,12 +49,13 @@ internal fun parseTrojanLink(
             Security.Tls(serverName, fingerprint, allowInsecure = uri.query["allowInsecure"] == "1")
         }
     val network = uri.query["type"]?.takeIf { it.isNotBlank() } ?: "tcp"
-    val stream =
-        StreamSettings(
-            network = network,
-            security = security,
-            transport = trojanTransportOptions(uri, network),
-        )
+    val transport =
+        when (val special = queryKcpOrHttpUpgrade(uri.query, network)) {
+            null -> trojanTransportOptions(uri, network)
+            is Step.Fail -> return LinkResult.Bad(parseFailure(index, special.reason, special.detail))
+            is Step.Ok -> special.value
+        }
+    val stream = StreamSettings(network = network, security = security, transport = transport)
     val outbound =
         TrojanOutbound(
             address = uri.host,

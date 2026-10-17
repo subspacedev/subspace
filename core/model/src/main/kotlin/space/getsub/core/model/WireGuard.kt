@@ -5,7 +5,7 @@ package space.getsub.core.model
 import java.util.Base64
 
 /** Why a WireGuard source parsed but cannot be connected to. */
-public enum class WireGuardUnsupported { MultiplePeers, InvalidKey, InvalidReserved }
+public enum class WireGuardUnsupported { MultiplePeers, InvalidKey, InvalidReserved, UnsupportedMask }
 
 public object WireGuardRules {
     public const val KEY_BYTES: Int = 32

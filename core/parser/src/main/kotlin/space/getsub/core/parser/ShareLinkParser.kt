@@ -25,6 +25,7 @@ internal fun parseShareLink(
         "trojan" -> parseTrojanLink(text, index)
         "ss" -> parseShadowsocksLink(text, index)
         "hysteria2", "hy2" -> parseHysteria2Link(text, index)
+        "wireguard", "wg" -> parseWireGuardLink(text, index)
         "socks", "socks5" -> parseSocksLink(text, index)
         else ->
             LinkResult.Bad(

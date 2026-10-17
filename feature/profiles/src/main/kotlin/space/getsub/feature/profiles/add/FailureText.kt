@@ -98,4 +98,10 @@ internal fun DetailField.labelRes(): Int =
         DetailField.Obfuscation -> R.string.import_detail_field_obfuscation
         DetailField.Bandwidth -> R.string.import_detail_field_bandwidth
         DetailField.HopInterval -> R.string.import_detail_field_hop_interval
+        DetailField.Mtu -> R.string.import_detail_field_mtu
+        DetailField.Tti -> R.string.import_detail_field_tti
+        DetailField.Reserved -> R.string.import_detail_field_reserved
+        DetailField.Keepalive -> R.string.import_detail_field_keepalive
+        DetailField.SecretKey -> R.string.import_detail_field_secret_key
+        DetailField.LocalAddress -> R.string.import_detail_field_local_address
     }

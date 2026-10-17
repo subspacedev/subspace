@@ -156,6 +156,12 @@
     <string name="import_detail_field_obfuscation">Obfuscation</string>
     <string name="import_detail_field_bandwidth">Bandwidth</string>
     <string name="import_detail_field_hop_interval">Hop interval</string>
+    <string name="import_detail_field_mtu">MTU</string>
+    <string name="import_detail_field_tti">TTI</string>
+    <string name="import_detail_field_reserved">Reserved bytes</string>
+    <string name="import_detail_field_keepalive">Keepalive</string>
+    <string name="import_detail_field_secret_key">Secret key</string>
+    <string name="import_detail_field_local_address">Local address</string>
 
     <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
          input box. ARCHITECTURE.md §5.6 applies here

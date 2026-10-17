@@ -202,7 +202,21 @@ private fun vmessTransportOptions(
                 ?.let(TransportOptions::Grpc)
                 ?: TransportOptions.None
 
-        else -> TransportOptions.None
+        // v2rayN's vmess JSON: `type` is the kcp header, `path` the kcp seed; no mtu/tti/fm fields exist.
+        else ->
+            when {
+                isKcpNetwork(network) ->
+                    TransportOptions.Kcp(
+                        mtu = null,
+                        tti = null,
+                        obfuscation = classicObfuscation(obj.stringPreservingEmpty("path"), obj.nonBlankString("type")),
+                    )
+
+                isHttpUpgradeNetwork(network) ->
+                    httpUpgrade(obj.stringPreservingEmpty("host"), obj.stringPreservingEmpty("path"))
+
+                else -> TransportOptions.None
+            }
     }
 
 private fun parseJsonObject(text: String): JsonObject? {

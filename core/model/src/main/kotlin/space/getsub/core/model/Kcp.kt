@@ -23,6 +23,12 @@ public enum class KcpUnsupported {
 
     /** A header name this build does not know. */
     UnknownHeader,
+
+    /** A `dns` header with a `value` domain: [KcpObfuscation] has no field for the domain. */
+    DnsHeaderDomain,
+
+    /** A finalmask the source carries that [KcpRules.masks] cannot reproduce (other type, order or combination). */
+    UnknownMask,
 }
 
 /**
