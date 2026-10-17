@@ -423,6 +423,26 @@ class EditorViewModelTest {
             viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
         }
 
+    // Final review, fix-before-merge minor: picking VLESS or Trojan on a new profile, before any
+    // address is typed, is the main creation flow — the warning must wait for an address.
+    @Test
+    fun `plaintext vless with a blank address does not warn yet`() =
+        runTest {
+            val source = FakeProfileSource(listOf(typedProfile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.onAddressChanged("")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onAddressChanged("   ")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onAddressChanged("vpn.example.org")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe true
+        }
+
     @Test
     fun `a raw json profile never carries the transport security warning`() =
         runTest {

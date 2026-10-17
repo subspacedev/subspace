@@ -216,9 +216,12 @@ internal data class EditorState(
      * True when Xray-core v26.10.10 would refuse the server as currently entered: VLESS or Trojan,
      * Security None, public address (see [refusedWithoutTransportSecurity]). Typed rows only; a raw
      * row's bytes are not editable here and the core's own verdict stands for them.
+     *
+     * False while [address] is blank: picking VLESS or Trojan on a new profile, before anything is
+     * typed, is the main creation flow, and there is no server yet to judge.
      */
     val refusedWithoutTransportSecurity: Boolean
-        get() = fieldsEditable && toOutbound().refusedWithoutTransportSecurity()
+        get() = fieldsEditable && address.isNotBlank() && toOutbound().refusedWithoutTransportSecurity()
 }
 
 /**
