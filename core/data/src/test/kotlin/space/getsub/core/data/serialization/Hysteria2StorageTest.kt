@@ -123,6 +123,12 @@ class Hysteria2StorageTest {
     }
 
     @Test
+    fun `a clean hysteria2 row is connectable`() {
+        stored(plain).connectable shouldBe true
+        stored(full.copy(notConnectableReason = null)).connectable shouldBe true
+    }
+
+    @Test
     fun `a hysteria2 row with a not-connectable reason is not connectable`() {
         stored(full).connectable shouldBe false
         stored(plain.copy(notConnectableReason = Hysteria2Unsupported.UnknownCongestion)).connectable shouldBe false

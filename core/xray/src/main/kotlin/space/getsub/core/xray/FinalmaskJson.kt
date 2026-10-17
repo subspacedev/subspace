@@ -4,6 +4,9 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.FragmentPackets
 import space.getsub.core.model.FragmentSpec
+import space.getsub.core.model.Hysteria2Congestion
+import space.getsub.core.model.Hysteria2Obfuscation
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoisePayload
 import space.getsub.core.model.NoiseSpec
@@ -56,6 +59,72 @@ internal object FinalmaskJson {
             }
         return if (halves.isEmpty()) null else "{${halves.joinToString(",")}}"
     }
+
+    /**
+     * A Hysteria2 outbound's `finalmask` object value, or null when there is nothing to emit
+     * (M9-D1 spec §4, Xray-core v26.10.10 `infra/conf/transport_finalmask.go`).
+     *
+     * `udp` is `[salamander|gecko?, noise?, udphop?]`, in that order (plan ruling R6, research note
+     * 2026-10-17 "Verified for D1" (c)). `finalmask.go:45-46` reverses the list, so JSON index 0 is
+     * next to QUIC; `udphop` implements `HandleDial()` and must be the last element, or the dial fails
+     * with `incorrect index: N *udphop.Config` (`finalmask.go:147-154`). [noise] is the user's global
+     * M9-A noise; fragment is a TCP mask and never applies to this QUIC-only transport.
+     *
+     * `quicParams` only when congestion is set. Never `quicParams.udpHop` (gone in v26.10.10).
+     */
+    fun hysteria2Block(
+        out: Hysteria2Outbound,
+        noise: NoiseSpec?,
+    ): String? {
+        val udp =
+            listOfNotNull(
+                obfuscationMask(out.obfuscation),
+                noise?.let(::noiseMask),
+                out.hopping?.let { hop ->
+                    // `remotePorts` is a PortList string; the first port stays `settings.port`, as
+                    // libXray's share/hysteria2.go does.
+                    val ports = hop.ports.joinToString(",") { r -> if (r.first == r.last) "${r.first}" else r.wire() }
+                    """{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote",""" +
+                        """"interval":${hop.intervalSeconds},"remotePorts":${jsonString(ports)}}}"""
+                },
+            )
+        val halves =
+            buildList {
+                if (udp.isNotEmpty()) add(""""udp":[${udp.joinToString(",")}]""")
+                quicParams(out.congestion)?.let { add(""""quicParams":$it""") }
+            }
+        return if (halves.isEmpty()) null else "{${halves.joinToString(",")}}"
+    }
+
+    // Salamander :728. `packetSize` is an Int32Range, which unmarshals from a number or "a-b" only.
+    private fun obfuscationMask(obfuscation: Hysteria2Obfuscation): String? =
+        when (obfuscation) {
+            Hysteria2Obfuscation.None -> null
+            is Hysteria2Obfuscation.Salamander ->
+                """{"type":"salamander","settings":{"password":${jsonString(obfuscation.password)}}}"""
+            is Hysteria2Obfuscation.Gecko ->
+                """{"type":"salamander","settings":{"password":${jsonString(obfuscation.password)},""" +
+                    """"packetSize":"${obfuscation.minPacket}-${obfuscation.maxPacket}"}}"""
+        }
+
+    // QuicParamsConfig :1132. A blank Bandwidth means unset to Bps(), so it is omitted rather than sent empty.
+    private fun quicParams(congestion: Hysteria2Congestion): String? =
+        when (congestion) {
+            Hysteria2Congestion.Default -> null
+            is Hysteria2Congestion.Bbr ->
+                listOfNotNull(
+                    """"congestion":"bbr"""",
+                    congestion.profile.takeIf { it.isNotBlank() }?.let { """"bbrProfile":${jsonString(it)}""" },
+                ).joinToString(",", "{", "}")
+            is Hysteria2Congestion.Brutal ->
+                listOfNotNull(
+                    """"congestion":"brutal"""",
+                    congestion.up.takeIf { it.isNotBlank() }?.let { """"brutalUp":${jsonString(it)}""" },
+                    congestion.down.takeIf { it.isNotBlank() }?.let { """"brutalDown":${jsonString(it)}""" },
+                ).joinToString(",", "{", "}")
+        }
+
+    private fun IntRange.wire(): String = "$first-$last"
 
     private fun FragmentPackets.wire(): String =
         when (this) {

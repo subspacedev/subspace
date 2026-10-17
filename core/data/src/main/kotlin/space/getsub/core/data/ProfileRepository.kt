@@ -120,9 +120,9 @@ public data class StoredProfile(
                 is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
-                // Final rule is `o.notConnectableReason == null`; M9-D1 Task 6 flips it once the
-                // generator can write Hysteria2.
-                is Hysteria2Outbound -> false
+                // Plan ruling R2: its own branch, never `hysteria` in CONNECTABLE_NETWORKS. A reason
+                // means the source carried something the generator cannot write.
+                is Hysteria2Outbound -> o.notConnectableReason == null
                 null -> false
             }
 
@@ -145,8 +145,8 @@ public data class StoredProfile(
  * its source wrote.
  *
  * `kcp`/`mkcp`, `httpupgrade` and `hysteria` are real transports Xray supports and this
- * generator does not, so they are absent on purpose. Hysteria2 generation is M8's, and ARCHITECTURE.md §6
- * warns its config shape is unlike every other protocol's. Hysteria2 must be gated by its own
+ * generator does not, so they are absent on purpose. The generator writes Hysteria2 (M9-D1 spec §4) as
+ * its own protocol with its own stream block, unlike every other protocol's. Hysteria2 is gated by its own
  * Outbound branch in `connectable`, not by adding `hysteria` here: this set is shared by VLESS, VMess
  * and Trojan, and a row of those over `hysteria` would then claim a config nothing can write.
  *

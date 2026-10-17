@@ -5,6 +5,7 @@ package space.getsub.core.xray
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -161,9 +162,9 @@ public object XrayConfigGenerator {
     /**
      * Dispatches on the profile's protocol.
      *
-     * Emits VLESS, VMess, Trojan, Shadowsocks and SOCKS (M9-D2a spec §1). The `when` below is
-     * exhaustive over the sealed [space.getsub.core.model.Outbound] with no
-     * `else` — adding a sixth protocol to the model is a compile error here
+     * Emits VLESS, VMess, Trojan, Shadowsocks, SOCKS (M9-D2a spec §1) and Hysteria2 (M9-D1 spec §4).
+     * The `when` below is exhaustive over the sealed [space.getsub.core.model.Outbound] with no
+     * `else` — adding a seventh protocol to the model is a compile error here
      * until this generator is taught to emit it, rather than a silent
      * fallthrough to a config that connects to nothing.
      *
@@ -186,8 +187,14 @@ public object XrayConfigGenerator {
         when (val outbound = profile.outbound) {
             is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound ->
                 ConfigResult.Ok(generateTyped(outbound, settings))
-            // Task 6 (generation) replaces this stub.
-            is Hysteria2Outbound -> ConfigResult.Unsupported("Hysteria2")
+            // A row whose source carried a mask or congestion this build cannot write would connect
+            // to nothing if generated without it (M9-D1 spec §1), so it is refused by a fixed name.
+            is Hysteria2Outbound ->
+                when (outbound.notConnectableReason) {
+                    null -> ConfigResult.Ok(generateTyped(outbound, settings))
+                    Hysteria2Unsupported.UnknownMask -> ConfigResult.Unsupported("Hysteria2 mask")
+                    Hysteria2Unsupported.UnknownCongestion -> ConfigResult.Unsupported("Hysteria2 congestion")
+                }
             is ShadowsocksOutbound ->
                 when (shadowsocksCoreRefusal(outbound.method, outbound.password)) {
                     null -> ConfigResult.Ok(generateTyped(outbound, settings))
@@ -367,20 +374,21 @@ public object XrayConfigGenerator {
     ) {
         // M9-D2a spec §1: every protocol dials the pinned IP in place of its address, as VLESS does.
         val address = settings.addressPin?.ip ?: out.address
-        val stream =
-            when (out) {
-                is VlessOutbound -> out.stream
-                is VmessOutbound -> out.stream
-                is TrojanOutbound -> out.stream
-                is ShadowsocksOutbound, is SocksOutbound -> PLAIN_TCP_STREAM
-                is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
-            }
+        val pinDomain = settings.addressPin?.domain
         sb.appendLine("""  "outbounds": [""")
         sb.appendLine("""    {""")
         sb.appendLine("""      "tag": "proxy",""")
         sb.appendLine("""      "protocol": ${jsonString(out.wireProtocol())},""")
         appendProtocolSettings(sb, out, address)
-        appendStreamSettings(sb, stream, settings.obfuscation, settings.addressPin?.domain)
+        when (out) {
+            is VlessOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
+            is VmessOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
+            is TrojanOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
+            is ShadowsocksOutbound, is SocksOutbound ->
+                appendStreamSettings(sb, PLAIN_TCP_STREAM, settings.obfuscation, pinDomain)
+            // Its own stream block: the password lives in the transport, and TLS is mandatory.
+            is Hysteria2Outbound -> appendHysteria2Stream(sb, out, settings.obfuscation, pinDomain)
+        }
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
         val needsDnsOutbound = settings.dns != null
@@ -412,7 +420,15 @@ public object XrayConfigGenerator {
     ) {
         val endpoint = listOf(""""address": ${jsonString(address)}""", """"port": ${out.port}""")
         when (out) {
-            is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
+            // `HysteriaClientConfig` (`infra/conf/hysteria.go`): a flat `version`/`address`/`port`, no
+            // server array and no credentials. Build fails unless `version == 2`.
+            is Hysteria2Outbound -> {
+                sb.appendLine("""      "settings": {""")
+                sb.appendLine("""        "version": 2,""")
+                sb.appendLine("""        "address": ${jsonString(address)},""")
+                sb.appendLine("""        "port": ${out.port}""")
+                sb.appendLine("""      },""")
+            }
             // VLESS has no transport encryption of its own; "none" is required, not
             // a weakening — TLS/REALITY in streamSettings is what secures it.
             is VlessOutbound ->
@@ -508,8 +524,9 @@ public object XrayConfigGenerator {
     }
 
     /**
-     * The `streamSettings` object, shared by every protocol (M9-D2a spec §2): VLESS, VMess and
-     * Trojan pass their own [stream]; Shadowsocks and SOCKS pass [PLAIN_TCP_STREAM].
+     * The `streamSettings` object, shared by every protocol but Hysteria2 (M9-D2a spec §2): VLESS,
+     * VMess and Trojan pass their own [stream]; Shadowsocks and SOCKS pass [PLAIN_TCP_STREAM].
+     * Hysteria2 writes its own, in [appendHysteria2Stream].
      */
     private fun appendStreamSettings(
         sb: StringBuilder,
@@ -556,6 +573,54 @@ public object XrayConfigGenerator {
             }
         }
         appendTransportSettings(sb, stream.transport, stream.security, pinDomain)
+        sb.appendLine("""      }""")
+    }
+
+    /**
+     * Hysteria2's `streamSettings` (M9-D1 spec §4), Xray-core v26.10.10:
+     * `hysteriaSettings` is `HysteriaConfig` (`infra/conf/transport_method.go:762`: `version`, `auth`;
+     * the legacy `congestion`/`up`/`down`/`udphop` are gone), and `security` is always `tls` because
+     * `hysteria/dialer.go` refuses a nil TLS config.
+     *
+     * `tlsSettings`: never `allowInsecure` (removed, fails Build) and never `fingerprint` (ignored on
+     * this transport, plan ruling R5). `alpn` is emitted as stored although quic-go overwrites it with
+     * `h3`. Pins are `pinnedPeerCertSha256`, comma-joined hex (`transport_security.go:365-379`).
+     *
+     * A blank `serverName` is filled with [pinDomain] (plan ruling R7): `WithDestination` would
+     * otherwise make the pinned IP both the SNI and the verification name (`tls/config.go:493-499`).
+     */
+    private fun appendHysteria2Stream(
+        sb: StringBuilder,
+        out: Hysteria2Outbound,
+        obfuscation: Obfuscation?,
+        pinDomain: String?,
+    ) {
+        sb.appendLine("""      "streamSettings": {""")
+        sb.appendLine("""        "network": "hysteria",""")
+        sb.appendLine("""        "hysteriaSettings": {""")
+        sb.appendLine("""          "version": 2,""")
+        sb.appendLine("""          "auth": ${jsonString(out.password)}""")
+        sb.appendLine("""        },""")
+        FinalmaskJson.hysteria2Block(out, obfuscation?.noise?.spec)?.let { block ->
+            sb.appendLine("""        "finalmask": $block,""")
+        }
+        sb.appendLine("""        "security": "tls",""")
+        val tls =
+            listOfNotNull(
+                """"serverName": ${jsonString(out.tls.serverName.fillBlank(pinDomain))}""",
+                out.tls.alpn.takeIf { it.isNotEmpty() }?.let { alpn ->
+                    """"alpn": [${alpn.joinToString(", ", transform = ::jsonString)}]"""
+                },
+                out.tls.pins.takeIf { it.isNotEmpty() }?.let { pins ->
+                    """"pinnedPeerCertSha256": ${jsonString(pins.joinToString(","))}"""
+                },
+            )
+        sb.appendLine("""        "tlsSettings": {""")
+        tls.forEachIndexed { index, field ->
+            val comma = if (index == tls.size - 1) "" else ","
+            sb.appendLine("""          $field$comma""")
+        }
+        sb.appendLine("""        }""")
         sb.appendLine("""      }""")
     }
 
@@ -666,7 +731,8 @@ private fun Outbound.wireProtocol(): String =
         is TrojanOutbound -> "trojan"
         is ShadowsocksOutbound -> "shadowsocks"
         is SocksOutbound -> "socks"
-        is Hysteria2Outbound -> throw IllegalArgumentException("Hysteria2 is not supported yet")
+        // `hysteria` is the name `infra/conf` registers the outbound under; `hysteria2` is not one.
+        is Hysteria2Outbound -> "hysteria"
     }
 
 private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this
