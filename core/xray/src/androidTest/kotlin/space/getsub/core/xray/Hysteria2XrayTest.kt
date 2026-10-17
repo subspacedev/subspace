@@ -113,6 +113,9 @@ class Hysteria2XrayTest {
                     Case("hopping", plain.copy(hopping = hopping), settings),
                     Case("hopping interval", plain.copy(hopping = hopping.copy(intervalSeconds = 10)), settings),
                     Case("brutal", plain.copy(congestion = brutal), settings),
+                    // The editor accepts Brutal with only one direction set (final review M8).
+                    Case("brutal up only", plain.copy(congestion = Hysteria2Congestion.Brutal("100 mbps", "")), settings),
+                    Case("brutal down only", plain.copy(congestion = Hysteria2Congestion.Brutal("", "50 mbps")), settings),
                     Case("bbr profile", plain.copy(congestion = Hysteria2Congestion.Bbr("aggressive")), settings),
                     Case("noise", plain, withNoise),
                     Case(

@@ -251,6 +251,7 @@
     <string name="editor_hysteria2_pins_error">Each pin must be a SHA-256 fingerprint, in hex or base64.</string>
     <string name="editor_hysteria2_checks_stay_on">Certificate checks stay on. A self-signed server needs its certificate pin.</string>
     <string name="editor_hysteria2_hop_ports_label">Hop ports (optional, e.g. 20000-30000,40000)</string>
+    <string name="editor_hysteria2_hop_ports_hint">A single port means no hopping.</string>
     <string name="editor_hysteria2_hop_ports_error">Use ports from 1 to 65535, such as 20000-30000,40000.</string>
     <string name="editor_hysteria2_hop_interval_label">Hop interval (seconds)</string>
     <string name="editor_hysteria2_hop_interval_error">The interval must be a whole number of at least 5 seconds.</string>
@@ -268,6 +269,7 @@
     <string name="editor_hysteria2_bbr_profile_error">Pick one of the listed BBR profiles.</string>
     <string name="editor_hysteria2_brutal_up_label">Upload (bare number = Mbps)</string>
     <string name="editor_hysteria2_brutal_down_label">Download (bare number = Mbps)</string>
+    <string name="editor_hysteria2_brutal_unset_error">Set an upload or download speed, or pick another congestion control.</string>
     <string name="editor_hysteria2_bandwidth_error">Use a speed such as 100 or 1 gbps, of at least 512 kbps.</string>
     <string name="editor_hysteria2_unknown_mask">This server\'s panel uses an obfuscation Subspace can\'t run yet, so it can\'t connect.</string>
     <string name="editor_hysteria2_unknown_congestion">This server\'s panel uses a congestion setting Subspace can\'t run yet, so it can\'t connect.</string>

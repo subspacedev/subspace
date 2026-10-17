@@ -113,6 +113,7 @@ private fun HoppingFields(
         onValueChange = { onChanged(draft.copy(hopPorts = it)) },
         mono = true,
         error = errorIf(Hysteria2Field.HopPorts in errors, R.string.editor_hysteria2_hop_ports_error),
+        hint = stringResource(R.string.editor_hysteria2_hop_ports_hint),
     )
     // Without ports there is no hopping and the interval is ignored, so it is not offered.
     if (draft.hops) {
@@ -213,7 +214,9 @@ private fun CongestionFields(
                 label = stringResource(R.string.editor_hysteria2_brutal_up_label),
                 value = draft.brutalUp,
                 onValueChange = { onChanged(draft.copy(brutalUp = it)) },
-                error = errorIf(Hysteria2Field.BrutalUp in errors, R.string.editor_hysteria2_bandwidth_error),
+                error =
+                errorIf(Hysteria2Field.BrutalUp in errors, R.string.editor_hysteria2_bandwidth_error)
+                    ?: errorIf(Hysteria2Field.BrutalUnset in errors, R.string.editor_hysteria2_brutal_unset_error),
             )
             Hysteria2TextField(
                 label = stringResource(R.string.editor_hysteria2_brutal_down_label),
@@ -244,6 +247,7 @@ private fun Hysteria2TextField(
     mono: Boolean = false,
     singleLine: Boolean = true,
     error: String? = null,
+    hint: String? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -252,7 +256,7 @@ private fun Hysteria2TextField(
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 2,
         isError = error != null,
-        supportingText = error?.let { { Text(it) } },
+        supportingText = (error ?: hint)?.let { { Text(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         textStyle = MaterialTheme.typography.bodyLarge.let { if (mono) it.mono() else it },
         shape = MaterialTheme.shapes.large,

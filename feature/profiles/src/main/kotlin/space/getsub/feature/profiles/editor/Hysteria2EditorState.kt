@@ -6,6 +6,7 @@ import space.getsub.core.model.BBR_PROFILES
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.PinResult
@@ -24,6 +25,9 @@ internal enum class Hysteria2Field {
     BbrProfile,
     BrutalUp,
     BrutalDown,
+
+    /** Brutal with neither direction set: the core would fall back to BBR, so it is not Brutal. */
+    BrutalUnset,
 }
 
 internal enum class Hysteria2ObfsKind { None, Salamander, Gecko }
@@ -48,11 +52,11 @@ private val PIN_SEPARATORS = Regex("[,\\s]+")
 @Suppress("TooManyFunctions") // One small check or mapping per form group; splitting would only rename them.
 internal data class Hysteria2Draft(
     val serverName: String = "",
-    val alpn: List<String> = listOf("h3"),
+    val alpn: List<String> = Hysteria2Rules.DEFAULT_ALPN,
     val pinsText: String = "",
     val skipChecksRequested: Boolean = false,
     val hopPorts: String = "",
-    val hopInterval: String = Hysteria2Input.DEFAULT_HOP_INTERVAL.toString(),
+    val hopInterval: String = Hysteria2Rules.DEFAULT_HOP_INTERVAL.toString(),
     val obfsKind: Hysteria2ObfsKind = Hysteria2ObfsKind.None,
     val obfsPassword: String = "",
     val minPacket: String = "",
@@ -69,7 +73,17 @@ internal data class Hysteria2Draft(
     /** The source asked to skip certificate checks and no pin is entered: they stay on and it will fail. */
     val checksStayOnWithoutPin: Boolean get() = skipChecksRequested && pinTokens.isEmpty()
 
-    val hops: Boolean get() = hopPorts.isNotBlank()
+    /**
+     * Whether the ports text asks for hopping. A single port is no hopping, as in a share link's
+     * authority or Clash `ports` (final review M9), so the interval is neither shown nor checked.
+     * Text that is not yet a valid list still counts, so the interval stays on screen while typing.
+     */
+    val hops: Boolean
+        get() {
+            if (hopPorts.isBlank()) return false
+            val ranges = Hysteria2Input.portList(hopPorts) ?: return true
+            return ranges.size > 1 || ranges[0].first != ranges[0].last
+        }
 
     /** The fields that are wrong, by name. Empty means [toOutbound] is exact. */
     fun validate(): Set<Hysteria2Field> =
@@ -84,8 +98,7 @@ internal data class Hysteria2Draft(
         // R9: without hopping the interval is ignored, so it cannot be wrong.
         if (!hops) return
         if (Hysteria2Input.portList(hopPorts) == null) add(Hysteria2Field.HopPorts)
-        val interval = hopInterval.trim().toIntOrNull()
-        if (interval == null || interval < Hysteria2Input.MIN_HOP_INTERVAL) add(Hysteria2Field.HopInterval)
+        if (Hysteria2Rules.hopInterval(hopInterval) == null) add(Hysteria2Field.HopInterval)
     }
 
     private fun MutableSet<Hysteria2Field>.validateObfuscation() {
@@ -94,7 +107,7 @@ internal data class Hysteria2Draft(
         if (obfsKind == Hysteria2ObfsKind.Gecko) {
             val min = minPacket.trim().toIntOrNull()
             val max = maxPacket.trim().toIntOrNull()
-            val valid = min != null && max != null && min > 0 && min <= max && max <= Hysteria2Input.MAX_PACKET_SIZE
+            val valid = min != null && max != null && Hysteria2Rules.geckoRangeValid(min, max)
             if (!valid) add(Hysteria2Field.PacketRange)
         }
     }
@@ -104,6 +117,8 @@ internal data class Hysteria2Draft(
             Hysteria2CongestionKind.Default -> Unit
             Hysteria2CongestionKind.Bbr -> if (normaliseBbrProfile(bbrProfile) == null) add(Hysteria2Field.BbrProfile)
             Hysteria2CongestionKind.Brutal -> {
+                // One side may be unset (a link may give only one); neither is not Brutal at all.
+                if (brutalUp.isBlank() && brutalDown.isBlank()) add(Hysteria2Field.BrutalUnset)
                 if (!bandwidthOk(brutalUp)) add(Hysteria2Field.BrutalUp)
                 if (!bandwidthOk(brutalDown)) add(Hysteria2Field.BrutalDown)
             }
@@ -139,7 +154,7 @@ internal data class Hysteria2Draft(
 
     private fun hopping(): PortHopping? {
         val ports = if (hops) Hysteria2Input.portList(hopPorts) else null
-        val interval = hopInterval.trim().toIntOrNull() ?: Hysteria2Input.DEFAULT_HOP_INTERVAL
+        val interval = Hysteria2Rules.hopInterval(hopInterval) ?: Hysteria2Rules.DEFAULT_HOP_INTERVAL
         return ports?.let { PortHopping(it, interval) }
     }
 

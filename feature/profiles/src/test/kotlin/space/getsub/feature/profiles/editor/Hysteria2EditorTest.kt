@@ -369,6 +369,41 @@ class Hysteria2EditorTest {
     }
 
     @Test
+    fun `brutal with neither direction set is rejected`() =
+        assertRejected(Hysteria2Field.BrutalUnset) { it.copy(brutalUp = "", brutalDown = " ") }
+
+    @Test
+    fun `brutal with one direction set saves`() =
+        runTest {
+            val (viewModel, source) = loaded()
+            advanceUntilIdle()
+            viewModel.edit { it.copy(brutalUp = "", brutalDown = "200") }
+            viewModel.save()
+            advanceUntilIdle()
+
+            (source.lastUpdate as Hysteria2Outbound).congestion shouldBe Hysteria2Congestion.Brutal("", "200 mbps")
+        }
+
+    @Test
+    fun `a hop interval that is not plain digits is rejected`() {
+        assertRejected(Hysteria2Field.HopInterval) { it.copy(hopInterval = "+10") }
+        assertRejected(Hysteria2Field.HopInterval) { it.copy(hopInterval = "10s") }
+    }
+
+    @Test
+    fun `a single hop port means no hopping, as in links`() =
+        runTest {
+            val (viewModel, source) = loaded()
+            advanceUntilIdle()
+            viewModel.edit { it.copy(hopPorts = "20000", hopInterval = "1") }
+            viewModel.state.value.hysteria2.hops shouldBe false
+            viewModel.save()
+            advanceUntilIdle()
+
+            (source.lastUpdate as Hysteria2Outbound).hopping shouldBe null
+        }
+
+    @Test
     fun `a missing password and a bad port use the shared errors`() =
         runTest {
             val (viewModel, source) = loaded()
