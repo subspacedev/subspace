@@ -64,7 +64,10 @@ public class ServerAddressResolver(
     /**
      * [race] false is for a server that speaks UDP (Hysteria2): a TCP connect to its port says nothing about
      * a QUIC listener, and with port hopping the probed port is not the one in use. The first DoH answer, in
-     * the order the resolver gave it, is taken without probing (M9-D1 spec §5, §10.3).
+     * the order the resolver gave it, is taken without probing (M9-D1 spec §5, §10.3), except that an IPv4
+     * answer is preferred: nothing here knows whether the active network has IPv6, an unraced IPv6 pin on an
+     * IPv4-only network would be unreachable, and no race is left to catch it. DoH returns A and AAAA as one
+     * list, so "first IPv4" is the first A answer; with only AAAA answers the first of those is taken.
      */
     public suspend fun resolve(host: String, port: Int, config: ResolverConfig, race: Boolean = true): PreResolution {
         if (IpLiteral.isLiteral(host)) return PreResolution.Skipped(PreResolveReason.AlreadyIp)
@@ -78,7 +81,12 @@ public class ServerAddressResolver(
             answers == null -> PreResolution.Failed(answered.reasonOrNull(), 0, elapsed())
             candidates.isEmpty() -> PreResolution.Failed(PreResolveReason.NoAddresses, 0, elapsed())
             !race ->
-                PreResolution.Resolved(distinct.first().hostAddress.orEmpty(), distinct.size, elapsed(), raced = false)
+                PreResolution.Resolved(
+                    (distinct.firstOrNull { it is Inet4Address } ?: distinct.first()).hostAddress.orEmpty(),
+                    distinct.size,
+                    elapsed(),
+                    raced = false,
+                )
             candidates.size == 1 -> PreResolution.Resolved(candidates.single().hostAddress.orEmpty(), 1, elapsed())
             else ->
                 racer.firstToConnect(candidates, port, PROBE_TIMEOUT_MILLIS)

@@ -128,7 +128,7 @@ class PreResolutionRunTest {
                 "203.0.113.5"
             raceFlags shouldBe listOf(false)
             logged.single() shouldContain "outcome=Resolved"
-            logged.single() shouldContain "reason=first answer, UDP server, not raced"
+            logged.single() shouldContain "reason=first IPv4 answer, UDP server, not raced"
             logged.single() shouldNotContain "203.0.113.5"
         }
 

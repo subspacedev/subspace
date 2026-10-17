@@ -60,8 +60,8 @@ internal suspend fun runPreResolution(
     )
 }
 
-/** The M9-C status line's reason for a Hysteria2 row: the first DoH answer, taken without a TCP race. */
-internal const val FIRST_ANSWER_UNRACED: String = "first answer, UDP server, not raced"
+/** The M9-C status line's reason for a Hysteria2 row: no TCP race, the first IPv4 DoH answer (else the first). */
+internal const val FIRST_ANSWER_UNRACED: String = "first IPv4 answer, UDP server, not raced"
 
 internal fun logLine(
     source: PreResolveSource?,

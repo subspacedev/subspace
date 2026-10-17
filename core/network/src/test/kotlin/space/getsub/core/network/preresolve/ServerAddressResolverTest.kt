@@ -90,8 +90,22 @@ class ServerAddressResolverTest {
         val r = testResolver({ listOf(ip("2001:db8::1"), ip("203.0.113.1"), ip("203.0.113.2")) }, winner = { it[1] })
             .resolve("srv.example", 443, config, race = false)
         val resolved = r.shouldBeInstanceOf<PreResolution.Resolved>()
-        resolved.ip shouldBe ip("2001:db8::1").hostAddress
+        resolved.ip shouldBe "203.0.113.1"
         resolved.raced shouldBe false
+        raced shouldBe null
+    }
+
+    @Test fun aUdpServerWithOnlyIpv6AnswersTakesTheFirst() = runTest {
+        testResolver({ listOf(ip("2001:db8::2"), ip("2001:db8::3")) })
+            .resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().ip shouldBe ip("2001:db8::2").hostAddress
+        raced shouldBe null
+    }
+
+    @Test fun aUdpServerWithOnlyIpv4AnswersTakesTheFirst() = runTest {
+        testResolver({ listOf(ip("203.0.113.9"), ip("203.0.113.8")) })
+            .resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().ip shouldBe "203.0.113.9"
         raced shouldBe null
     }
 
