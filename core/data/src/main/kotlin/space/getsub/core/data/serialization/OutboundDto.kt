@@ -4,6 +4,7 @@ package space.getsub.core.data.serialization
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import space.getsub.core.model.Hysteria2Rules
 
 /**
  * The persisted shape of [space.getsub.core.model.Outbound].
@@ -87,7 +88,7 @@ internal sealed interface OutboundDto {
 @Serializable
 internal data class Hysteria2TlsDto(
     val serverName: String,
-    val alpn: List<String> = listOf("h3"),
+    val alpn: List<String> = Hysteria2Rules.DEFAULT_ALPN,
     val pins: List<String> = emptyList(),
     val skipChecksRequested: Boolean = false,
 )
@@ -96,7 +97,7 @@ internal data class Hysteria2TlsDto(
 @Serializable
 internal data class Hysteria2HoppingDto(
     val ports: List<List<Int>>,
-    val intervalSeconds: Int = 30,
+    val intervalSeconds: Int = Hysteria2Rules.DEFAULT_HOP_INTERVAL,
 )
 
 @Serializable

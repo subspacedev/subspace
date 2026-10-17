@@ -251,4 +251,14 @@ class Hysteria2ClashAndJsonTest {
         clashOk("password: pw\nhop-interval: 10").hopping shouldBe null
         clashOk("password: pw\nhop-interval: x").hopping shouldBe null
     }
+
+    @Test
+    fun `clash hop-interval follows the shared rule - blank is the default, digits only`() {
+        clashOk("password: pw\nports: 20000-30000\nhop-interval: \"\"").hopping shouldBe
+            PortHopping(listOf(20000..30000), 30)
+        for (bad in listOf("\"+10\"", "\"\u0661\u0660\"")) {
+            clash("password: pw\nports: 20000-30000\nhop-interval: $bad").failures.single().detail shouldBe
+                FailureDetail.Malformed(DetailField.HopInterval)
+        }
+    }
 }

@@ -8,6 +8,7 @@ import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlScalar
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
 
@@ -99,13 +100,8 @@ private fun clashHopping(proxy: YamlMap): Step<PortHopping?> {
         )
     // Without hopping, hop-interval is a harmless extra (panels emit it as a default): ignored.
     if (ranges.size == 1 && ranges[0].first == ranges[0].last) return Step.Ok(null)
-    val intervalText = proxy.text("hop-interval")
     val interval =
-        if (intervalText == null) {
-            DEFAULT_HOP_INTERVAL
-        } else {
-            intervalText.takeIf { it.all(Char::isDigit) }?.toIntOrNull()?.takeIf { it >= MIN_HOP_INTERVAL }
-                ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
-        }
+        Hysteria2Rules.hopInterval(proxy.text("hop-interval"))
+            ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
     return Step.Ok(PortHopping(ranges, interval))
 }

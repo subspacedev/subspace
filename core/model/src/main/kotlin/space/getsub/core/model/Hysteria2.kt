@@ -18,7 +18,7 @@ import java.util.Base64
  */
 public data class Hysteria2Tls(
     val serverName: String,
-    val alpn: List<String> = listOf("h3"),
+    val alpn: List<String> = Hysteria2Rules.DEFAULT_ALPN,
     val pins: List<String> = emptyList(),
     val skipChecksRequested: Boolean = false,
 ) {
@@ -28,10 +28,48 @@ public data class Hysteria2Tls(
     }
 }
 
+/**
+ * The Hysteria2 value rules every source shares: share links, Clash, raw JSON and the editor. One home
+ * each, so an imported value and a hand-typed one cannot disagree about what is valid.
+ */
+public object Hysteria2Rules {
+    /** Xray's `udphop` interval when none is given (`infra/conf/transport_finalmask.go`, `UDPHop.Build`). */
+    public const val DEFAULT_HOP_INTERVAL: Int = 30
+
+    /** The smallest hop interval the core builds (`interval must be at least 5`). */
+    public const val MIN_HOP_INTERVAL: Int = 5
+
+    /** Gecko's largest packet size (`transport_finalmask.go`, Salamander `packetSize.To <= 2048`). */
+    public const val MAX_PACKET_SIZE: Int = 2048
+
+    /** The core replaces any ALPN with `h3` on the hysteria transport; kept for import/export fidelity. */
+    public val DEFAULT_ALPN: List<String> = listOf("h3")
+
+    private const val MAX_INTERVAL_DIGITS = 9
+
+    /**
+     * A hop interval typed as text (`hop-interval=`, Clash `hop-interval`, the editor field): blank or
+     * absent is [DEFAULT_HOP_INTERVAL]; otherwise ASCII digits only (no sign, unit or inner space,
+     * surrounding whitespace trimmed) and at least [MIN_HOP_INTERVAL]. Null when invalid.
+     */
+    public fun hopInterval(text: String?): Int? {
+        val trimmed = text?.trim().orEmpty()
+        if (trimmed.isEmpty()) return DEFAULT_HOP_INTERVAL
+        val digits = trimmed.length <= MAX_INTERVAL_DIGITS && trimmed.all { it in '0'..'9' }
+        return trimmed.takeIf { digits }?.toInt()?.takeIf { it >= MIN_HOP_INTERVAL }
+    }
+
+    /** A Gecko packet-size range the core builds: `0 < min <= max <= MAX_PACKET_SIZE`. */
+    public fun geckoRangeValid(
+        min: Int,
+        max: Int,
+    ): Boolean = min > 0 && min <= max && max <= MAX_PACKET_SIZE
+}
+
 /** Port hopping: the server listens on [ports]; the client rotates every [intervalSeconds]. */
 public data class PortHopping(
     val ports: List<IntRange>,
-    val intervalSeconds: Int = 30,
+    val intervalSeconds: Int = Hysteria2Rules.DEFAULT_HOP_INTERVAL,
 )
 
 public sealed interface Hysteria2Obfuscation {

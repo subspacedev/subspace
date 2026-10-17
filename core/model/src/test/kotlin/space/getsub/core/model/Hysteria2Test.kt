@@ -21,6 +21,34 @@ class Hysteria2Test {
     }
 
     @Test
+    fun hopIntervalIsDigitsOnlyAtLeastFiveAndBlankMeansTheDefault() {
+        Hysteria2Rules.hopInterval(null) shouldBe 30
+        Hysteria2Rules.hopInterval("") shouldBe 30
+        Hysteria2Rules.hopInterval("  ") shouldBe 30
+        Hysteria2Rules.hopInterval("5") shouldBe 5
+        Hysteria2Rules.hopInterval(" 10 ") shouldBe 10
+        for (bad in listOf("4", "0", "+10", "-10", "1e2", "10s", "1 0", "9999999999")) {
+            Hysteria2Rules.hopInterval(bad) shouldBe null
+        }
+    }
+
+    @Test
+    fun geckoRangeIsPositiveAscendingAndAtMost2048() {
+        Hysteria2Rules.geckoRangeValid(1, 2048) shouldBe true
+        Hysteria2Rules.geckoRangeValid(100, 100) shouldBe true
+        Hysteria2Rules.geckoRangeValid(0, 100) shouldBe false
+        Hysteria2Rules.geckoRangeValid(200, 100) shouldBe false
+        Hysteria2Rules.geckoRangeValid(100, 2049) shouldBe false
+    }
+
+    @Test
+    fun defaultsLiveInOnePlace() {
+        Hysteria2Rules.DEFAULT_ALPN shouldBe listOf("h3")
+        Hysteria2Tls("s").alpn shouldBe Hysteria2Rules.DEFAULT_ALPN
+        PortHopping(listOf(1..2)).intervalSeconds shouldBe Hysteria2Rules.DEFAULT_HOP_INTERVAL
+    }
+
+    @Test
     fun hexWithColonsNormalises() {
         val colons = hex.uppercase().chunked(2).joinToString(":")
         normalisePin(colons) shouldBe PinResult.Ok(hex)

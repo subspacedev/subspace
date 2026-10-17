@@ -450,4 +450,13 @@ class Hysteria2LinkTest {
         val out = ok("hysteria2://pw@h.example:443,20000-30000?hop-interval=60&fm=${fm(json)}")
         out.hopping shouldBe PortHopping(listOf(40000..50000), 10)
     }
+
+    @Test
+    fun `hop interval is ascii digits only`() {
+        // "+10" and Arabic-Indic "10" both parse with toIntOrNull; the shared rule refuses them.
+        for (bad in listOf("%2B10", "%D9%A1%D9%A0")) {
+            bad("hysteria2://pw@h.example:20000-30000?hop-interval=$bad").detail shouldBe
+                FailureDetail.Malformed(DetailField.HopInterval)
+        }
+    }
 }

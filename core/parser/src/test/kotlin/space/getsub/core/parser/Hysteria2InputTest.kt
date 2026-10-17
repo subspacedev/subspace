@@ -30,9 +30,7 @@ class Hysteria2InputTest {
 
     @Test
     fun `limits are the importer's`() {
-        Hysteria2Input.MIN_HOP_INTERVAL shouldBe 5
-        Hysteria2Input.DEFAULT_HOP_INTERVAL shouldBe 30
+        // Hop interval, Gecko range and ALPN live in core:model's Hysteria2Rules (Hysteria2Test).
         Hysteria2Input.MIN_OBFS_PASSWORD shouldBe 4
-        Hysteria2Input.MAX_PACKET_SIZE shouldBe 2048
     }
 }

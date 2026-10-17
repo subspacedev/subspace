@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonObject
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.PinResult
 import space.getsub.core.model.PortHopping
@@ -17,7 +18,6 @@ import space.getsub.core.model.normalisePin
 
 private const val SCHEME_SEPARATOR = "://"
 private const val DEFAULT_PORT = 443
-private val DEFAULT_ALPN = listOf("h3")
 
 /** One validation step: a value, or the typed failure that ends the parse. */
 internal sealed interface Step<out T> {
@@ -208,14 +208,9 @@ private fun queryHopping(
 ): Step<PortHopping?> {
     // Without hopping, hop-interval is a harmless extra (panels emit it as a default): ignored.
     val ranges = hops.ranges ?: return Step.Ok(null)
-    val text = query["hop-interval"]?.takeIf { it.isNotBlank() }
     val interval =
-        if (text == null) {
-            DEFAULT_HOP_INTERVAL
-        } else {
-            text.takeIf { it.all(Char::isDigit) }?.toIntOrNull()?.takeIf { it >= MIN_HOP_INTERVAL }
-                ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
-        }
+        Hysteria2Rules.hopInterval(query["hop-interval"])
+            ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
     return Step.Ok(PortHopping(ranges, interval))
 }
 
@@ -238,8 +233,7 @@ internal fun queryObfuscation(query: Map<String, String>): Step<Hysteria2Obfusca
     if (kind == "salamander") return Step.Ok(Hysteria2Obfuscation.Salamander(password))
     val min = query["obfs-min-packet-size"]?.toIntOrNull()
     val max = query["obfs-max-packet-size"]?.toIntOrNull()
-    val sane = min != null && max != null && min > 0 && min <= max
-    return if (sane && max <= MAX_PACKET_SIZE) {
+    return if (min != null && max != null && Hysteria2Rules.geckoRangeValid(min, max)) {
         Step.Ok(Hysteria2Obfuscation.Gecko(password, min, max))
     } else {
         uriFail(FailureDetail.Malformed(DetailField.Obfuscation))
@@ -286,7 +280,7 @@ internal fun buildTls(
     return Step.Ok(
         Hysteria2Tls(
             serverName = query["sni"]?.takeIf { it.isNotBlank() } ?: host,
-            alpn = alpn.ifEmpty { DEFAULT_ALPN },
+            alpn = alpn.ifEmpty { Hysteria2Rules.DEFAULT_ALPN },
             pins = pins,
             skipChecksRequested = insecure,
         ),

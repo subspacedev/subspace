@@ -6,13 +6,11 @@ package space.getsub.core.parser
  * The Hysteria2 input rules the importer enforces, for the editor to apply to typed text.
  *
  * Thin public wrappers: the implementations stay in `Hysteria2Finalmask.kt` so an imported link and
- * a hand-typed field cannot disagree about what is valid.
+ * a hand-typed field cannot disagree about what is valid. The hop-interval, Gecko-range and ALPN rules
+ * live in [space.getsub.core.model.Hysteria2Rules], which the editor uses directly.
  */
 public object Hysteria2Input {
-    public const val MIN_HOP_INTERVAL: Int = space.getsub.core.parser.MIN_HOP_INTERVAL
-    public const val DEFAULT_HOP_INTERVAL: Int = space.getsub.core.parser.DEFAULT_HOP_INTERVAL
     public const val MIN_OBFS_PASSWORD: Int = space.getsub.core.parser.MIN_OBFS_PASSWORD
-    public const val MAX_PACKET_SIZE: Int = space.getsub.core.parser.MAX_PACKET_SIZE
 
     /** `20000-30000,40000` as ranges, or null when any item is not a valid ascending 1..65535 range. */
     public fun portList(text: String): List<IntRange>? = parsePortList(text)

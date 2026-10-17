@@ -10,12 +10,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.PinResult
 import space.getsub.core.model.Profile
 import space.getsub.core.model.normalisePin
 
-private val DEFAULT_RAW_ALPN = listOf("h3")
 private const val HYSTERIA_VERSION = "2"
 
 private fun rawBad(
@@ -109,7 +109,7 @@ private fun rawTls(
     val alpn = (tls?.get("alpn") as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.stringContent() }
     return Hysteria2Tls(
         serverName = tls?.stringValue("serverName")?.takeIf { it.isNotBlank() } ?: address,
-        alpn = alpn.ifEmpty { DEFAULT_RAW_ALPN },
+        alpn = alpn.ifEmpty { Hysteria2Rules.DEFAULT_ALPN },
         pins = pins,
         skipChecksRequested = tls?.booleanValue("allowInsecure") == true,
     )

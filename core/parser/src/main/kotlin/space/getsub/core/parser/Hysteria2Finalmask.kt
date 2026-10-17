@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.normaliseBbrProfile
@@ -30,10 +31,7 @@ internal data class Hysteria2Finalmask(
     val notConnectableReason: Hysteria2Unsupported? = null,
 )
 
-internal const val MAX_PACKET_SIZE = 2048
 internal const val MIN_OBFS_PASSWORD = 4
-internal const val DEFAULT_HOP_INTERVAL = 30
-internal const val MIN_HOP_INTERVAL = 5
 private const val MIN_BRUTAL_BYTES_PER_SECOND = 65_536.0
 private const val BITS_PER_BYTE = 8
 private const val KILO = 1024.0
@@ -179,8 +177,8 @@ private fun readSalamander(settings: JsonObject?): Hysteria2Obfuscation? {
     val (from, to) = readIntRange(size) ?: return null
     return when {
         to <= 0 -> Hysteria2Obfuscation.Salamander(password)
-        from <= 0 || to > MAX_PACKET_SIZE || from > to -> null
-        else -> Hysteria2Obfuscation.Gecko(password, from, to)
+        Hysteria2Rules.geckoRangeValid(from, to) -> Hysteria2Obfuscation.Gecko(password, from, to)
+        else -> null
     }
 }
 
@@ -201,9 +199,9 @@ private fun readOldUdpHop(hop: JsonObject): PortHopping? {
 
 /** Absent means the default; a range with different ends has no single-value model, so null. */
 private fun readInterval(element: JsonElement?): Int? {
-    if (element == null) return DEFAULT_HOP_INTERVAL
+    if (element == null) return Hysteria2Rules.DEFAULT_HOP_INTERVAL
     val (from, to) = readIntRange(element) ?: return null
-    return if (from == to) from.takeIf { it >= MIN_HOP_INTERVAL } else null
+    return if (from == to) from.takeIf { it >= Hysteria2Rules.MIN_HOP_INTERVAL } else null
 }
 
 private fun readPortList(element: JsonElement): List<IntRange>? =
