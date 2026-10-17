@@ -261,6 +261,29 @@ class Hysteria2LinkTest {
     }
 
     @Test
+    fun `bbr profiles the core knows are stored lowercase, others are not connectable`() {
+        fun bbr(profileJson: String): Hysteria2Outbound {
+            val json = """{"quicParams":{"congestion":"bbr","bbrProfile":$profileJson}}"""
+            return ok("hysteria2://pw@h.example:443?fm=${fm(json)}")
+        }
+        val known =
+            listOf(
+                "\"Aggressive\"" to "aggressive",
+                "\"STANDARD\"" to "standard",
+                "\"conservative\"" to "conservative",
+                "\"\"" to "",
+            )
+        for ((given, stored) in known) {
+            val out = bbr(given)
+            out.congestion shouldBe Hysteria2Congestion.Bbr(stored)
+            out.notConnectableReason shouldBe null
+        }
+        for (bad in listOf("\"turbo\"", "\" aggressive\"", "7")) {
+            bbr(bad).notConnectableReason shouldBe Hysteria2Unsupported.UnknownCongestion
+        }
+    }
+
+    @Test
     fun `oldUdpHopShapeBecomesPortHopping`() {
         val json = """{"quicParams":{"udpHop":{"ports":"20000-30000","interval":15}}}"""
         val out = ok("hysteria2://pw@h.example:443?fm=${fm(json)}")

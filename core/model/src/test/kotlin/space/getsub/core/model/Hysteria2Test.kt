@@ -12,6 +12,15 @@ class Hysteria2Test {
     private val hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     @Test
+    fun bbrProfilesAreTheCoresFourLowercased() {
+        BBR_PROFILES shouldBe setOf("", "conservative", "standard", "aggressive")
+        normaliseBbrProfile("Aggressive") shouldBe "aggressive"
+        normaliseBbrProfile("") shouldBe ""
+        normaliseBbrProfile("turbo") shouldBe null
+        normaliseBbrProfile(" standard") shouldBe null
+    }
+
+    @Test
     fun hexWithColonsNormalises() {
         val colons = hex.uppercase().chunked(2).joinToString(":")
         normalisePin(colons) shouldBe PinResult.Ok(hex)

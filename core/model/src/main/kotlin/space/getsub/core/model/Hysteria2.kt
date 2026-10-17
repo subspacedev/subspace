@@ -66,6 +66,17 @@ public sealed interface Hysteria2Congestion {
     ) : Hysteria2Congestion
 }
 
+/**
+ * The BBR profiles Xray-core v26.10.10 accepts, as it compares them: lowercased, `""` meaning
+ * `standard` (`infra/conf/transport_internet.go:245-252`). Anything else fails the config build with
+ * `unknown bbr profile`. The single list the parser, generator and editor share. Public rather than
+ * internal because those live in other modules.
+ */
+public val BBR_PROFILES: Set<String> = setOf("", "conservative", "standard", "aggressive")
+
+/** [text] lowercased when it is one of [BBR_PROFILES], else null. No trimming: the core does none. */
+public fun normaliseBbrProfile(text: String): String? = text.lowercase().takeIf { it in BBR_PROFILES }
+
 /** Why a Hysteria2 link parsed but cannot be connected to. */
 public enum class Hysteria2Unsupported { UnknownMask, UnknownCongestion }
 

@@ -171,6 +171,17 @@ class AddressPinInjectorTest {
     }
 
     @Test
+    fun hysteriaFlatSettingsAddressTakesAnIpv6Pin() {
+        val v6 = ServerAddressPin("srv.example", "2001:db8::5")
+        val raw =
+            """[{"protocol":"hysteria","settings":{"version":2,"address":"srv.example","port":443},
+            "streamSettings":{"network":"hysteria","security":"tls"}}]"""
+        val out = AddressPinInjector.apply(outbounds(raw), v6)
+        out.at(0, "settings", "address").jsonPrimitive.content shouldBe "2001:db8::5"
+        out.at(0, "streamSettings", "tlsSettings", "serverName").jsonPrimitive.content shouldBe "srv.example"
+    }
+
+    @Test
     fun flatAddressOnANonServerProtocolIsUntouched() {
         val raw = """[{"protocol":"dns","settings":{"address":"srv.example","port":53}}]"""
         val input = outbounds(raw)

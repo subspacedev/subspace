@@ -246,7 +246,21 @@ class XrayConfigGeneratorHysteria2Test {
         val cc = generate(plain.copy(notConnectableReason = Hysteria2Unsupported.UnknownCongestion))
         cc.shouldBeInstanceOf<ConfigResult.Unsupported>()
         cc.protocol shouldBe "Hysteria2 congestion"
-        mask.toString() shouldNotContain "hy2-password"
+        for (result in listOf(mask, cc)) {
+            result.toString() shouldNotContain "hy2-password"
+            result.toString() shouldNotContain "hy.example.com"
+        }
+    }
+
+    @Test fun `a stored bbr profile the core does not know is refused by name`() {
+        val result = generate(plain.copy(congestion = Hysteria2Congestion.Bbr("turbo")))
+        result.shouldBeInstanceOf<ConfigResult.Unsupported>()
+        result.protocol shouldBe "Hysteria2 BBR profile"
+        result.toString() shouldNotContain "turbo"
+        // Every known profile, in any case the core lowercases, still generates.
+        for (profile in listOf("", "conservative", "Standard", "AGGRESSIVE")) {
+            generate(plain.copy(congestion = Hysteria2Congestion.Bbr(profile))).shouldBeInstanceOf<ConfigResult.Ok>()
+        }
     }
 
     @Test fun `escapes every string field`() {

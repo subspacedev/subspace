@@ -12,6 +12,7 @@ import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.PortHopping
+import space.getsub.core.model.normaliseBbrProfile
 
 /**
  * What a Hysteria2 outbound's Xray `finalmask` object says, as typed model values.
@@ -128,7 +129,13 @@ private fun readNamedCongestion(
     quic: JsonObject,
 ): CongestionRead =
     when (name.lowercase()) {
-        "bbr" -> CongestionRead.Value(Hysteria2Congestion.Bbr(quic.stringValue("bbrProfile").orEmpty()))
+        "bbr" -> {
+            // A profile the core does not know fails its Build (`unknown bbr profile`), so the row
+            // imports but is not connectable, like any other congestion this build cannot write.
+            val raw = if (quic["bbrProfile"] == null) "" else quic.stringValue("bbrProfile")
+            val profile = raw?.let(::normaliseBbrProfile)
+            if (profile == null) CongestionRead.Unsupported else CongestionRead.Value(Hysteria2Congestion.Bbr(profile))
+        }
         "brutal" -> {
             val up = bandwidthField(quic, "brutalUp")
             val down = bandwidthField(quic, "brutalDown")

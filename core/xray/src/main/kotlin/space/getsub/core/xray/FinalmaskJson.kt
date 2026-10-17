@@ -114,7 +114,10 @@ internal object FinalmaskJson {
             is Hysteria2Congestion.Bbr ->
                 listOfNotNull(
                     """"congestion":"bbr"""",
-                    congestion.profile.takeIf { it.isNotBlank() }?.let { """"bbrProfile":${jsonString(it)}""" },
+                    // Lowercased as the core compares it; the generator refuses an unknown one first.
+                    congestion.profile.lowercase().takeIf { it.isNotEmpty() }?.let {
+                        """"bbrProfile":${jsonString(it)}"""
+                    },
                 ).joinToString(",", "{", "}")
             is Hysteria2Congestion.Brutal ->
                 listOfNotNull(

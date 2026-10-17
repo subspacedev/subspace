@@ -4,6 +4,7 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
+import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.Obfuscation
@@ -19,6 +20,7 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.OverrideTarget
 
@@ -189,11 +191,16 @@ public object XrayConfigGenerator {
                 ConfigResult.Ok(generateTyped(outbound, settings))
             // A row whose source carried a mask or congestion this build cannot write would connect
             // to nothing if generated without it (M9-D1 spec §1), so it is refused by a fixed name.
+            // A stored BBR profile outside BBR_PROFILES (an older row, an editor value) would fail the
+            // core's Build with `unknown bbr profile`; the profile itself is not quoted.
             is Hysteria2Outbound ->
-                when (outbound.notConnectableReason) {
-                    null -> ConfigResult.Ok(generateTyped(outbound, settings))
-                    Hysteria2Unsupported.UnknownMask -> ConfigResult.Unsupported("Hysteria2 mask")
-                    Hysteria2Unsupported.UnknownCongestion -> ConfigResult.Unsupported("Hysteria2 congestion")
+                when {
+                    outbound.notConnectableReason == Hysteria2Unsupported.UnknownMask ->
+                        ConfigResult.Unsupported("Hysteria2 mask")
+                    outbound.notConnectableReason == Hysteria2Unsupported.UnknownCongestion ->
+                        ConfigResult.Unsupported("Hysteria2 congestion")
+                    outbound.unknownBbrProfile() -> ConfigResult.Unsupported("Hysteria2 BBR profile")
+                    else -> ConfigResult.Ok(generateTyped(outbound, settings))
                 }
             is ShadowsocksOutbound ->
                 when (shadowsocksCoreRefusal(outbound.method, outbound.password)) {
@@ -734,6 +741,9 @@ private fun Outbound.wireProtocol(): String =
         // `hysteria` is the name `infra/conf` registers the outbound under; `hysteria2` is not one.
         is Hysteria2Outbound -> "hysteria"
     }
+
+private fun Hysteria2Outbound.unknownBbrProfile(): Boolean =
+    (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true
 
 private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this
 
