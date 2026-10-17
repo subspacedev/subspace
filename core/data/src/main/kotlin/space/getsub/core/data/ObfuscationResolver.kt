@@ -3,6 +3,7 @@
 package space.getsub.core.data
 
 import space.getsub.core.model.FragmentSettings
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.ObfuscationProblem
@@ -42,17 +43,9 @@ internal constructor(
      * from the resolution. A row that does is described by [ObfuscationDetection.plan], the same
      * decision the injector executes, so this cannot claim a mask the tunnel will not run.
      */
-    @Suppress("ReturnCount") // Gone, typed, raw: one return each.
     public suspend fun report(rowId: Long): ObfuscationReport? {
         val profile = profiles.profile(rowId) ?: return null
-        val resolved = resolveFor(profile.groupId)
-        val rawJson = profile.rawJson?.takeIf { profile.runsAsWritten }
-        if (rawJson == null) return ObfuscationReport(typedReport(resolved.fragment), typedReport(resolved.noise))
-        val plans = ObfuscationDetection.plan(rawJson, resolved.fragment.offer(), resolved.noise.offer())
-        return ObfuscationReport(
-            fragment = rawReport(resolved.fragment, plans.map(OutboundPlan::fragment)),
-            noise = rawReport(resolved.noise, plans.map(OutboundPlan::noise)),
-        )
+        return obfuscationReport(profile, resolveFor(profile.groupId))
     }
 
     /** The subscription's directives resolved as if both settings were Off, for subscription detail. */
@@ -74,45 +67,75 @@ internal constructor(
     // Through `effective`, so a user's per-subscription pin of a directive is honoured as everywhere else.
     private suspend fun directives(subscriptionId: Long): Map<String, String?> =
         OBFUSCATION_DIRECTIVE_KEYS.associateWith { key -> subscriptions.effective(subscriptionId, key, null).value }
+}
 
-    private fun MaskResolution<*>.offer(): MaskOffer? =
-        (this as? MaskResolution.Resolved)?.let { MaskOffer(replaceOwn = it.source == ObfuscationSource.User) }
+/**
+ * The report for [profile] given its [resolved] masks; pure so it is testable without a database.
+ *
+ * A row that runs as written is described by [ObfuscationDetection.plan], the same decision the
+ * injector executes. Any other row (typed, or raw running its projection) never runs a config's own
+ * mask, so it reports straight from the resolution, except that a Hysteria2 outbound never gets the
+ * fragment: it is a TCP mask and the outbound is QUIC-only (M9-D1 spec §4), so the fragment reads as
+ * not applied exactly as the raw path's `quicOnly` rule makes it.
+ */
+internal fun obfuscationReport(
+    profile: StoredProfile,
+    resolved: ResolvedObfuscation,
+): ObfuscationReport {
+    val rawJson = profile.rawJson?.takeIf { profile.runsAsWritten }
+    if (rawJson == null) {
+        val fragment =
+            if (profile.outbound is Hysteria2Outbound) {
+                rawReport(resolved.fragment, listOf(MaskFate.Nothing))
+            } else {
+                typedReport(resolved.fragment)
+            }
+        return ObfuscationReport(fragment, typedReport(resolved.noise))
+    }
+    val plans = ObfuscationDetection.plan(rawJson, resolved.fragment.offer(), resolved.noise.offer())
+    return ObfuscationReport(
+        fragment = rawReport(resolved.fragment, plans.map(OutboundPlan::fragment)),
+        noise = rawReport(resolved.noise, plans.map(OutboundPlan::noise)),
+    )
+}
 
-    private fun typedReport(resolution: MaskResolution<*>): MaskReport =
-        when (resolution) {
-            is MaskResolution.Resolved ->
-                MaskReport(
-                    if (resolution.source == ObfuscationSource.User) {
-                        ObfuscationOrigin.Yours
-                    } else {
-                        ObfuscationOrigin.Subscription
-                    },
-                    null,
-                )
-            is MaskResolution.Ignored -> MaskReport(ObfuscationOrigin.None, resolution.problem)
-            MaskResolution.Absent -> MaskReport(ObfuscationOrigin.None, null)
-        }
+private fun MaskResolution<*>.offer(): MaskOffer? =
+    (this as? MaskResolution.Resolved)?.let { MaskOffer(replaceOwn = it.source == ObfuscationSource.User) }
 
-    /**
-     * One mask across a raw config's outermost outbounds ([fates], one per outbound).
-     *
-     * Yours if any outbound gets the user's mask. Otherwise Config if any outbound keeps its own,
-     * even when others get the directive: a config's own mask beats a directive (M9-A spec §1.1),
-     * so a mixed config is described by what the provider wrote. Otherwise Subscription if any
-     * outbound gets the directive, else None (with the reason when the directive was ignored).
-     * A config with no eligible outbound plans nothing, so it is None.
-     */
-    private fun rawReport(
-        resolution: MaskResolution<*>,
-        fates: List<MaskFate>,
-    ): MaskReport {
-        val user = resolution is MaskResolution.Resolved && resolution.source == ObfuscationSource.User
-        return when {
-            MaskFate.Ours in fates && user -> MaskReport(ObfuscationOrigin.Yours, null)
-            MaskFate.Own in fates -> MaskReport(ObfuscationOrigin.Config, null)
-            MaskFate.Ours in fates -> MaskReport(ObfuscationOrigin.Subscription, null)
-            resolution is MaskResolution.Ignored -> MaskReport(ObfuscationOrigin.None, resolution.problem)
-            else -> MaskReport(ObfuscationOrigin.None, null)
-        }
+private fun typedReport(resolution: MaskResolution<*>): MaskReport =
+    when (resolution) {
+        is MaskResolution.Resolved ->
+            MaskReport(
+                if (resolution.source == ObfuscationSource.User) {
+                    ObfuscationOrigin.Yours
+                } else {
+                    ObfuscationOrigin.Subscription
+                },
+                null,
+            )
+        is MaskResolution.Ignored -> MaskReport(ObfuscationOrigin.None, resolution.problem)
+        MaskResolution.Absent -> MaskReport(ObfuscationOrigin.None, null)
+    }
+
+/**
+ * One mask across a raw config's outermost outbounds ([fates], one per outbound).
+ *
+ * Yours if any outbound gets the user's mask. Otherwise Config if any outbound keeps its own,
+ * even when others get the directive: a config's own mask beats a directive (M9-A spec §1.1),
+ * so a mixed config is described by what the provider wrote. Otherwise Subscription if any
+ * outbound gets the directive, else None (with the reason when the directive was ignored).
+ * A config with no eligible outbound plans nothing, so it is None.
+ */
+private fun rawReport(
+    resolution: MaskResolution<*>,
+    fates: List<MaskFate>,
+): MaskReport {
+    val user = resolution is MaskResolution.Resolved && resolution.source == ObfuscationSource.User
+    return when {
+        MaskFate.Ours in fates && user -> MaskReport(ObfuscationOrigin.Yours, null)
+        MaskFate.Own in fates -> MaskReport(ObfuscationOrigin.Config, null)
+        MaskFate.Ours in fates -> MaskReport(ObfuscationOrigin.Subscription, null)
+        resolution is MaskResolution.Ignored -> MaskReport(ObfuscationOrigin.None, resolution.problem)
+        else -> MaskReport(ObfuscationOrigin.None, null)
     }
 }
