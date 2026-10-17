@@ -70,9 +70,13 @@ class Relay:
             up.sendto(data)
 
     async def open_upstream(self, client, first):
-        transport, _ = await self.loop.create_datagram_endpoint(
-            lambda: Upstream(self, client), remote_addr=self.target
-        )
+        try:
+            transport, _ = await self.loop.create_datagram_endpoint(
+                lambda: Upstream(self, client), remote_addr=self.target
+            )
+        except OSError:
+            self.upstreams.pop(client, None)
+            raise
         self.upstreams[client] = transport
         transport.sendto(first)
         return transport
@@ -94,4 +98,7 @@ async def main():
     await asyncio.Event().wait()
 
 
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except KeyboardInterrupt:
+    pass

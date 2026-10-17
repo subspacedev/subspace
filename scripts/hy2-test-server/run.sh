@@ -77,14 +77,20 @@ if [ -n "$hop" ]; then
   case "$hop" in
     *[!0-9-]*|-*|*-|"") echo "--hop must look like 20000-20010" >&2; exit 2 ;;
   esac
-  listen_ports="$port"
+  hop_from="${hop%-*}"; hop_to="${hop#*-}"
+  case "$hop" in *-*-*) echo "--hop must look like 20000-20010" >&2; exit 2 ;; esac
+  if [ "$hop_from" -gt "$hop_to" ] || [ "$hop_from" -lt 1 ] || [ "$hop_to" -gt 65535 ]; then
+    echo "--hop range must satisfy 1 <= A <= B <= 65535" >&2; exit 2
+  fi
   link_ports="$hop"
 else
-  listen_ports="$port"
   link_ports="$port"
 fi
 
 [ -n "$password" ] || password="$(openssl rand -hex 12)"
+
+# JSON string literal (with quotes) for an arbitrary override value.
+json_str() { python3 -I -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
 
 mkdir -p "$run_dir"
 chmod 700 "$run_dir"
@@ -105,7 +111,7 @@ egress_port="${egress##*:}"
 stream_extra=""
 mask=""
 if [ -n "$salamander" ]; then
-  mask="{\"type\":\"salamander\",\"settings\":{\"password\":\"$salamander\"}}"
+  mask="{\"type\":\"salamander\",\"settings\":{\"password\":$(json_str "$salamander")}}"
 fi
 quic=""
 if [ "$brutal" = 1 ]; then
@@ -136,9 +142,9 @@ cat > "$config" <<JSON
     {
       "tag": "hy2-in",
       "listen": "$host",
-      "port": "$listen_ports",
+      "port": "$port",
       "protocol": "hysteria",
-      "settings": { "version": 2, "clients": [ { "auth": "$password", "email": "test@hy2.local" } ] },
+      "settings": { "version": 2, "clients": [ { "auth": $(json_str "$password"), "email": "test@hy2.local" } ] },
       "streamSettings": {
         "network": "hysteria",
         "hysteriaSettings": { "version": 2 },
@@ -182,8 +188,8 @@ name="hy2-local"
 [ "$brutal" = 1 ] && name="$name-brutal"
 
 echo "Xray:      $("$xray_bin" version | head -1)"
-echo "Listening: udp://$host:$listen_ports"
-[ -n "$hop" ] && echo "Hop range: udp://$host:$hop (hop-relay.py -> $listen_ports)"
+echo "Listening: udp://$host:$port"
+[ -n "$hop" ] && echo "Hop range: udp://$host:$hop (hop-relay.py -> $port)"
 echo "Password:  $password"
 [ -n "$salamander" ] && echo "Salamander: $salamander"
 echo "Cert pin (SHA-256 hex): $pin"
@@ -194,7 +200,7 @@ echo "Link, pinned (row 6 pass case):"
 echo "  hysteria2://$password@$host:$link_ports?$q&pinSHA256=$pin#$name-pinned"
 echo "Link, unpinned (row 6 'Certificate not trusted' case):"
 echo "  hysteria2://$password@$host:$link_ports?$q#$name-unpinned"
-echo "Link, insecure=1 (self-signed accepted without a pin):"
+echo "Link, insecure=1 (insecure=1 is ignored - expect the same 'Certificate not trusted' result as the unpinned link):"
 echo "  hysteria2://$password@$host:$link_ports?$q&insecure=1#$name-insecure"
 echo
 
@@ -207,6 +213,8 @@ trap 'exit 143' INT TERM
 if [ -n "$hop" ]; then
   python3 -I "$here/hop-relay.py" "$host" "$hop" "$host" "$port" &
   pids+=($!)
+  sleep 1
+  kill -0 "${pids[0]}" 2>/dev/null || { echo "hop-relay.py exited at start (ports in use?)" >&2; exit 1; }
 fi
 echo "Starting Xray (Ctrl-C to stop)..."
 "$xray_bin" run -c "$config" &

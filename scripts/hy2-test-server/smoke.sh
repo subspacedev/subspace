@@ -16,7 +16,7 @@ xray_bin="${XRAY_BIN:-/private/tmp/claude-501/xray-26.10.10}"
 work="$(mktemp -d)"
 socks_port=18080
 url="${SMOKE_URL:-https://example.com}"
-trap 'kill "${server_pid:-}" "${client_pid:-}" 2>/dev/null || true; rm -rf "$work"' EXIT
+trap 'kill "${server_pid:-}" "${client_pid:-}" "${plain_pid:-}" 2>/dev/null || true; rm -rf "$work"' EXIT
 
 salamander=""; hop=""; brutal=0; port=9443; prev=""
 for arg in "$@"; do

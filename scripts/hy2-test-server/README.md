@@ -28,7 +28,7 @@ password, the certificate's SHA-256 pin as hex, and three ready-to-paste links:
 |---|---|
 | `...&pinSHA256=<hex>` | Row 6 pass case: connects. |
 | (no pin) | Row 6 fail case: latency and Home say "Certificate not trusted - add its pin". |
-| `...&insecure=1` | The self-signed row where the user has chosen to skip checks. |
+| `...&insecure=1` | `insecure=1` is recorded and ignored, never emitted: expect the same "Certificate not trusted" result as the unpinned link (and the editor saying the flag was ignored). |
 
 Flags: `--port N` (default 9443), `--password PW`, `--salamander PW`, `--hop A-B`, `--brutal`,
 `--access-log`, `--fresh-cert`, `--sni NAME`, `--egress HOST:PORT`, `--host IP`, `--config-only`.

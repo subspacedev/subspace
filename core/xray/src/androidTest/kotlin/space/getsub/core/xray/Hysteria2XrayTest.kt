@@ -79,13 +79,22 @@ class Hysteria2XrayTest {
         val label: String,
         val outbound: Hysteria2Outbound,
         val tunnel: TunnelSettings,
-    )
+    ) {
+        /** The udp masks the generator must write: obfuscation, then noise, then the hop. */
+        val expectedMasks: List<String> =
+            listOfNotNull(
+                "salamander".takeIf { outbound.obfuscation != Hysteria2Obfuscation.None },
+                "noise".takeIf { tunnel.obfuscation?.noise != null },
+                "udphop".takeIf { outbound.hopping != null },
+            )
+    }
 
     private suspend fun rejectedLabels(cases: List<Case>): List<String> =
         cases.mapNotNull { case ->
             val result = XrayConfigGenerator.generate(profile(case.outbound), case.tunnel)
             when {
                 result !is ConfigResult.Ok -> "${case.label} (generator refused)"
+                udpMaskTypes(result.json) != case.expectedMasks -> "${case.label} (udp masks)"
                 !accepted(result.json) -> "${case.label} (core refused)"
                 else -> null
             }
