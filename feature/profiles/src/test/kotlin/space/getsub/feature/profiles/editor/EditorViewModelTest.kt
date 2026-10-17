@@ -33,6 +33,8 @@ import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
+import space.getsub.core.model.ShadowsocksOutbound
+import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.parser.OverrideBlocker
@@ -422,6 +424,64 @@ class EditorViewModelTest {
 
             val saved = (source.lastUpdate?.third as VlessOutbound).stream.security
             saved shouldBe insecureTls
+        }
+
+    private fun shadowsocksProfile(
+        method: String,
+        password: String,
+    ): StoredProfile {
+        val outbound = ShadowsocksOutbound("198.51.100.7", 8388, method, password)
+        return typedProfile.copy(protocol = "shadowsocks", outbound = outbound)
+    }
+
+    @Test
+    fun `a shadowsocks row names why the core refuses it and clears when fixed`() =
+        runTest {
+            val profile = shadowsocksProfile("aes-192-gcm", "hunter2")
+            val viewModel = editorViewModel(FakeProfileSource(listOf(profile)))
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+            viewModel.state.value.shadowsocksRefusal shouldBe ShadowsocksRefusal.Cipher
+
+            viewModel.onMethodChanged("aes-256-gcm")
+            viewModel.state.value.shadowsocksRefusal shouldBe null
+        }
+
+    @Test
+    fun `a 2022 shadowsocks row with a wrong-length key is refused for its key`() =
+        runTest {
+            val profile = shadowsocksProfile("2022-blake3-aes-256-gcm", "AAAAAAAAAAAAAAAAAAAAAA==")
+            val viewModel = editorViewModel(FakeProfileSource(listOf(profile)))
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+            viewModel.state.value.shadowsocksRefusal shouldBe ShadowsocksRefusal.Key
+
+            viewModel.onPrimaryCredentialChanged("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            viewModel.state.value.shadowsocksRefusal shouldBe null
+        }
+
+    @Test
+    fun `a vless row never carries a shadowsocks refusal`() =
+        runTest {
+            val viewModel = editorViewModel(FakeProfileSource(listOf(typedProfile)))
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.shadowsocksRefusal shouldBe null
+        }
+
+    @Test
+    fun `a refused shadowsocks row still saves`() =
+        runTest {
+            val profile = shadowsocksProfile("aes-192-gcm", "hunter2")
+            val source = FakeProfileSource(listOf(profile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+            viewModel.save()
+            advanceUntilIdle()
+
+            viewModel.state.value.saved shouldBe true
         }
 
     @Test

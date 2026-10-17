@@ -52,12 +52,14 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.data.MaskReport
 import space.getsub.core.data.ObfuscationOrigin
+import space.getsub.core.model.SHADOWSOCKS_CORE_METHODS
+import space.getsub.core.model.ShadowsocksRefusal
+import space.getsub.core.model.shadowsocks2022KeyLength
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
-import space.getsub.core.parser.SHADOWSOCKS_METHODS
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
@@ -84,6 +86,9 @@ internal const val EDITOR_RAW_JSON_TEST_TAG = "editor-raw-json"
 
 /** Identifies the "the core would refuse this server" line under Security. */
 internal const val EDITOR_SECURITY_REFUSED_TEST_TAG = "editor-security-refused"
+
+/** Identifies the "the core can't run this Shadowsocks row" banner (refused cipher or bad 2022 key). */
+internal const val EDITOR_SHADOWSOCKS_REFUSED_TEST_TAG = "editor-shadowsocks-refused"
 
 /** Identifies the "insecure in the source was ignored" note under TLS to instrumented tests. */
 internal const val EDITOR_TLS_INSECURE_IGNORED_TEST_TAG = "editor-tls-insecure-ignored"
@@ -508,7 +513,7 @@ private fun CredentialFields(
                 EditorDropdownField(
                     label = stringResource(R.string.editor_method_label),
                     selected = state.method,
-                    options = SHADOWSOCKS_METHODS.toList(),
+                    options = shadowsocksMethodOptions(state.method),
                     onSelected = actions.onMethodChanged,
                     error = state.errors[EditorFieldKey.Method],
                 )
@@ -518,6 +523,7 @@ private fun CredentialFields(
                     onValueChange = actions.onPrimaryCredentialChanged,
                     error = state.errors[EditorFieldKey.Credential],
                 )
+                ShadowsocksRefusedBanner(state)
             }
             else -> {
                 EditorField(
@@ -533,6 +539,31 @@ private fun CredentialFields(
             }
         }
     }
+}
+
+/** The core's ciphers, plus the row's own method when it is none of them so the dropdown can show it. */
+private fun shadowsocksMethodOptions(current: String): List<String> =
+    SHADOWSOCKS_CORE_METHODS + listOfNotNull(current.takeIf { it.isNotBlank() && it !in SHADOWSOCKS_CORE_METHODS })
+
+/** Names why the core refuses this Shadowsocks row; never echoes the key itself. */
+@Composable
+private fun ShadowsocksRefusedBanner(state: EditorState) {
+    val refusal = state.shadowsocksRefusal ?: return
+    val text =
+        when (refusal) {
+            ShadowsocksRefusal.Cipher -> stringResource(R.string.editor_shadowsocks_cipher_refused)
+            ShadowsocksRefusal.Key ->
+                stringResource(
+                    R.string.editor_shadowsocks_key_refused,
+                    shadowsocks2022KeyLength(state.method) ?: 0,
+                )
+        }
+    TonalBanner(
+        icon = SubspaceIcons.Warning,
+        text = text,
+        tone = BannerTone.Warning,
+        modifier = Modifier.testTag(EDITOR_SHADOWSOCKS_REFUSED_TEST_TAG),
+    )
 }
 
 @Composable
