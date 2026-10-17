@@ -109,6 +109,12 @@ class ServerAddressResolverTest {
         raced shouldBe null
     }
 
+    @Test fun aUdpServerCapsItsCandidatesLikeTheRacedPath() = runTest {
+        val many = (1..12).map { ip("203.0.113.$it") }
+        testResolver({ many }).resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().candidates shouldBe 8
+    }
+
     @Test fun aUdpServerWithNoAnswerStillFails() = runTest {
         testResolver({ emptyList() }).resolve("srv.example", 443, config, race = false)
             .shouldBeInstanceOf<PreResolution.Failed>().reason shouldBe PreResolveReason.NoAddresses

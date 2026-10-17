@@ -567,6 +567,13 @@ internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
     LatencyOutcome.UNSUPPORTED.takeIf { rawJson != null && analysePassthrough(rawJson).isBalancer }
 
 /**
+ * Whether a TCP connect says nothing about this server, because it speaks QUIC over UDP. The one rule
+ * both [planLatency] (no TCP-mode number) and `preResolve` (no TCP race) follow. A raw `hysteria` row
+ * qualifies through its typed projection, which is what a stored row's [Outbound] is.
+ */
+internal fun isUdpServer(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound
+
+/**
  * The guards every measurement passes before any batching, then the mode.
  *
  * The foreign-VPN and balancer guards apply to both modes: under another
@@ -589,7 +596,7 @@ internal suspend fun planLatency(
         balancerLatencyRefusal(rawJson) != null -> unsupported
         // A TCP connect to a QUIC server's port proves nothing about it (M9-D1 spec §5): no number,
         // and no connect attempt. A raw hysteria row reaches here as its Hysteria2Outbound projection.
-        options.mode == PingMode.TCP && outbound is Hysteria2Outbound -> unsupported
+        options.mode == PingMode.TCP && isUdpServer(outbound) -> unsupported
         options.mode == PingMode.TCP -> LatencyPlan.InPlace
         outbound == null -> unsupported
         // The core would answer a proxy-head ping of this server with its build error; TCP mode
@@ -2134,7 +2141,7 @@ class TunnelService : VpnService() {
                 configNamesHost = AddressPinInjector::matches,
                 protect = { socket -> protect(socket) },
                 // A QUIC server: a TCP connect race proves nothing about it (M9-D1 spec §5, §10.3).
-                udpServer = profile.outbound is Hysteria2Outbound,
+                udpServer = isUdpServer(profile.outbound),
             )
         outcome.logLine?.let { Log.i(TAG, it) }
         return outcome.ip?.let { ServerAddressPin(domain = host, ip = it) }

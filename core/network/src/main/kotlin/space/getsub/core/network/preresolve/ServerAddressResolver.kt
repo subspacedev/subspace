@@ -76,14 +76,15 @@ public class ServerAddressResolver(
         val answers = answered.getOrNull()
         val distinct = answers.orEmpty().distinct()
         val candidates = interleave(distinct).take(MAX_CANDIDATES)
+        val unraced = distinct.take(MAX_CANDIDATES)
         val elapsed = { (nanoTime() - start) / NANOS_PER_MILLI }
         return when {
             answers == null -> PreResolution.Failed(answered.reasonOrNull(), 0, elapsed())
             candidates.isEmpty() -> PreResolution.Failed(PreResolveReason.NoAddresses, 0, elapsed())
             !race ->
                 PreResolution.Resolved(
-                    (distinct.firstOrNull { it is Inet4Address } ?: distinct.first()).hostAddress.orEmpty(),
-                    distinct.size,
+                    (unraced.firstOrNull { it is Inet4Address } ?: unraced.first()).hostAddress.orEmpty(),
+                    unraced.size,
                     elapsed(),
                     raced = false,
                 )

@@ -335,6 +335,13 @@ class PingBatchSchedulingTest {
         }
 
     @Test
+    fun onlyHysteria2IsAUdpServer() {
+        isUdpServer(hysteria2) shouldBe true
+        isUdpServer(vless) shouldBe false
+        isUdpServer(null) shouldBe false
+    }
+
+    @Test
     fun hysteria2ProxyHeadIsBatched() =
         runTest {
             val plan = planLatency(fiveSeconds, { false }, null, hysteria2) { "hy-config" }
