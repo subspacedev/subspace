@@ -29,10 +29,10 @@ internal data class Hysteria2Finalmask(
     val notConnectableReason: Hysteria2Unsupported? = null,
 )
 
+internal const val MAX_PACKET_SIZE = 2048
+internal const val MIN_OBFS_PASSWORD = 4
 internal const val DEFAULT_HOP_INTERVAL = 30
 internal const val MIN_HOP_INTERVAL = 5
-private const val MAX_PACKET_SIZE = 2048
-private const val MIN_OBFS_PASSWORD = 4
 private const val MIN_BRUTAL_BYTES_PER_SECOND = 65_536.0
 private const val BITS_PER_BYTE = 8
 private const val KILO = 1024.0
@@ -260,8 +260,10 @@ private val BANDWIDTH_UNITS =
 /**
  * Validates a Hysteria2 bandwidth against Xray's `Bandwidth` grammar (v26.10.10
  * `transport_method.go`): a decimal number, optional spaces, then a unit from
- * `b|bps|k|kb|kbps|m|mb|mbps|g|gb|gbps|t|tb|tbps` (case-insensitive; a bare number is a bare
- * byte count to Xray). The value must be at least 65536 bytes/second (Xray's Brutal floor).
+ * `b|bps|k|kb|kbps|m|mb|mbps|g|gb|gbps|t|tb|tbps` (case-insensitive). Xray treats every unit,
+ * the bare and `b`/`bps` forms included, as bits per second and divides by 8
+ * (`infra/conf/transport_method.go:706-744`, `Bandwidth.Bps`), so a bare `70000` is 8750 bytes/s.
+ * The value must be at least 65536 bytes/second (Xray's Brutal floor).
  *
  * Returns the text to store: trimmed as given, except that a bare number becomes `"<n> mbps"`
  * when [bareIsMbps] (the Hysteria URI scheme's meaning of `up=100`). Null when invalid.

@@ -344,4 +344,58 @@ class Hysteria2LinkTest {
         failure.toString().contains("topsecret") shouldBe false
         failure.toString().contains("abc") shouldBe false
     }
+
+    @Test
+    fun `bare fm bandwidth is bits so 70000 is below the floor`() {
+        val json = """{"quicParams":{"congestion":"brutal","brutalUp":"70000"}}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(json)}").notConnectableReason shouldBe
+            Hysteria2Unsupported.UnknownCongestion
+    }
+
+    @Test
+    fun `blank hop interval is unset with and without hopping`() {
+        ok("hysteria2://pw@h.example:443?hop-interval=").hopping shouldBe null
+        ok("hysteria2://pw@h.example:443,2000-3000?hop-interval=").hopping shouldBe
+            PortHopping(listOf(443..443, 2000..3000), 30)
+    }
+
+    @Test
+    fun `ipv6 with a port list hops`() {
+        val out = ok("hysteria2://pw@[::1]:443,20000-30000")
+        out.address shouldBe "::1"
+        out.hopping shouldBe PortHopping(listOf(443..443, 20000..30000), 30)
+    }
+
+    @Test
+    fun `percent encoded duplicate key is a failure`() {
+        bad("hysteria2://pw@h.example:443?s%6Ei=a.example&sni=b.example").reason shouldBe
+            ParseFailureReason.MalformedUri
+    }
+
+    @Test
+    fun `password is percent decoded once`() {
+        ok("hysteria2://p%2540w@h.example:443").password shouldBe "p%40w"
+    }
+
+    @Test
+    fun `fm empty congestion leaves query bandwidth intact`() {
+        val out = ok("hysteria2://pw@h.example:443?up=10&down=20&fm=${fm("""{"quicParams":{"congestion":""}}""")}")
+        out.congestion shouldBe Hysteria2Congestion.Brutal("10 mbps", "20 mbps")
+    }
+
+    @Test
+    fun `fm noise mask is not connectable`() {
+        val json = """{"udp":[{"type":"noise","settings":{"noise":[{"rand":"10-20"}]}}]}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(json)}").notConnectableReason shouldBe
+            Hysteria2Unsupported.UnknownMask
+    }
+
+    @Test
+    fun `fm udphop overrides an authority hop list`() {
+        val json =
+            """{"udp":[{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote","interval":10,""" +
+                """"remotePorts":"40000-50000"}}]}"""
+        val out = ok("hysteria2://pw@h.example:443,20000-30000?hop-interval=60&fm=${fm(json)}")
+        out.hopping shouldBe PortHopping(listOf(40000..50000), 10)
+    }
 }

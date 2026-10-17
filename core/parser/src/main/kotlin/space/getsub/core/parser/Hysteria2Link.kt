@@ -17,8 +17,6 @@ import space.getsub.core.model.normalisePin
 
 private const val SCHEME_SEPARATOR = "://"
 private const val DEFAULT_PORT = 443
-private const val MIN_OBFS_PASSWORD = 4
-private const val MAX_PACKET_SIZE = 2048
 private val DEFAULT_ALPN = listOf("h3")
 
 /** One validation step: a value, or the typed failure that ends the parse. */
@@ -112,7 +110,9 @@ private fun buildOutbound(raw: String): Step<Hysteria2Outbound> {
 
     val mask = (fm as Step.Ok).value
     val hopping = mask?.hopping ?: (queryHop as Step.Ok).value
-    if (hopping == null && query["hop-interval"] != null) {
+    // A blank hop-interval means "not set", with or without hopping (as in queryHopping).
+    // fm= hopping replaces an authority/ports hop list wholesale (fm is the panel's own config).
+    if (hopping == null && query["hop-interval"]?.isNotBlank() == true) {
         return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
     }
     return Step.Ok(
