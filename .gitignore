@@ -42,3 +42,6 @@ keystore.properties
 
 # ─── OS ─────────────────────────────────────────────────────────────────────
 .DS_Store
+
+# Local Hysteria2 test server: run-time certificate, key, config, password and logs
+/scripts/hy2-test-server/.run/
