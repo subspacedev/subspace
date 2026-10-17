@@ -1985,11 +1985,11 @@ class TunnelService : VpnService() {
         routing: RoutingResolution,
         dnsPlan: DnsPlan?,
     ): StartedPorts? {
-        // §10.6 and docs/agent/research/libxray-api.md §5: getFreePorts closes
-        // each listener before opening the next, so allocatePorts's distinctness
-        // guarantee only holds within one call. M8.5 spec §2's port rides along
-        // in the *same* call rather than a second one — see allocateSessionPorts's
-        // own KDoc for why a second call is the bug this replaced.
+        // ARCHITECTURE.md §10.6 and docs/agent/research/libxray-api.md §2: libXray v26.10.10's
+        // getFreePorts holds every listener open until it returns, but releases them all then,
+        // so distinctness only holds within one call. M8.5 spec §2's port rides along in the
+        // *same* call rather than a second one — see allocateSessionPorts's own KDoc for why a
+        // second call is the bug this replaced.
         val breakdownEnabled =
             breakdownEnabled(
                 perTagBreakdown = settingsRepository.perTagBreakdown.first(),

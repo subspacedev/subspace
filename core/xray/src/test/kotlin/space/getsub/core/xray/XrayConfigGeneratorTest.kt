@@ -77,7 +77,7 @@ class XrayConfigGeneratorTest {
     @Test
     fun `includes a dns block`() {
         // ARCHITECTURE.md §5.2, half one. The other half is VpnService.Builder.addDnsServer().
-        // libXray v26.7.11 has no setDNS, so these two are the only levers.
+        // libXray v26.10.10's setDNS is not used (see XrayController.start), so these two are the levers.
         val json = generateJson(outbound, settings)
         json shouldContain "\"dns\""
         json shouldContain "1.1.1.1"

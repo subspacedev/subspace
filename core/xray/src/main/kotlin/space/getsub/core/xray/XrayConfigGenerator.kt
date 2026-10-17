@@ -219,7 +219,8 @@ public object XrayConfigGenerator {
      * M6.5 adds a third that matters more than either: the port-53 hijack in
      * [appendRouting], which is what makes any of this reach an app's resolver.
      *
-     * libXray v26.7.11 has no `setDNS`, so the config is the only lever here.
+     * libXray v26.10.10 has `setDNS`, but it replaces Go's process-wide resolver and Subspace
+     * does not call it (see `XrayController.start`), so the config is the only lever here.
      */
     private fun appendDns(
         sb: StringBuilder,
