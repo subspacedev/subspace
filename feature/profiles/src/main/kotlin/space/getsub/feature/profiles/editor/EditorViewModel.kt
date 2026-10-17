@@ -28,6 +28,7 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.OverrideBlocker
@@ -210,6 +211,17 @@ internal data class EditorState(
 ) {
     /** RAW_JSON is read-only plus rename (§6) — see this file's own KDoc for why. */
     val fieldsEditable: Boolean get() = kind == ProfileKind.TYPED
+
+    /**
+     * True when Xray-core v26.10.10 would refuse the server as currently entered: VLESS or Trojan,
+     * Security None, public address (see [refusedWithoutTransportSecurity]). Typed rows only; a raw
+     * row's bytes are not editable here and the core's own verdict stands for them.
+     *
+     * False while [address] is blank: picking VLESS or Trojan on a new profile, before anything is
+     * typed, is the main creation flow, and there is no server yet to judge.
+     */
+    val refusedWithoutTransportSecurity: Boolean
+        get() = fieldsEditable && address.isNotBlank() && toOutbound().refusedWithoutTransportSecurity()
 }
 
 /**

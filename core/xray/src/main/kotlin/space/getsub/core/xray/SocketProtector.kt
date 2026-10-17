@@ -13,10 +13,15 @@ package space.getsub.core.xray
  * This interface exists so `:core:xray` never imports `VpnService`. `:service`
  * supplies the implementation; JVM tests supply a fake.
  *
- * **Returning false does not stop anything.** libXray's Go wrapper discards this
- * value (see `docs/agent/research/libxray-api.md` §2), so a failed protect is
- * invisible to the core and surfaces only as ARCHITECTURE.md §5.1's symptom. The implementation
- * must log the failure itself — redacted, ARCHITECTURE.md §5.6 — or nothing will.
+ * **Returning false aborts the socket.** Since libXray v26.10.10 the Go side
+ * honours this value: `protectSocket` (`controller/controller.go`) turns a `false`
+ * into `protect Android VPN socket failed`, and that dial or listen never happens
+ * (`docs/agent/research/libxray-api.md` §3). A failed protect therefore surfaces as
+ * a failed connection, not as ARCHITECTURE.md §5.1's loop — but the core's error
+ * names no cause the user can see, so the implementation must still log the failure
+ * itself — redacted, ARCHITECTURE.md §5.6 — or nothing will say *why*. Return `true`
+ * only when the fd really was protected: answering `true` to keep a dial alive would
+ * bring back the loop the abort now prevents.
  *
  * §10.2: this looks like boilerplate and is load-bearing. Do not simplify it.
  */

@@ -45,9 +45,7 @@ class ObfuscationXrayTest {
         )
 
     private suspend fun validate(json: String) {
-        val assetDir = File(context.filesDir, "geo").apply { mkdirs() }
-        val file = File(context.cacheDir, "obfuscation-test.json").apply { writeText(json) }
-        val outcome = runCatching { XrayController(geoAssetDir = assetDir).validate(file) }
+        val outcome = runCatching { XrayController().validate(json) }
         // ARCHITECTURE.md §5.6: only the exception's class name, never its message.
         check(outcome.isSuccess) { "core rejected: ${outcome.exceptionOrNull()?.javaClass?.simpleName}" }
     }

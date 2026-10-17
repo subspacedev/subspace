@@ -5,6 +5,7 @@ package space.getsub.core.xray
 import androidx.test.platform.app.InstrumentationRegistry
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -17,6 +18,7 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.refusedWithoutTransportSecurity
 import java.io.File
 
 /**
@@ -84,10 +86,8 @@ class XrayControllerTest {
             val profile = Profile(id = "id", name = "n", outbound = outbound)
             val result = XrayConfigGenerator.generate(profile, settings)
             check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
-            val configFile = File(cacheDir, "instr-valid.json").apply { writeText(result.json) }
 
-            controller.validate(configFile)
-            configFile.delete()
+            controller.validate(result.json)
         }
 
     @Test
@@ -110,14 +110,11 @@ class XrayControllerTest {
             val result = XrayConfigGenerator.generate(profile, settings)
             check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
             result.json shouldContain "\"network\": \"tcp,udp\""
-            val configFile = File(cacheDir, "instr-global-proxy-false.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(result.json)
             } catch (e: XrayException) {
                 fail("the core rejected a GlobalProxy false config: ${e.javaClass.simpleName}")
-            } finally {
-                configFile.delete()
             }
         }
 
@@ -175,7 +172,7 @@ class XrayControllerTest {
         runTest {
             val controller = XrayController()
 
-            dnsShapes().entries.forEachIndexed { index, (label, plan) ->
+            dnsShapes().forEach { (label, plan) ->
                 val settings =
                     TunnelSettings(
                         socksPort = controller.allocatePort(),
@@ -186,16 +183,12 @@ class XrayControllerTest {
                 val profile = Profile(id = "id", name = "n", outbound = outbound)
                 val result = XrayConfigGenerator.generate(profile, settings)
                 assertTrue("DNS shape generation must return ConfigResult.Ok", result is ConfigResult.Ok)
-                val configFile = File.createTempFile("instr-dns-shape-$index-", ".json", cacheDir)
 
                 try {
-                    configFile.writeText((result as ConfigResult.Ok).json)
-                    controller.validate(configFile)
+                    controller.validate((result as ConfigResult.Ok).json)
                 } catch (e: XrayException) {
                     // ARCHITECTURE.md §5.6: libXray's message can quote the generated config.
                     fail("the core rejected DNS shape $label: ${e.javaClass.simpleName}")
-                } finally {
-                    configFile.delete()
                 }
             }
         }
@@ -234,28 +227,74 @@ class XrayControllerTest {
                     StreamSettings("xhttp", Security.None, TransportOptions.Xhttp("/", host = null, mode = null)),
                 )
 
-            streams.forEachIndexed { index, stream ->
+            streams.forEach { stream ->
                 val settings =
                     TunnelSettings(
                         socksPort = controller.allocatePort(),
                         dnsServer = "1.1.1.1",
                         enableSniffing = true,
                     )
-                val profile = Profile(id = "id", name = "n", outbound = outbound.copy(stream = stream))
+                // Xray-core v26.10.10 (a1bf968) refuses VLESS without TLS/REALITY to a public
+                // address, so the plaintext cases dial a private one: this test is about the
+                // transport blocks, not that rule — [thePlaintextRefusalMatchesTheRealCore] is.
+                val address = if (stream.security == Security.None) "10.0.0.1" else outbound.address
+                val profile =
+                    Profile(
+                        id = "id",
+                        name = "n",
+                        outbound = outbound.copy(address = address, stream = stream),
+                    )
                 val result = XrayConfigGenerator.generate(profile, settings)
                 check(result is ConfigResult.Ok) { "expected ConfigResult.Ok for ${stream.network}, got $result" }
-                val configFile = File(cacheDir, "instr-transport-$index.json").apply { writeText(result.json) }
 
                 try {
-                    controller.validate(configFile)
+                    controller.validate(result.json)
                 } catch (e: XrayException) {
                     // ARCHITECTURE.md §5.6: the message can quote the config back, so it must not
                     // reach the failure text. The network name is ours, not the
                     // user's, and is what identifies which case failed.
                     fail("the core rejected an emitted ${stream.network} config: ${e.javaClass.simpleName}")
-                } finally {
-                    configFile.delete()
                 }
+            }
+        }
+
+    /**
+     * Subspace's mirror of the core's no-TLS rule ([refusedWithoutTransportSecurity]) must
+     * agree with the core itself: whatever the mirror refuses, `testXray` refuses, and
+     * whatever it allows, `testXray` accepts. Checked on public and private addresses of
+     * every kind the rule distinguishes.
+     */
+    @Test
+    fun thePlaintextRefusalMatchesTheRealCore() =
+        runTest {
+            val controller = XrayController()
+            val addresses =
+                listOf(
+                    "example.com",
+                    "1.1.1.1",
+                    "2606:4700::1111",
+                    "10.0.0.1",
+                    "192.168.1.1",
+                    "fd00::1",
+                    "host.example",
+                    "router",
+                )
+            addresses.forEach { address ->
+                val plain = outbound.copy(address = address, flow = "", stream = StreamSettings("tcp", Security.None))
+                val settings =
+                    TunnelSettings(
+                        socksPort = controller.allocatePort(),
+                        dnsServer = "1.1.1.1",
+                        enableSniffing = true,
+                    )
+                val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = plain), settings)
+                check(result is ConfigResult.Ok) { "expected ConfigResult.Ok for $address, got $result" }
+                val accepted = runCatching { controller.validate(result.json) }.isSuccess
+                assertEquals(
+                    "mirror and core disagree for $address",
+                    !plain.refusedWithoutTransportSecurity(),
+                    accepted,
+                )
             }
         }
 
@@ -285,15 +324,12 @@ class XrayControllerTest {
             // dropped httpPort — this cannot be re-run here (no device is
             // reachable), so whoever runs it later needs it to mean something.
             result.json shouldContain "http-in"
-            val configFile = File(cacheDir, "instr-two-inbound.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(result.json)
             } catch (e: XrayException) {
                 // ARCHITECTURE.md §5.6: the message can quote the config back.
                 fail("the core rejected a two-inbound config: ${e.javaClass.simpleName}")
-            } finally {
-                configFile.delete()
             }
         }
 
@@ -303,18 +339,14 @@ class XrayControllerTest {
             // ARCHITECTURE.md §6: catch a bad config here rather than letting runXray fail in a way
             // that is hard to attribute (§10.4). Proves validate() can actually fail
             // — a validator that always passes is worse than none.
-            val configFile = File(cacheDir, "instr-broken.json").apply { writeText("{ not json") }
-
             try {
-                XrayController().validate(configFile)
+                XrayController().validate("{ not json")
                 fail("expected malformed config to be rejected")
             } catch (e: XrayException) {
                 assertTrue(
                     "expected a testXray failure, got: ${e.message}",
                     e.message.orEmpty().contains("testXray"),
                 )
-            } finally {
-                configFile.delete()
             }
         }
 
@@ -323,19 +355,19 @@ class XrayControllerTest {
      * against a hand-built request like `AssetLocationProbeTest`.
      *
      * A `geosite:TEST` rule can only resolve if `XrayController` actually wires
-     * the invoke `env` object through to `testXray` — research §2b, the
-     * `XrayController`/`LibXrayInvoke` KDocs. Stages its own minimal
+     * the config's root `env` block through to `testXray`
+     * (`TunnelSettings.geoAssetDir`). Stages its own minimal
      * `geosite.dat` (same encoding `LibXrayGeoDataValidatorTest` uses) rather
      * than depending on the device's installed one: this must pass on any
      * device, not just one that has already run a geo source install.
      */
     @Test
-    fun geositeRulesResolveThroughTheEnvObject() =
+    fun geositeRulesResolveThroughTheConfigEnvBlock() =
         runTest {
             val geoDir = File(cacheDir, "instr-controller-geo-${System.nanoTime()}").apply { mkdirs() }
             File(geoDir, "geosite.dat").writeBytes(minimalGeositeDat())
 
-            val controller = XrayController(geoAssetDir = geoDir)
+            val controller = XrayController()
             val ruleSet =
                 RoutingRuleSet(
                     name = "geosite-test",
@@ -347,19 +379,18 @@ class XrayControllerTest {
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
                     routing = ruleSet,
+                    geoAssetDir = geoDir.absolutePath,
                 )
             val profile = Profile(id = "id", name = "n", outbound = outbound)
             val result = XrayConfigGenerator.generate(profile, settings)
             check(result is ConfigResult.Ok) { "expected ConfigResult.Ok, got $result" }
-            val configFile = File(cacheDir, "instr-geosite.json").apply { writeText(result.json) }
 
             try {
-                controller.validate(configFile)
+                controller.validate(result.json)
             } catch (e: XrayException) {
                 // ARCHITECTURE.md §5.6: the message can quote the config back.
                 fail("the core rejected a geosite: rule against a real geosite.dat: ${e.javaClass.simpleName}")
             } finally {
-                configFile.delete()
                 geoDir.deleteRecursively()
             }
         }

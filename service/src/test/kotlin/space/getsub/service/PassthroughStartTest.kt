@@ -8,6 +8,12 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
 import space.getsub.core.model.FailureReason
+import space.getsub.core.model.Retryability
+import space.getsub.core.model.Security
+import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.retryability
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.OverrideTarget
 import space.getsub.core.xray.ComposeFailure
@@ -227,6 +233,20 @@ class PassthroughStartTest {
     fun `a core refusal is named for a passthrough row and generic otherwise`() {
         validationFailureReason(runsAsWritten = true) shouldBe FailureReason.PassthroughRejectedAtConnect
         validationFailureReason(runsAsWritten = false) shouldBe FailureReason.ConfigRejected
+    }
+
+    @Test
+    fun `a typed plaintext VLESS or Trojan to a public server is refused with its own reason`() {
+        val plain = StreamSettings(network = "tcp", security = Security.None)
+        val tls = StreamSettings(network = "tcp", security = Security.Tls("s.example.com", "chrome", false))
+
+        typedConnectRefusal(VlessOutbound("vpn.example.org", 443, "u", null, plain)) shouldBe
+            FailureReason.CoreRefusesPlaintextTransport
+        typedConnectRefusal(TrojanOutbound("203.0.114.1", 443, "p", plain)) shouldBe
+            FailureReason.CoreRefusesPlaintextTransport
+        typedConnectRefusal(VlessOutbound("vpn.example.org", 443, "u", null, tls)) shouldBe null
+        typedConnectRefusal(VlessOutbound("192.168.1.2", 443, "u", null, plain)) shouldBe null
+        FailureReason.CoreRefusesPlaintextTransport.retryability() shouldBe Retryability.Terminal
     }
 
     // Audit 2026-10-13 finding 3.3: a row stored as eligible before `reverse` was rejected

@@ -50,6 +50,7 @@ public fun FailureReason.retryability(): Retryability =
         FailureReason.ConfigRejected,
         FailureReason.PassthroughRejectedAtConnect,
         FailureReason.PassthroughOverrideUnavailable,
+        FailureReason.CoreRefusesPlaintextTransport,
         FailureReason.PerAppAllowListEmpty,
         FailureReason.GeoDataMissing,
         FailureReason.Revoked,

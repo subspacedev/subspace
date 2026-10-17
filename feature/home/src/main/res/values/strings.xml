@@ -52,6 +52,7 @@
     <string name="failure_passthrough_override_unavailable">
         This stored config cannot use the app’s routing or DNS override
     </string>
+    <string name="failure_core_refuses_plaintext_transport">The core refuses VLESS or Trojan without TLS to a public server</string>
     <string name="failure_passthrough_rejected_at_connect">The core rejected this server\'s stored config</string>
     <string name="home_latency_label">Latency</string>
     <!-- An em-dash, not "0 ms": nothing has been measured, and a substituted

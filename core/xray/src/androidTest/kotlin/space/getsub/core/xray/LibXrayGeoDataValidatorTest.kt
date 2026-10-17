@@ -15,6 +15,10 @@ import java.io.File
  * Instrumented rather than JVM: `countGeoData` is a native call, so this cannot
  * run on the JVM (the same reason `LibXrayInvokeTest` splits envelope parsing out
  * from `LibXrayInvoke.call`).
+ *
+ * libXray v26.10.10's `geo/` package has no diff against v26.7.11, and `countGeoData` still
+ * answers `{"success":true,"data":{},"error":""}` (docs/agent/research/libxray-api.md §2), so
+ * the expectations below are unchanged by the upgrade.
  */
 class LibXrayGeoDataValidatorTest {
     private lateinit var dir: File

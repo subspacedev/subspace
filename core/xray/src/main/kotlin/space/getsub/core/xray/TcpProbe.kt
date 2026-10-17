@@ -34,11 +34,12 @@ public fun interface TcpSocketProtector {
  * Times a TCP connect to a server.
  *
  * Works for **every** protocol, including the four `:core:xray` cannot generate
- * a config for — which is why it exists alongside [ProxyHeadProbe].
+ * a config for — which is why it exists alongside the proxy-head mode
+ * ([PingBatch], run in the `:ping` process).
  *
  * What it cannot tell you: a REALITY server that accepts the TCP connection and
- * then rejects the handshake reports a fast result here. [ProxyHeadProbe] is the
- * mode that proves the proxy actually carries traffic.
+ * then rejects the handshake reports a fast result here. Proxy-head ([PingBatch]) is
+ * the mode that proves the proxy actually carries traffic.
  */
 public class TcpProbe(
     private val io: CoroutineDispatcher = Dispatchers.IO,

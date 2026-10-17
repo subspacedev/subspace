@@ -162,4 +162,5 @@ private fun FailureReason.labelRes(): Int =
         FailureReason.PerAppAllowListEmpty -> R.string.failure_per_app_allow_list_empty
         FailureReason.PassthroughOverrideUnavailable -> R.string.failure_passthrough_override_unavailable
         FailureReason.PassthroughRejectedAtConnect -> R.string.failure_passthrough_rejected_at_connect
+        FailureReason.CoreRefusesPlaintextTransport -> R.string.failure_core_refuses_plaintext_transport
     }

@@ -219,6 +219,16 @@ public enum class FailureReason {
      * or their environment changed.
      */
     PassthroughRejectedAtConnect,
+
+    /**
+     * The server is VLESS or Trojan with no TLS or REALITY and a public address, which Xray-core
+     * v26.10.10 refuses to build (upstream `a1bf968`, no opt-out). Named before the core is
+     * involved, so the user sees the actual cause and the remedy (pick TLS or REALITY, or another
+     * server) instead of the core's raw error. See [refusedWithoutTransportSecurity].
+     *
+     * Appended last: `ConnectionStateParcel` carries this enum by ordinal.
+     */
+    CoreRefusesPlaintextTransport,
 }
 
 /**

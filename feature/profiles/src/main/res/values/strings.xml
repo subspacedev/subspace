@@ -211,6 +211,7 @@
     <string name="editor_section_security">Security</string>
     <string name="editor_section_raw_json">Raw JSON</string>
     <string name="editor_security_none">None</string>
+    <string name="editor_security_refused_without_tls">The core refuses VLESS or Trojan without TLS to a public server. Choose TLS or Reality, or use a private address.</string>
     <string name="editor_tls_server_name_label">Server name (SNI)</string>
     <string name="editor_tls_fingerprint_label">Fingerprint</string>
     <string name="editor_tls_allow_insecure_label">Allow insecure</string>

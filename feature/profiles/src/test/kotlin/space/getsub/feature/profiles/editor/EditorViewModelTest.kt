@@ -403,6 +403,58 @@ class EditorViewModelTest {
         }
 
     @Test
+    fun `plaintext vless to a public address warns, and clears with TLS or a private address`() =
+        runTest {
+            val source = FakeProfileSource(listOf(typedProfile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+            // The fixture's 198.51.100.7 is documentation space, which the core treats as private.
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onAddressChanged("vpn.example.org")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe true
+
+            viewModel.onSecurityKindChanged(EditorSecurityKind.Tls)
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onSecurityKindChanged(EditorSecurityKind.None)
+            viewModel.onAddressChanged("192.168.1.2")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+        }
+
+    // Final review, fix-before-merge minor: picking VLESS or Trojan on a new profile, before any
+    // address is typed, is the main creation flow — the warning must wait for an address.
+    @Test
+    fun `plaintext vless with a blank address does not warn yet`() =
+        runTest {
+            val source = FakeProfileSource(listOf(typedProfile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.onAddressChanged("")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onAddressChanged("   ")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+
+            viewModel.onAddressChanged("vpn.example.org")
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe true
+        }
+
+    @Test
+    fun `a raw json profile never carries the transport security warning`() =
+        runTest {
+            val source = FakeProfileSource(listOf(rawJsonProfile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(rawJsonProfile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.refusedWithoutTransportSecurity shouldBe false
+        }
+
+    @Test
     fun `a raw json profile is not field-editable`() =
         runTest {
             val source = FakeProfileSource(listOf(rawJsonProfile))

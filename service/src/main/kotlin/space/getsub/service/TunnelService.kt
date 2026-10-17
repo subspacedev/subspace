@@ -53,12 +53,14 @@ import space.getsub.core.model.FailureReason
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.failure
+import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.retryability
 import space.getsub.core.parser.OverrideTarget
 import space.getsub.core.parser.analysePassthrough
@@ -69,9 +71,7 @@ import space.getsub.core.xray.ComposeResult
 import space.getsub.core.xray.ConfigResult
 import space.getsub.core.xray.DnsPlan
 import space.getsub.core.xray.DnsPlanner
-import space.getsub.core.xray.LibXrayPingApi
 import space.getsub.core.xray.METRICS_RESERVED_TAG
-import space.getsub.core.xray.ProxyHeadProbe
 import space.getsub.core.xray.RawConfigComposer
 import space.getsub.core.xray.ServerAddressPin
 import space.getsub.core.xray.SocketProtector
@@ -81,6 +81,7 @@ import space.getsub.core.xray.TunnelSettings
 import space.getsub.core.xray.XrayConfigGenerator
 import space.getsub.core.xray.XrayController
 import space.getsub.core.xray.XrayException
+import space.getsub.core.xray.pingConfig
 import space.getsub.service.log.LogCapture
 import space.getsub.service.log.LogRing
 import space.getsub.service.log.TeardownStep
@@ -171,6 +172,24 @@ internal fun adoptedStartId(
     frameworkStartId: Int,
 ): Int = if (sessionStartId != 0 && frameworkStartId > sessionStartId) frameworkStartId else sessionStartId
 
+/**
+ * The geo directory a *typed* config's root `env` names ([TunnelSettings.geoAssetDir]), or null
+ * for no `env` block.
+ *
+ * Active routing names its own retained generation directory ([RoutingResolution.Active.assetDir]),
+ * whose files the resolver's missing-file gate has already checked. Otherwise the flat root,
+ * **only when something is installed there**: a fresh install has no geo files, and the config
+ * then builds without an `env` block — the same "no geo files → skip" stance as
+ * `ServiceModule.boundPassthroughValidator` (stock-upgrade plan, Review Focus 4). A typed config
+ * with routing off carries no geo rule, so nothing reads the directory in that case either way.
+ */
+internal fun typedConfigGeoDir(
+    routingAssetDir: File?,
+    flatRoot: File,
+): String? =
+    routingAssetDir?.absolutePath
+        ?: flatRoot.takeIf { it.isDirectory && !it.list().isNullOrEmpty() }?.absolutePath
+
 /** [passthroughPlanFor]'s answer: what a passthrough compose call should do about routing/DNS. */
 internal data class PassthroughPlan(
     /** M7 spec §4.3: what `xray.location.asset` must name — see [passthroughPlanFor]. */
@@ -240,6 +259,72 @@ internal fun runsAsWrittenAtConnect(
  */
 internal fun validationFailureReason(runsAsWritten: Boolean): FailureReason =
     if (runsAsWritten) FailureReason.PassthroughRejectedAtConnect else FailureReason.ConfigRejected
+
+/**
+ * Ruling P10(a): stops the core a failed start had already started, before the failure is
+ * published.
+ *
+ * An orphaned core costs more since libXray v26.10.10: `testXray` refuses while this process has
+ * a managed instance (`xray/validation.go:13-14`), and [validationFailureReason] names that as a
+ * Terminal `ConfigRejected`/`PassthroughRejectedAtConnect` — so every later connect would fail as
+ * "your config is bad" until `:bg` died.
+ *
+ * Only while [stillOwned] — this start's generation is current and its controller is still the
+ * service's. `stopXray` is process-global, so once a newer session has taken over, calling it could
+ * stop *that* session's core; [sweepOrphanedCore] on the newer start covers what this leaves.
+ *
+ * @return whether [stop] was called.
+ */
+internal suspend fun stopCoreLeftByFailedStart(
+    started: Boolean,
+    stillOwned: () -> Boolean,
+    stop: suspend () -> Unit,
+): Boolean {
+    if (!started || !stillOwned()) return false
+    stop()
+    return true
+}
+
+/**
+ * Ruling P10(b): before `testXray`, stops a running core that no live session owns.
+ *
+ * [ownsStartSlot] is true while this start's generation is current and the service's controller is
+ * this start's own, not-yet-started one — so any core `getXrayState` reports running then belongs
+ * to no session: one orphaned by a failed start or by a stop that raced a start. Left running, it
+ * makes `testXray` refuse (see [stopCoreLeftByFailedStart]). Ownership is re-read after the state
+ * call, which can take long enough for a newer session to take the slot.
+ *
+ * A state read that fails is not thrown: `validate` runs next and names its own failure.
+ *
+ * @return whether [stop] was called.
+ */
+internal suspend fun sweepOrphanedCore(
+    ownsStartSlot: () -> Boolean,
+    isRunning: suspend () -> Boolean,
+    stop: suspend () -> Unit,
+): Boolean {
+    val orphaned =
+        ownsStartSlot() &&
+            try {
+                isRunning()
+            } catch (_: XrayException) {
+                false
+            } &&
+            ownsStartSlot()
+    if (orphaned) stop()
+    return orphaned
+}
+
+/**
+ * The refusal a **typed** row's start is stopped with before any config is generated, or null.
+ *
+ * Xray-core v26.10.10 refuses plaintext VLESS/Trojan to a public address with no opt-out, so the
+ * start is refused here with the cause named and the core is never called. Raw rows are not
+ * routed through this: they run as written and the core's own verdict stands
+ * ([validationFailureReason]); the core's error text is never parsed (ARCHITECTURE.md §5.6).
+ */
+internal fun typedConnectRefusal(outbound: Outbound): FailureReason? =
+    FailureReason.CoreRefusesPlaintextTransport.takeIf { outbound.refusedWithoutTransportSecurity() }
 
 /**
  * The tags already on a stored config's own `outbounds`, so
@@ -479,6 +564,53 @@ internal fun resolveOverrideBreakdown(
  */
 internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
     LatencyOutcome.UNSUPPORTED.takeIf { rawJson != null && analysePassthrough(rawJson).isBalancer }
+
+/**
+ * The guards every measurement passes before any batching, then the mode.
+ *
+ * The foreign-VPN and balancer guards apply to both modes: under another
+ * client's VPN neither mode can reach the server, and a balancer row would time
+ * one arbitrary member (§10.1). A raw row with no projectable [outbound], or a
+ * protocol [pingConfig] cannot generate, is [LatencyOutcome.UNSUPPORTED] — not a
+ * network failure, which would send the user looking for a problem with their
+ * server. Only a proxy-head server that passes all of them reaches a batch.
+ */
+internal suspend fun planLatency(
+    options: LatencyOptions,
+    foreignVpnHoldsRoute: () -> Boolean,
+    rawJson: String?,
+    outbound: Outbound?,
+    pingConfig: suspend (Outbound) -> String?,
+): LatencyPlan {
+    val unsupported = LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+    return when {
+        foreignVpnHoldsRoute() -> LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.FOREIGN_VPN))
+        balancerLatencyRefusal(rawJson) != null -> unsupported
+        options.mode == PingMode.TCP -> LatencyPlan.InPlace
+        outbound == null -> unsupported
+        // The core would answer a proxy-head ping of this server with its build error; TCP mode
+        // (above) measures a connect and is unaffected.
+        outbound.refusedWithoutTransportSecurity() -> unsupported
+        else ->
+            pingConfig(outbound)
+                ?.let { LatencyPlan.Batched(it, PingGroup(options.timeoutSeconds, options.checkUrl)) }
+                ?: unsupported
+    }
+}
+
+/**
+ * One TCP probe, refused with [LatencyOutcome.FOREIGN_VPN] if another client's VPN holds the
+ * default route **now**.
+ *
+ * [planLatency] checks once, when the run is planned, but a long TCP run can outlast that:
+ * `TcpProbe` ignores a `false` from `protect(socket)`, so a VPN that comes up mid-run would have
+ * its own endpoint timed and shown as the server's number. Re-checking right before each probe is
+ * what keeps that a failure, as it was before probes were planned up front.
+ */
+internal suspend fun guardedTcpProbe(
+    foreignVpnHoldsRoute: () -> Boolean,
+    probe: suspend () -> LatencyResult,
+): LatencyResult = if (foreignVpnHoldsRoute()) LatencyResult.failed(LatencyOutcome.FOREIGN_VPN) else probe()
 
 /** Maps composition failures to the user-actionable service reason they represent. */
 internal fun compositionFailureReason(reason: ComposeFailure): FailureReason =
@@ -776,7 +908,9 @@ class TunnelService : VpnService() {
     private val foreignVpn by lazy { ForeignVpn(applicationContext) }
 
     /**
-     * Latency measurement lives in `:bg` because §5.1's protector does.
+     * Latency measurement is scheduled in `:bg` because ARCHITECTURE.md §5.1's
+     * protector is here, which TCP probes need. Proxy-head servers are batched
+     * and sent to `:ping` through [pingClient] (libXray stock upgrade spec §4).
      *
      * `by lazy` rather than an initialiser: it captures [scope] and reaches
      * [profileRepository], which Hilt field-injects during `super.onCreate()`.
@@ -787,14 +921,22 @@ class TunnelService : VpnService() {
      */
     private val latencyRunner by lazy {
         LatencyRunner<StoredProfile>(
-            measure = { profile, options -> measureOne(profile, options) },
+            // Only TCP is planned in place; see planOne.
+            measure = { profile, options -> measureTcp(profile, options) },
             loadProfile = { id -> profileRepository.profile(id) },
             scope = scope,
             // §10.4: a swallowed failure still gets a line. The class name only —
             // a Room or libXray message can quote a stored config value (ARCHITECTURE.md §5.6).
             onMeasurementError = { name -> Log.w(TAG, "measurement failed: $name") },
+            plan = { profile, options -> planOne(profile, options) },
+            measureBatch = { group, targets -> pingClient.measure(targets, group.timeoutSeconds, group.url) },
+            // Ruling P8: :bg holds the grace, then unbinds; :ping exits on that unbind.
+            onRunEnded = { pingClient.releaseAfterGrace() },
         )
     }
+
+    /** `:bg`'s binding to `:ping`: bound by a run's first proxy-head batch, held for the grace after the run. */
+    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext), scope = scope) }
 
     // All guarded by `lock`.
     private var controller: XrayController? = null
@@ -825,16 +967,15 @@ class TunnelService : VpnService() {
      * against before deciding whether keeping it is still safe.
      */
     private var tunAdvertisedDns: String? = null
-    private var configFile: File? = null
 
     /**
      * The loopback port [trafficLoop]'s `readTags` reads from, or null while
      * the breakdown is off or [allocateSessionPorts]'s allocation failed
-     * (M8.5 spec §2). Every *write* is under [lock], same as [configFile] and
-     * the same lifetime — set in [startCore] once a session's config is
-     * generated, cleared everywhere [configFile] is.
+     * (M8.5 spec §2). Every *write* is under [lock], with the session's
+     * lifetime — set in [startCore] once a session's config is generated,
+     * cleared everywhere [controller] is.
      *
-     * Unlike [configFile], **not** lock-guarded on read: [trafficLoop]'s
+     * Unlike [controller], **not** lock-guarded on read: [trafficLoop]'s
      * `readTags` polls it once a second from its own coroutine, off the
      * `Dispatchers.IO` scope, and taking [lock] there for one field read on a
      * hot path is worse than the alternative. `@Volatile` is what makes a
@@ -989,10 +1130,11 @@ class TunnelService : VpnService() {
             seeded = currentState
             generationAtSeed = generation
         }
-        // ARCHITECTURE.md §5.6: a config left by a start that failed, or by a process the system
-        // killed before onDestroy, holds the UUID and REALITY key. Nothing else
-        // would ever remove it.
-        File(filesDir, CONFIG_NAME).delete()
+        // ARCHITECTURE.md §5.6: builds before libXray v26.10.10 wrote the running config to
+        // this file, and one left by a failed start or a killed process holds the UUID
+        // and REALITY key. Nothing writes it any more (the core takes the JSON itself);
+        // this only removes a copy an older build left behind on an upgraded install.
+        File(filesDir, LEGACY_CONFIG_NAME).delete()
         connectionRecorder =
             ConnectionRecorder(
                 recordConnected = profileRepository::recordConnected,
@@ -1660,7 +1802,7 @@ class TunnelService : VpnService() {
                 //
                 // Reconnecting is allowed through alongside Disconnected/Failed:
                 // it means a retryable failure already ran settleRetryableFailure's
-                // cleanup (controller/configFile/liveSession all null) and is
+                // cleanup (controller/liveSession both null) and is
                 // waiting out its backoff. Refusing here would silently swallow
                 // every retry the moment BackoffElapsed fires it — fix round 1,
                 // Finding 1's core bug.
@@ -1767,8 +1909,11 @@ class TunnelService : VpnService() {
         gen: Int,
         profile: Profile,
         rowId: Long,
-    ): StartedCore? =
-        try {
+    ): StartedCore? {
+        // Set once startCore has returned with the core running, so the catch below knows there is
+        // a core to stop (Ruling P10(a)). Only the lease release can still throw after that.
+        var started: XrayController? = null
+        return try {
             routingResolver.withResolution { routing ->
                 if (routing is RoutingResolution.MissingGeoData) {
                     failStart(
@@ -1790,10 +1935,7 @@ class TunnelService : VpnService() {
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
                         sniffingEnabled = SNIFFING_ENABLED,
                     )
-                val assetDir =
-                    (routing as? RoutingResolution.Active)?.assetDir
-                        ?: geoAssetRepository.geoDirectory()
-                val xray = XrayController(geoAssetDir = assetDir)
+                val xray = XrayController()
                 val ownsStart =
                     synchronized(lock) {
                         if (gen != generation) {
@@ -1806,14 +1948,25 @@ class TunnelService : VpnService() {
                 if (!ownsStart) return@withResolution null
 
                 val ports = startCore(gen, xray, profile, rowId, routing, dnsPlan) ?: return@withResolution null
+                started = xray
                 StartedCore(xray, ports, dnsPlan)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // Before failStart, which nulls `controller`: a core left running here would make
+            // every later connect's testXray refuse (see stopCoreLeftByFailedStart).
+            started?.let { xray ->
+                stopCoreLeftByFailedStart(
+                    started = true,
+                    stillOwned = { synchronized(lock) { gen == generation && controller === xray } },
+                    stop = { xray.stop() },
+                )
+            }
             failStart(gen, FailureReason.CoreStartFailed, e, rowId)
             null
         }
+    }
 
     // One early return per step is the point, not a smell: §10.4 requires each
     // stage of the start sequence to fail specifically and stop there.
@@ -1832,11 +1985,11 @@ class TunnelService : VpnService() {
         routing: RoutingResolution,
         dnsPlan: DnsPlan?,
     ): StartedPorts? {
-        // §10.6 and docs/agent/research/libxray-api.md §5: getFreePorts closes
-        // each listener before opening the next, so allocatePorts's distinctness
-        // guarantee only holds within one call. M8.5 spec §2's port rides along
-        // in the *same* call rather than a second one — see allocateSessionPorts's
-        // own KDoc for why a second call is the bug this replaced.
+        // ARCHITECTURE.md §10.6 and docs/agent/research/libxray-api.md §2: libXray v26.10.10's
+        // getFreePorts holds every listener open until it returns, but releases them all then,
+        // so distinctness only holds within one call. M8.5 spec §2's port rides along in the
+        // *same* call rather than a second one — see allocateSessionPorts's own KDoc for why a
+        // second call is the bug this replaced.
         val breakdownEnabled =
             breakdownEnabled(
                 perTagBreakdown = settingsRepository.perTagBreakdown.first(),
@@ -1869,6 +2022,15 @@ class TunnelService : VpnService() {
                 // M9-A spec §3.1: resolved once per start, from the same row this session connects.
                 obfuscation = obfuscationResolver.forConfig(rowId),
                 addressPin = addressPin,
+                // Stock-upgrade spec §2: the config's own root `env` is the only channel
+                // libXray v26.10.10 reads the asset location from, for testXray and runXray
+                // alike. The passthrough path names its directory through
+                // passthroughPlanFor instead; RawConfigComposer writes that `env` itself.
+                geoAssetDir =
+                typedConfigGeoDir(
+                    routingAssetDir = (routing as? RoutingResolution.Active)?.assetDir,
+                    flatRoot = geoAssetRepository.geoDirectory(),
+                ),
             )
         // §10.4/failStart's cleanup applies here too, not just to the try/catch
         // below: an early return that only published a state (skipping
@@ -1879,15 +2041,8 @@ class TunnelService : VpnService() {
                 is ConfigJsonOutcome.Ok -> Triple(outcome.json, outcome.runsAsWritten, outcome.metricsApplied)
                 is ConfigJsonOutcome.Failed -> return failStart(gen, outcome.reason, outcome.cause, rowId)
             }
-        val file =
-            try {
-                writeConfig(json)
-            } catch (e: java.io.IOException) {
-                return failStart(gen, FailureReason.ConfigGenerationFailed, e, rowId)
-            }
         synchronized(lock) {
             if (gen != generation) return null
-            configFile = file
             // Not unconditionally `allocated.metricsPort` (review finding I4):
             // the override branch can degrade away the breakdown for a config
             // that already claims the `Metrics` tag — see
@@ -1899,11 +2054,22 @@ class TunnelService : VpnService() {
             metricsPort = allocated.metricsPort.takeIf { metricsApplied }
         }
 
-        // ARCHITECTURE.md §6: validate before starting. libXray's testXray takes a path, so the
-        // bytes validated are exactly the bytes runXray will read.
+        // ARCHITECTURE.md §6: validate before starting. testXray and runXray both take the JSON
+        // itself (libXray v26.10.10), so the bytes validated are exactly the bytes run, and
+        // no copy of the UUID and keys is written to disk (ARCHITECTURE.md §5.6).
+        //
+        // testXray refuses while this process has a managed instance (xray/validation.go:13-14).
+        // Neither caller leaves one running on purpose: a fresh start gets past startTunnel's
+        // state guard only after the previous session's teardown (which stops its core) has
+        // published, and restartCoreRetainingTun stops the old core
+        // (`handoff.oldXray?.stopBlocking()`) before calling resolveAndStartCore. A core can
+        // still be orphaned — a stop that raced an earlier start, or a failure that escaped one
+        // — so Ruling P10(b) sweeps any running core while this start owns the slot, and no live
+        // session can own it then.
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.ValidatingConfig))) return null
+        sweepOrphanedCoreBefore(gen, xray)
         try {
-            xray.validate(file)
+            xray.validate(json)
         } catch (e: XrayException) {
             // A stored config that passed import can still be refused here —
             // the core, the environment, or the row's own bytes changed since.
@@ -1916,12 +2082,28 @@ class TunnelService : VpnService() {
 
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingCore))) return null
         try {
-            xray.start(file, protector())
+            xray.start(json, protector())
         } catch (e: XrayException) {
             return failStart(gen, FailureReason.CoreStartFailed, e, rowId)
         }
 
         return StartedPorts(socksPort, httpPort)
+    }
+
+    /**
+     * [sweepOrphanedCore] for [startCore]: [xray] is this start's own, not-yet-started controller,
+     * so while [gen] is current and [controller] is still [xray], no live session owns whatever core
+     * is running. `stop` goes through [xray] because `stopXray` is process-global.
+     */
+    private suspend fun sweepOrphanedCoreBefore(
+        gen: Int,
+        xray: XrayController,
+    ) {
+        sweepOrphanedCore(
+            ownsStartSlot = { synchronized(lock) { gen == generation && controller === xray } },
+            isRunning = { xray.isRunning() },
+            stop = { xray.stop() },
+        )
     }
 
     /**
@@ -1962,7 +2144,10 @@ class TunnelService : VpnService() {
             ?.takeIf { stored -> runsAsWrittenAtConnect(stored.runsAsWritten, stored.rawJson) }
             ?.rawJson
 
-    /** [resolveConfigJson]'s outcome — a JSON string ready for [writeConfig], or a named failure. */
+    /**
+     * [resolveConfigJson]'s outcome — a JSON string ready for `XrayController.validate`/`start`,
+     * or a named failure.
+     */
     private sealed interface ConfigJsonOutcome {
         /**
          * @property runsAsWritten Whether [json] is the row's own composed bytes, not a typed generation.
@@ -1978,7 +2163,7 @@ class TunnelService : VpnService() {
     }
 
     /**
-     * Produces the config text [startCore] hands to [writeConfig] — the row's
+     * Produces the config text [startCore] hands to the core — the row's
      * own bytes for a `runsAsWritten` profile, or a typed generation otherwise.
      *
      * The raw bytes come from Room, not the Parcel: `ProfileParcel` carries
@@ -2037,6 +2222,11 @@ class TunnelService : VpnService() {
                         IllegalStateException("stored config did not compose: ${composed.reason}"),
                     )
             }
+        }
+        // The core would refuse this at validate with its own text; name it here instead. Typed
+        // rows only: a raw row ran above, as written, and its refusal (if any) stays the core's.
+        typedConnectRefusal(profile.outbound)?.let { reason ->
+            return ConfigJsonOutcome.Failed(reason, IllegalStateException("plaintext VLESS/Trojan to a public server"))
         }
         return when (val config = XrayConfigGenerator.generate(profile, settings)) {
             is ConfigResult.Unsupported ->
@@ -2209,7 +2399,7 @@ class TunnelService : VpnService() {
      * [startCore] has left a core running. Unguarded, the failure reaches
      * [errorHandler], which publishes [FailureReason.CoreStartFailed] but skips
      * both `xray.stop()` and failStart's §5.4 cleanup: a live Go runtime, a
-     * non-null `controller`, the config file still on disk (ARCHITECTURE.md §5.6) and a stuck
+     * non-null `controller` and a stuck
      * foreground notification, while `Failed` invites a second connect that would
      * overwrite `controller` and orphan the first core.
      */
@@ -2534,9 +2724,6 @@ class TunnelService : VpnService() {
      * or anything else that would make retrying conditional on that setting.
      * TUN retention is a separate decision — [shouldRetainTun] — consulted only
      * inside [settleRetryableFailure].
-     *
-     * ARCHITECTURE.md §5.6: the config file holds the UUID and REALITY key. A failed start used
-     * to leave it on disk indefinitely, because only teardown deleted it.
      */
     private suspend fun failStart(
         gen: Int,
@@ -2588,8 +2775,6 @@ class TunnelService : VpnService() {
             state = failed,
             lifecycle = {
                 ownedIntentToken = sessionIntentToken
-                configFile?.delete()
-                configFile = null
                 metricsPort = null
                 controller = null
                 liveSession = null
@@ -2654,7 +2839,7 @@ class TunnelService : VpnService() {
      * Reuses [terminalOutcome]'s atomic gen-check-then-mutate-then-publish
      * transition — the same primitive [publishIfCurrent] is built on — rather
      * than a second hand-rolled one: a superseded generation must not null out
-     * a *newer* generation's `controller`/`configFile` any more than it must
+     * a *newer* generation's `controller` any more than it must
      * publish over a newer generation's state, and `TerminalOutcome` already
      * closes exactly that race. Used here for a non-terminal state
      * deliberately — the mechanism is state-shape-agnostic even though its
@@ -2682,8 +2867,8 @@ class TunnelService : VpnService() {
      * attached belongs to whoever holds the generation, and this settlement is
      * where that is resolved. So this function cannot assume [gen] is current
      * on entry. [ReconnectAttemptCounter.commit]
-     * therefore runs inside `lifecycle`, alongside `controller`/`configFile`/
-     * `liveSession`, so a superseded [gen] leaves the counter exactly as it
+     * therefore runs inside `lifecycle`, alongside `controller`/`liveSession`,
+     * so a superseded [gen] leaves the counter exactly as it
      * found it: [ReconnectAttemptCounter.peekNext] has no side effect, and
      * `terminalOutcome.settle` never runs `lifecycle` — hence never calls
      * `commit` — for a generation that lost the race.
@@ -2725,8 +2910,6 @@ class TunnelService : VpnService() {
         terminalOutcome.settleComputed(
             gen = gen,
             lifecycle = {
-                configFile?.delete()
-                configFile = null
                 metricsPort = null
                 controller = null
                 liveSession = null
@@ -2840,11 +3023,12 @@ class TunnelService : VpnService() {
         SocketProtector { fd ->
             val ok = protect(fd)
             if (!ok) {
-                // libXray DISCARDS this result (docs/agent/research/libxray-api.md
-                // §2), so nothing upstream reports it. Without this line a failed
-                // protect is invisible and presents only as ARCHITECTURE.md §5.1's symptom:
-                // connected, no traffic, rising CPU.
-                Log.e(TAG, "VpnService.protect() failed — traffic will loop back into the tunnel")
+                // libXray v26.10.10 honours this result: a false aborts the dial or
+                // listen with "protect Android VPN socket failed"
+                // (docs/agent/research/libxray-api.md §3), so the socket never loops
+                // into the TUN — the connection fails instead. The core's error names
+                // no cause, so this line is what tells a device run why.
+                Log.e(TAG, "VpnService.protect() failed — libXray aborts this connection")
             }
             ok
         }
@@ -2867,14 +3051,6 @@ class TunnelService : VpnService() {
      */
     private fun activeNetwork(): Network? =
         getSystemService(ConnectivityManager::class.java)?.activeNetwork
-
-    private fun writeConfig(json: String): File {
-        // Internal storage, not cache: ARCHITECTURE.md §5.6 — the config holds the UUID and
-        // REALITY key, and cache is more readily harvested.
-        val file = File(filesDir, CONFIG_NAME)
-        file.writeText(json)
-        return file
-    }
 
     /**
      * How [establishTun] ended.
@@ -3166,7 +3342,6 @@ class TunnelService : VpnService() {
 
         val xray: XrayController?
         val fd: ParcelFileDescriptor?
-        val cfg: File?
         val startId: Int
         val intentToken: Int
 
@@ -3179,11 +3354,9 @@ class TunnelService : VpnService() {
             ++generation
             xray = controller
             fd = tunInterface
-            cfg = configFile
             controller = null
             tunInterface = null
             tunAdvertisedDns = null
-            configFile = null
             metricsPort = null
             liveSession = null
             // Every stopTunnel caller (explicit disconnect, onRevoke, a
@@ -3214,13 +3387,13 @@ class TunnelService : VpnService() {
         // (spec §6 item #9) — reorder a step's *position* in [runTeardownStep]'s
         // `when` and LogCaptureLifecycleTest's ordering assertions cover exactly
         // what they claim to.
-        val taken = TeardownSnapshot(xray, fd, cfg)
+        val taken = TeardownSnapshot(xray, fd)
         teardownOrder().forEach { step -> runTeardownStep(step, taken, finalState, ::sinceStart) }
         return StoppedSession(startId = startId, intentToken = intentToken)
     }
 
     /** What [stopTunnel] took from the session's fields, bundled for [runTeardownStep]'s sake. */
-    private data class TeardownSnapshot(val xray: XrayController?, val fd: ParcelFileDescriptor?, val cfg: File?)
+    private data class TeardownSnapshot(val xray: XrayController?, val fd: ParcelFileDescriptor?)
 
     /**
      * One [TeardownStep] of [stopTunnel], extracted so that function stays
@@ -3235,7 +3408,7 @@ class TunnelService : VpnService() {
         finalState: ConnectionState,
         sinceStart: () -> Long,
     ) {
-        val (xray, fd, cfg) = taken
+        val (xray, fd) = taken
         when (step) {
             TeardownStep.StopTun2Socks -> {
                 // Order matters: stop feeding packets in before removing their destination.
@@ -3266,7 +3439,6 @@ class TunnelService : VpnService() {
                 Log.i(TAG, "teardown[xray-stopBlocking] enter (present=${xray != null})")
                 xray?.stopBlocking()
                 Log.i(TAG, "teardown[xray-stopBlocking] exit +${sinceStart()}ms")
-                cfg?.delete()
             }
 
             TeardownStep.ClearNotification -> {
@@ -3382,6 +3554,8 @@ class TunnelService : VpnService() {
         stopTunnel(finalState)
         commandCoordinator.close()
         callbacks.kill()
+        // Unbinds now (no grace: this process is going), so :ping exits too.
+        pingClient.close()
         scope.cancel()
         super.onDestroy()
     }
@@ -3389,54 +3563,32 @@ class TunnelService : VpnService() {
     // ── Latency measurement ─────────────────────────────────────────────────
 
     /**
-     * Measures one server, in whichever mode the run asked for.
+     * Plans one server for [latencyRunner]: the guards, then TCP in place or a
+     * proxy-head batch for `:ping`.
      *
-     * ARCHITECTURE.md §5.1 is the whole reason this runs in `:bg`: this is the only place a live
-     * `VpnService` exists to protect the socket. While a session is up, an
-     * unprotected measurement is routed back into the TUN and times the server
-     * *through* the tunnel rather than timing the server. While no session is up
-     * `protect` is a harmless no-op — there is nothing to escape.
-     *
-     * `ping` builds its own core through libXray's `StartXray`, which never
-     * touches the `coreServer` singleton `runXray`/`stopXray` guard, so this does
-     * not disturb a running tunnel. That is read from upstream source and is the
-     * central claim the device checklist exists to confirm.
+     * TCP stays here because ARCHITECTURE.md §5.1's protector does: while a
+     * session is up, an unprotected probe is routed back into the TUN and times
+     * the server *through* the tunnel. Proxy-head needs no protector: `:ping`
+     * shares this app's UID, which is excluded from the VPN in every per-app mode
+     * ([excludeSelf] in the two disallow plans; absent from the allow list in
+     * the third), so its sockets go direct.
      */
-    private suspend fun measureOne(
+    private suspend fun planOne(
         profile: StoredProfile,
         options: LatencyOptions,
-    ): LatencyResult =
-        // Checked before either mode runs: under another client's VPN neither can
-        // reach the server, and both would return a number timing that client's
-        // local endpoint instead (§10.1).
-        if (foreignVpn.holdsDefaultRoute(ownTunnelActive())) {
-            LatencyResult.failed(LatencyOutcome.FOREIGN_VPN)
-        } else if (balancerLatencyRefusal(profile.rawJson) != null) {
-            // Checked before either mode, for the same reason the foreign-VPN guard is:
-            // both modes would otherwise return a number that describes one member.
-            LatencyResult.failed(LatencyOutcome.UNSUPPORTED)
-        } else {
-            when (options.mode) {
-                PingMode.TCP -> measureTcp(profile, options)
-
-                PingMode.PROXY_HEAD -> {
-                    val outbound = profile.outbound
-                    if (outbound == null) {
-                        // A RAW_JSON row whose outbound could not be projected. Not
-                        // a network failure, and saying "unreachable" would send the
-                        // user looking for a problem with their server.
-                        LatencyResult.failed(LatencyOutcome.UNSUPPORTED)
-                    } else {
-                        ProxyHeadProbe(LibXrayPingApi(), cacheDir).measure(
-                            Profile(id = profile.id.toString(), name = profile.name, outbound = outbound),
-                            options,
-                            // Ruling R5: a raw row is probed through its typed projection, so a
-                            // config's own fragment is not represented here.
-                            obfuscation = obfuscationResolver.forConfig(profile.id),
-                        )
-                    }
-                }
-            }
+    ): LatencyPlan =
+        planLatency(
+            options = options,
+            foreignVpnHoldsRoute = { foreignVpn.holdsDefaultRoute(ownTunnelActive()) },
+            rawJson = profile.rawJson,
+            outbound = profile.outbound,
+        ) { outbound: Outbound ->
+            pingConfig(
+                Profile(id = profile.id.toString(), name = profile.name, outbound = outbound),
+                // Ruling R5: a raw row is probed through its typed projection, so a
+                // config's own fragment is not represented here.
+                obfuscation = obfuscationResolver.forConfig(profile.id),
+            )
         }
 
     /**
@@ -3445,18 +3597,20 @@ class TunnelService : VpnService() {
      * device run, and only working at all because `TcpProbe` binds the socket
      * first so there is a file descriptor to mark.
      *
-     * It does nothing about another app's VPN; [ForeignVpn] is checked before
-     * this is reached, and refuses rather than returning the meaningless number
-     * such a measurement would produce.
+     * It does nothing about another app's VPN; [ForeignVpn] is checked again
+     * right before each probe ([guardedTcpProbe]), not only at planning, and
+     * refuses rather than returning the meaningless number such a measurement
+     * would produce.
      */
     private suspend fun measureTcp(
         profile: StoredProfile,
         options: LatencyOptions,
-    ): LatencyResult {
-        val protector = TcpSocketProtector { socket -> protect(socket) }
-        return TcpProbe(protector = protector)
-            .measure(profile.address, profile.port, options.timeoutSeconds)
-    }
+    ): LatencyResult =
+        guardedTcpProbe(foreignVpnHoldsRoute = { foreignVpn.holdsDefaultRoute(ownTunnelActive()) }) {
+            val protector = TcpSocketProtector { socket -> protect(socket) }
+            TcpProbe(protector = protector)
+                .measure(profile.address, profile.port, options.timeoutSeconds)
+        }
 
     private fun pingModeOf(wire: Int): PingMode =
         if (wire == LatencyOptionsParcel.MODE_TCP) PingMode.TCP else PingMode.PROXY_HEAD
@@ -3878,8 +4032,6 @@ class TunnelService : VpnService() {
                     val nextGeneration = ++generation
                     val oldXray = controller
                     controller = null
-                    configFile?.delete()
-                    configFile = null
                     metricsPort = null
                     // M8 spec §1.1: [rowId] is the *active* profile, which can differ
                     // from the row this session started on if another server was
@@ -3916,6 +4068,11 @@ class TunnelService : VpnService() {
             // comes back.
             Log.e(TAG, "tun2socks stop failed during restart: ${e.javaClass.simpleName}")
         }
+        // Before resolveAndStartCore, and load-bearing since libXray v26.10.10: its
+        // testXray refuses while this process still has a managed instance
+        // ("testXray requires an isolated process without a managed Xray instance",
+        // xray/validation.go:13-14), so validating the new config with the old core
+        // still running would fail every network-change restart.
         handoff.oldXray?.stopBlocking()
 
         val started = resolveAndStartCore(handoff.gen, profile, rowId) ?: return
@@ -4214,7 +4371,8 @@ class TunnelService : VpnService() {
         if (intent?.action == SERVICE_INTERFACE) super.onBind(intent) else binder
 
     private companion object {
-        const val CONFIG_NAME = "xray-config.json"
+        /** Written by builds before libXray v26.10.10; only ever deleted now — see [onCreate]. */
+        const val LEGACY_CONFIG_NAME = "xray-config.json"
         const val FOREGROUND_LIFECYCLE_REJECTED = "ForegroundLifecycleRejected"
         const val LOG_DIR_NAME = "logs"
     }

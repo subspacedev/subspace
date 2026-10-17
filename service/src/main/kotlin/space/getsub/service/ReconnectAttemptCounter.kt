@@ -25,7 +25,7 @@ package space.getsub.service
  * [TunnelService] therefore calls [peekNext] freely, but calls [commit] only
  * from inside `TerminalOutcome.settle`'s generation-gated `lifecycle` —
  * exactly where every other mutation this counter's siblings
- * (`controller`, `configFile`, `liveSession`) already lives.
+ * (`controller`, `liveSession`) already lives.
  *
  * Not thread-safe on its own. `TunnelService` guards every call with its own
  * `lock`, the same way it guards `generation`/`currentState`/every other
