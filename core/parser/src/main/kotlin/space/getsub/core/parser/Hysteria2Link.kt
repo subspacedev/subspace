@@ -20,7 +20,7 @@ private const val DEFAULT_PORT = 443
 private val DEFAULT_ALPN = listOf("h3")
 
 /** One validation step: a value, or the typed failure that ends the parse. */
-private sealed interface Step<out T> {
+internal sealed interface Step<out T> {
     data class Ok<T>(
         val value: T,
     ) : Step<T>
@@ -31,7 +31,7 @@ private sealed interface Step<out T> {
     ) : Step<Nothing>
 }
 
-private fun uriFail(detail: FailureDetail) = Step.Fail(ParseFailureReason.MalformedUri, detail)
+internal fun uriFail(detail: FailureDetail) = Step.Fail(ParseFailureReason.MalformedUri, detail)
 
 private data class Authority(
     val password: String,
@@ -223,7 +223,7 @@ private fun queryHopping(
 }
 
 @Suppress("ReturnCount")
-private fun queryObfuscation(query: Map<String, String>): Step<Hysteria2Obfuscation> {
+internal fun queryObfuscation(query: Map<String, String>): Step<Hysteria2Obfuscation> {
     val kind = query["obfs"]?.lowercase().orEmpty()
     val password = query["obfs-password"].orEmpty()
     if (kind.isEmpty() || kind == "none") {
@@ -249,7 +249,7 @@ private fun queryObfuscation(query: Map<String, String>): Step<Hysteria2Obfuscat
     }
 }
 
-private fun queryCongestion(query: Map<String, String>): Step<Hysteria2Congestion> {
+internal fun queryCongestion(query: Map<String, String>): Step<Hysteria2Congestion> {
     val up = query["up"]?.takeIf { it.isNotBlank() }
     val down = query["down"]?.takeIf { it.isNotBlank() }
     if (up == null && down == null) return Step.Ok(Hysteria2Congestion.Default)
@@ -262,7 +262,7 @@ private fun queryCongestion(query: Map<String, String>): Step<Hysteria2Congestio
 private fun bandwidthFail() = uriFail(FailureDetail.Malformed(DetailField.Bandwidth))
 
 @Suppress("ReturnCount")
-private fun buildTls(
+internal fun buildTls(
     query: Map<String, String>,
     host: String,
 ): Step<Hysteria2Tls> {
