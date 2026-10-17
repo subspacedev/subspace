@@ -214,10 +214,12 @@ private fun parseIntRange(text: String): Pair<Int, Int>? {
     val parts = text.trim().split('-')
     val numbers = parts.map { digitsOrNull(it, MAX_INT_DIGITS) }
     return when {
-        numbers.size == 1 && numbers[0] != null -> numbers[0]!! to numbers[0]!!
-        numbers.size == 2 && numbers[0] != null && numbers[1] != null ->
-            minOf(numbers[0]!!, numbers[1]!!) to
-                maxOf(numbers[0]!!, numbers[1]!!)
+        numbers.size == 1 -> numbers[0]?.let { it to it }
+        numbers.size == 2 -> {
+            val first = numbers[0]
+            val second = numbers[1]
+            if (first != null && second != null) minOf(first, second) to maxOf(first, second) else null
+        }
         else -> null
     }
 }
@@ -231,11 +233,9 @@ internal fun parsePortList(text: String): List<IntRange>? {
         text.split(',').map { item ->
             val bounds = item.trim().split('-')
             val numbers = bounds.map { digitsOrNull(it, MAX_PORT_DIGITS) }
-            when {
-                numbers.size == 1 && numbers[0] != null -> numbers[0]!!..numbers[0]!!
-                numbers.size == 2 && numbers[0] != null && numbers[1] != null -> numbers[0]!!..numbers[1]!!
-                else -> null
-            }
+            val first = numbers.getOrNull(0)
+            val last = if (numbers.size == 1) first else numbers.getOrNull(1)
+            if (numbers.size <= 2 && first != null && last != null) first..last else null
         }
     return if (ranges.all { it != null && it.first in 1..MAX_PORT_NUMBER && it.last in it.first..MAX_PORT_NUMBER }) {
         ranges.filterNotNull()
@@ -282,8 +282,9 @@ internal fun normaliseBandwidth(
     val trimmed = text.trim()
     val match = BANDWIDTH_SHAPE.matchEntire(trimmed.lowercase()) ?: return null
     val unit = match.groupValues[2]
-    val multiplier = BANDWIDTH_UNITS[unit] ?: return null
-    val value = match.groupValues[1].toDoubleOrNull() ?: return null
+    val multiplier = BANDWIDTH_UNITS[unit]
+    val value = match.groupValues[1].toDoubleOrNull()
+    if (multiplier == null || value == null) return null
     val mbpsMultiplier = KILO * KILO
     val effective = if (bareIsMbps && unit.isEmpty()) mbpsMultiplier else multiplier
     val bytesPerSecond = value * effective / BITS_PER_BYTE

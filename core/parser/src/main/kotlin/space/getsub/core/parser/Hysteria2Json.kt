@@ -50,7 +50,8 @@ internal fun parseHysteriaOutbound(
     val port =
         settings.portValue("port")
             ?: return rawBad(index, ParseFailureReason.InvalidPort, FailureDetail.Malformed(DetailField.Port))
-    validatePort(port)?.let { return rawBad(index, ParseFailureReason.InvalidPort, it) }
+    val portProblem = validatePort(port)
+    if (portProblem != null) return rawBad(index, ParseFailureReason.InvalidPort, portProblem)
 
     val versions = listOfNotNull(settings["version"], hysteria?.get("version")).map { (it as? JsonPrimitive)?.content }
     val network = stream?.stringValue("network")
@@ -82,7 +83,8 @@ internal fun parseHysteriaOutbound(
             congestion = mask.congestion ?: Hysteria2Congestion.Default,
             notConnectableReason = mask.notConnectableReason,
         )
-    val name = remarks ?: outbound.stringValue("tag")?.takeIf { it.isNotBlank() } ?: address
+    val tagName = outbound.stringValue("tag")?.takeIf { it.isNotBlank() }
+    val name = if (remarks != null) remarks else tagName ?: address
     return LinkResult.Ok(Profile(profileId("hysteria2", address, port, password), name, result, rawJson = elementText))
 }
 

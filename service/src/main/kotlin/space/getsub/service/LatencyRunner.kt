@@ -223,7 +223,9 @@ internal class LatencyRunner<T>(
      * Marked servers may each cost `:ping` a certificate probe before their batch
      * answers (M9-D1 spec §2). Kept in their own chunks and sent last, they never
      * hold up an ordinary server's result: batches run one at a time in `:ping`, and
-     * [gate] and [PingClient]'s lock are both FIFO, so launch order is send order.
+     * [gate] and [PingClient]'s lock are both FIFO, so batches are sent in launch order
+     * as a best effort. The scope runs on `Dispatchers.IO`, so asynchronous launches can
+     * still reorder; nothing depends on the order for correctness, only for latency.
      */
     private fun CoroutineScope.scheduleBatches(
         items: List<Item<T>>,
