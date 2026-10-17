@@ -135,4 +135,15 @@ class Hysteria2Test {
         ob.notConnectableReason shouldBe null
         PortHopping(listOf(1000..2000)).intervalSeconds shouldBe 30
     }
+
+    @Test
+    fun aSinglePortHopIsNoHoppingOnThatPort() {
+        // udphop dials a port from remotePorts and ignores the outbound port (xc udphop/conn.go:68-69).
+        Hysteria2Rules.collapseSinglePortHop(443, PortHopping(listOf(20000..20000), 10)) shouldBe (20000 to null)
+        val real = PortHopping(listOf(20000..30000))
+        Hysteria2Rules.collapseSinglePortHop(443, real) shouldBe (443 to real)
+        val two = PortHopping(listOf(20000..20000, 30000..30000))
+        Hysteria2Rules.collapseSinglePortHop(443, two) shouldBe (443 to two)
+        Hysteria2Rules.collapseSinglePortHop(443, null) shouldBe (443 to null)
+    }
 }

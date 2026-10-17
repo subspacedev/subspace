@@ -43,17 +43,19 @@ internal fun hysteria2FromClash(
     val tls = buildTls(query, server)
     val failed = listOf(hopping, obfs, congestion, tls).firstOrNull { it is Step.Fail }
     if (failed is Step.Fail) return LinkResult.Bad(parseFailure(index, failed.reason, failed.detail))
+    // R11: Mihomo dials from `ports` when set, so a single-value `ports` is no hopping on that port.
+    val (dialled, hops) = Hysteria2Rules.collapseSinglePortHop(port, (hopping as Step.Ok).value)
     val outbound =
         Hysteria2Outbound(
             address = server,
-            port = port,
+            port = dialled,
             password = password,
             tls = (tls as Step.Ok).value,
-            hopping = (hopping as Step.Ok).value,
+            hopping = hops,
             obfuscation = (obfs as Step.Ok).value,
             congestion = (congestion as Step.Ok).value,
         )
-    return LinkResult.Ok(Profile(profileId("hysteria2", server, port, password), common.name, outbound))
+    return LinkResult.Ok(Profile(profileId("hysteria2", server, dialled, password), common.name, outbound))
 }
 
 private fun clashBad(
@@ -98,8 +100,9 @@ private fun clashHopping(proxy: YamlMap): Step<PortHopping?> {
             ParseFailureReason.InvalidPort,
             FailureDetail.Malformed(DetailField.Port),
         )
-    // Without hopping, hop-interval is a harmless extra (panels emit it as a default): ignored.
-    if (ranges.size == 1 && ranges[0].first == ranges[0].last) return Step.Ok(null)
+    // A single port is not hopping (R11 collapses it onto the port); hop-interval is then a harmless
+    // extra (panels emit it as a default) and is ignored, R9.
+    if (ranges.size == 1 && ranges[0].first == ranges[0].last) return Step.Ok(PortHopping(ranges))
     val interval =
         Hysteria2Rules.hopInterval(proxy.text("hop-interval"))
             ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))

@@ -72,20 +72,22 @@ internal fun parseHysteriaOutbound(
         rawTls(stream.objectValue("tlsSettings"), address)
             ?: return rawBad(index, ParseFailureReason.MalformedJson, FailureDetail.Malformed(DetailField.Pin))
     val mask = readHysteria2Finalmask(stream.objectValue("finalmask") ?: JsonObject(emptyMap()))
+    // R11: the projection reports the port the core actually dials; the raw JSON itself is unchanged.
+    val (dialled, hopping) = Hysteria2Rules.collapseSinglePortHop(port, mask.hopping)
     val result =
         Hysteria2Outbound(
             address = address,
-            port = port,
+            port = dialled,
             password = password,
             tls = tls,
-            hopping = mask.hopping,
+            hopping = hopping,
             obfuscation = mask.obfuscation ?: Hysteria2Obfuscation.None,
             congestion = mask.congestion ?: Hysteria2Congestion.Default,
             notConnectableReason = mask.notConnectableReason,
         )
     val tagName = outbound.stringValue("tag")?.takeIf { it.isNotBlank() }
     val name = if (remarks != null) remarks else tagName ?: address
-    return LinkResult.Ok(Profile(profileId("hysteria2", address, port, password), name, result, rawJson = elementText))
+    return LinkResult.Ok(Profile(profileId("hysteria2", address, dialled, password), name, result, rawJson = elementText))
 }
 
 /** Null when a pin is invalid. Pins may be one comma-separated string or an array of them. */

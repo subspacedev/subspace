@@ -475,4 +475,18 @@ class Hysteria2LinkTest {
         out.tls.serverName shouldBe "s.example"
         out.notConnectableReason shouldBe null
     }
+
+    @Test
+    fun `fm udphop with a single port dials that port without hopping`() {
+        val json =
+            """{"udp":[{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote","remotePorts":"20000"}}]}"""
+        val out = ok("hysteria2://pw@h.example:443?fm=${fm(json)}")
+        out.port shouldBe 20000
+        out.hopping shouldBe null
+        val legacy = """{"quicParams":{"udpHop":{"ports":"20000"}}}"""
+        ok("hysteria2://pw@h.example:443?fm=${fm(legacy)}").let {
+            it.port shouldBe 20000
+            it.hopping shouldBe null
+        }
+    }
 }

@@ -404,6 +404,21 @@ class Hysteria2EditorTest {
         }
 
     @Test
+    fun `a stored single-port hop loads as that port and saves without losing it`() =
+        runTest {
+            // R11: udphop dials remotePorts, not the outbound port, so this row dials 20000 today.
+            val outbound = full.copy(port = 443, hopping = PortHopping(listOf(20000..20000), 45))
+            val (viewModel, source) = loaded(outbound)
+            advanceUntilIdle()
+            viewModel.state.value.port shouldBe "20000"
+            viewModel.state.value.hysteria2.hopPorts shouldBe ""
+            viewModel.save()
+            advanceUntilIdle()
+
+            source.lastUpdate shouldBe outbound.copy(port = 20000, hopping = null)
+        }
+
+    @Test
     fun `a missing password and a bad port use the shared errors`() =
         runTest {
             val (viewModel, source) = loaded()

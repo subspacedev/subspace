@@ -59,6 +59,21 @@ public object Hysteria2Rules {
         return trimmed.takeIf { digits }?.toInt()?.takeIf { it >= MIN_HOP_INTERVAL }
     }
 
+    /**
+     * Ruling R11: a hop list of exactly one port is no hopping, on that port. Xray's `udphop` mask dials a
+     * port from `remotePorts` and ignores the outbound's own port (Xray-core v26.10.10
+     * `transport/internet/finalmask/udphop/conn.go:68-69,134-135`), so `port 443` with hopping `[20000]`
+     * dials 20000; dropping the hop without moving the port would silently dial 443. Every reader and the
+     * editor's load go through this, so the outbound's port is always the one actually dialled.
+     */
+    public fun collapseSinglePortHop(
+        port: Int,
+        hopping: PortHopping?,
+    ): Pair<Int, PortHopping?> {
+        val only = hopping?.ports?.singleOrNull()?.takeIf { it.first == it.last } ?: return port to hopping
+        return only.first to null
+    }
+
     /** A Gecko packet-size range the core builds: `0 < min <= max <= MAX_PACKET_SIZE`. */
     public fun geckoRangeValid(
         min: Int,

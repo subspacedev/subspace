@@ -261,4 +261,19 @@ class Hysteria2ClashAndJsonTest {
                 FailureDetail.Malformed(DetailField.HopInterval)
         }
     }
+
+    @Test
+    fun `raw single-port udphop projects to that port without hopping`() {
+        val hop = """{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote","remotePorts":"20000"}}"""
+        val out = rawOk(finalmask = """{"udp":[$hop]}""")
+        out.port shouldBe 20000
+        out.hopping shouldBe null
+    }
+
+    @Test
+    fun `clash single-value ports dials that port without hopping`() {
+        val out = clashOk("password: pw\nports: 20000")
+        out.port shouldBe 20000
+        out.hopping shouldBe null
+    }
 }

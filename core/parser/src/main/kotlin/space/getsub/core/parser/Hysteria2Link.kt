@@ -113,11 +113,13 @@ private fun buildOutbound(raw: String): Step<Hysteria2Outbound> {
     if (failed is Step.Fail) return failed
 
     val mask = (fm as Step.Ok).value
-    val hopping = mask?.hopping ?: (queryHop as Step.Ok).value
+    // R11: a one-port hop list (an fm= udphop or legacy udpHop) is no hopping, on that port.
+    val (port, hopping) =
+        Hysteria2Rules.collapseSinglePortHop(hops.value.port, mask?.hopping ?: (queryHop as Step.Ok).value)
     return Step.Ok(
         Hysteria2Outbound(
             address = parts.host,
-            port = hops.value.port,
+            port = port,
             password = parts.password,
             tls = (tls as Step.Ok).value,
             hopping = hopping,

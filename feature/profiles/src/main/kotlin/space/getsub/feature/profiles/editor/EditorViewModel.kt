@@ -20,6 +20,7 @@ import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -533,7 +534,16 @@ private fun StoredProfile.toEditorState(groups: List<EditorGroupOption>): Editor
         is ShadowsocksOutbound -> base.copy(method = ob.method, primaryCredential = ob.password)
         is SocksOutbound ->
             base.copy(primaryCredential = ob.username.orEmpty(), secondaryCredential = ob.password.orEmpty())
-        is Hysteria2Outbound -> base.copy(primaryCredential = ob.password, hysteria2 = Hysteria2Draft.from(ob))
+        is Hysteria2Outbound -> {
+            // R11: a stored one-port hop dials that port; show it as the port, with no hopping, so a
+            // save cannot silently move the row back to the outbound port.
+            val (dialled, hopping) = Hysteria2Rules.collapseSinglePortHop(ob.port, ob.hopping)
+            base.copy(
+                port = dialled.toString(),
+                primaryCredential = ob.password,
+                hysteria2 = Hysteria2Draft.from(ob.copy(port = dialled, hopping = hopping)),
+            )
+        }
     }
 }
 
