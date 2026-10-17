@@ -87,7 +87,9 @@ internal fun parseHysteriaOutbound(
         )
     val tagName = outbound.stringValue("tag")?.takeIf { it.isNotBlank() }
     val name = if (remarks != null) remarks else tagName ?: address
-    return LinkResult.Ok(Profile(profileId("hysteria2", address, dialled, password), name, result, rawJson = elementText))
+    return LinkResult.Ok(
+        Profile(profileId("hysteria2", address, dialled, password), name, result, rawJson = elementText),
+    )
 }
 
 /** Null when a pin is invalid. Pins may be one comma-separated string or an array of them. */

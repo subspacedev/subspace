@@ -70,8 +70,8 @@ public object Hysteria2Rules {
         port: Int,
         hopping: PortHopping?,
     ): Pair<Int, PortHopping?> {
-        val only = hopping?.ports?.singleOrNull()?.takeIf { it.first == it.last } ?: return port to hopping
-        return only.first to null
+        val only = hopping?.ports?.singleOrNull()?.takeIf { it.first == it.last }
+        return if (only == null) Pair(port, hopping) else Pair(only.first, null)
     }
 
     /** A Gecko packet-size range the core builds: `0 < min <= max <= MAX_PACKET_SIZE`. */
