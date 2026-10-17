@@ -52,6 +52,8 @@ class Hysteria2XrayTest {
     private val hopping = PortHopping(ports = listOf(20000..30000, 40000..40000))
     private val salamander = Hysteria2Obfuscation.Salamander("obfs-password")
     private val brutal = Hysteria2Congestion.Brutal("100 mbps", "50 mbps")
+    private val brutalUpOnly = Hysteria2Congestion.Brutal("100 mbps", "")
+    private val brutalDownOnly = Hysteria2Congestion.Brutal("", "50 mbps")
     private val gecko = Hysteria2Obfuscation.Gecko("obfs-password", 100, 1200)
 
     private val plain =
@@ -114,8 +116,8 @@ class Hysteria2XrayTest {
                     Case("hopping interval", plain.copy(hopping = hopping.copy(intervalSeconds = 10)), settings),
                     Case("brutal", plain.copy(congestion = brutal), settings),
                     // The editor accepts Brutal with only one direction set (final review M8).
-                    Case("brutal up only", plain.copy(congestion = Hysteria2Congestion.Brutal("100 mbps", "")), settings),
-                    Case("brutal down only", plain.copy(congestion = Hysteria2Congestion.Brutal("", "50 mbps")), settings),
+                    Case("brutal up only", plain.copy(congestion = brutalUpOnly), settings),
+                    Case("brutal down only", plain.copy(congestion = brutalDownOnly), settings),
                     Case("bbr profile", plain.copy(congestion = Hysteria2Congestion.Bbr("aggressive")), settings),
                     Case("noise", plain, withNoise),
                     Case(

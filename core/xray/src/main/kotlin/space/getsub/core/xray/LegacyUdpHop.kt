@@ -46,27 +46,37 @@ internal object LegacyUdpHop {
     @Suppress("ReturnCount")
     private fun rewrite(outbound: JsonObject): JsonObject? {
         val stream = outbound["streamSettings"] as? JsonObject ?: return null
-        val network = (stream["network"] as? JsonPrimitive)?.content?.lowercase()
-        val protocol = (outbound["protocol"] as? JsonPrimitive)?.content?.lowercase()
-        if (protocol != "hysteria" && network != "hysteria") return null
+        if (!outbound.isHysteria(stream)) return null
         val finalmask = stream["finalmask"] as? JsonObject ?: return null
+        val newFinalmask = rewriteFinalmask(finalmask) ?: return null
+        val newStream = stream.toMutableMap().apply { put("finalmask", newFinalmask) }
+        return JsonObject(outbound.toMutableMap().apply { put("streamSettings", JsonObject(newStream)) })
+    }
+
+    private fun JsonObject.isHysteria(stream: JsonObject): Boolean {
+        val network = (stream["network"] as? JsonPrimitive)?.content?.lowercase()
+        val protocol = (this["protocol"] as? JsonPrimitive)?.content?.lowercase()
+        return protocol == "hysteria" || network == "hysteria"
+    }
+
+    /** The rewritten finalmask, or null when there is no legacy shape this can read. */
+    @Suppress("ReturnCount")
+    private fun rewriteFinalmask(finalmask: JsonObject): JsonObject? {
         val quic = finalmask["quicParams"] as? JsonObject ?: return null
         val hop = quic["udpHop"] as? JsonObject ?: return null
-        val ports = hop["ports"] as? JsonPrimitive ?: return null
-        if (ports is JsonNull) return null
-        val udpElement = finalmask["udp"]?.takeUnless { it is JsonNull }
-        val udp = (udpElement ?: JsonArray(emptyList())) as? JsonArray ?: return null
+        val ports = (hop["ports"] as? JsonPrimitive)?.takeUnless { it is JsonNull } ?: return null
+        val udpElement = finalmask["udp"]?.takeUnless { it is JsonNull } ?: JsonArray(emptyList())
+        val udp = udpElement as? JsonArray ?: return null
 
         val hasMask = udp.any { ((it as? JsonObject)?.get("type") as? JsonPrimitive)?.content == "udphop" }
         val newUdp = if (hasMask) udp else JsonArray(udp + udphopMask(ports, hop["interval"]))
         val newQuic = quic - "udpHop"
-        val newFinalmask =
+        return JsonObject(
             finalmask.toMutableMap().apply {
                 put("udp", newUdp)
                 if (newQuic.isEmpty()) remove("quicParams") else put("quicParams", JsonObject(newQuic))
-            }
-        val newStream = stream.toMutableMap().apply { put("finalmask", JsonObject(newFinalmask)) }
-        return JsonObject(outbound.toMutableMap().apply { put("streamSettings", JsonObject(newStream)) })
+            },
+        )
     }
 
     private fun udphopMask(

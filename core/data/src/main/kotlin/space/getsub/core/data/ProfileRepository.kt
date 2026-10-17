@@ -619,4 +619,3 @@ internal fun Outbound.transportSummary(): String {
 
 private fun Hysteria2Outbound.hasUnknownBbrProfile(): Boolean =
     (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true
-

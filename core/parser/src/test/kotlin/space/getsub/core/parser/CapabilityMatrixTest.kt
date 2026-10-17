@@ -52,7 +52,9 @@ class CapabilityMatrixTest {
                 "proxies:\n  - {name: N, type: ss, server: host.example, port: 8388, " +
                 "cipher: aes-256-gcm, password: s3cret}",
             "socks" to "proxies:\n  - {name: N, type: socks5, server: host.example, port: 1080}",
-            "hysteria2" to "proxies:\n  - {name: N, type: hysteria2, server: host.example, port: 443, password: s3cret}",
+            "hysteria2" to
+                "proxies:\n  - {name: N, type: hysteria2, server: host.example, port: 443, " +
+                "password: s3cret}",
         )
 
     private val xrayJson =
@@ -73,7 +75,8 @@ class CapabilityMatrixTest {
                 """{"outbounds":[{"protocol":"socks","settings":{"servers":[""" +
                 """{"address":"host.example","port":1080}]}}]}""",
             "hysteria2" to
-                """{"outbounds":[{"protocol":"hysteria","settings":{"version":2,"address":"host.example","port":443},""" +
+                """{"outbounds":[{"protocol":"hysteria",""" +
+                """"settings":{"version":2,"address":"host.example","port":443},""" +
                 """"streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"s3cret"},""" +
                 """"security":"tls","tlsSettings":{"serverName":"host.example"}}}]}""",
         )

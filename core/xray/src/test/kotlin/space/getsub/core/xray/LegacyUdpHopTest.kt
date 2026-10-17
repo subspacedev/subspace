@@ -39,13 +39,11 @@ class LegacyUdpHopTest {
             "streamSettings":{"network":"hysteria","security":"tls","finalmask":$finalmask}}]"""
 
     @Test fun `the legacy shape becomes a udphop mask and the key goes`() {
-        val out =
-            LegacyUdpHop.apply(
-                parse(hysteria("""{"quicParams":{"congestion":"bbr","udpHop":{"ports":"20000-30000","interval":15}}}""")),
-            )
-        val fm = out.stream(0).finalmask()
-        fm["quicParams"]!!.jsonObject shouldBe Json.parseToJsonElement("""{"congestion":"bbr"}""")
-        fm["udp"] shouldBe
+        val fm = """{"quicParams":{"congestion":"bbr","udpHop":{"ports":"20000-30000","interval":15}}}"""
+        val out = LegacyUdpHop.apply(parse(hysteria(fm)))
+        val written = out.stream(0).finalmask()
+        written["quicParams"]!!.jsonObject shouldBe Json.parseToJsonElement("""{"congestion":"bbr"}""")
+        written["udp"] shouldBe
             Json.parseToJsonElement(
                 """[{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote","interval":15,
                     "remotePorts":"20000-30000"}}]""",
@@ -78,7 +76,8 @@ class LegacyUdpHopTest {
     @Test fun `configs without the legacy shape, or not hysteria, or malformed, are returned unchanged`() {
         val plain = parse(hysteria("""{"quicParams":{"congestion":"bbr"}}"""))
         LegacyUdpHop.apply(plain) shouldBe plain
-        val vless = parse("""[{"protocol":"vless","streamSettings":{"finalmask":{"quicParams":{"udpHop":{"ports":"1-2"}}}}}]""")
+        val vless =
+            parse("""[{"protocol":"vless","streamSettings":{"finalmask":{"quicParams":{"udpHop":{"ports":"1-2"}}}}}]""")
         LegacyUdpHop.apply(vless) shouldBe vless
         val noPorts = parse(hysteria("""{"quicParams":{"udpHop":{"interval":10}}}"""))
         LegacyUdpHop.apply(noPorts) shouldBe noPorts
