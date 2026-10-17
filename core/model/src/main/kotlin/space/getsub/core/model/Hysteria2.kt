@@ -22,8 +22,10 @@ public data class Hysteria2Tls(
     val pins: List<String> = emptyList(),
     val skipChecksRequested: Boolean = false,
 ) {
-    override fun toString(): String =
-        "Hysteria2Tls(alpn=$alpn, pins=<redacted:${pins.size}>, skipChecksRequested=$skipChecksRequested)"
+    override fun toString(): String {
+        val redactedPins = "<redacted:${pins.size}>"
+        return "Hysteria2Tls(alpn=$alpn, pins=$redactedPins, skipChecksRequested=$skipChecksRequested)"
+    }
 }
 
 /** Port hopping: the server listens on [ports]; the client rotates every [intervalSeconds]. */
@@ -90,16 +92,19 @@ private val HEX_ONLY = Regex("[0-9a-fA-F]+")
 public fun normalisePin(text: String): PinResult {
     val trimmed = text.trim()
     val unseparated = trimmed.replace(":", "")
-    if (unseparated.isNotEmpty() && HEX_ONLY.matches(unseparated)) {
-        return if (unseparated.length == PIN_HEX_LENGTH) PinResult.Ok(unseparated.lowercase()) else PinResult.Invalid
-    }
     val bytes =
-        try {
-            val decoder = if ('-' in trimmed || '_' in trimmed) Base64.getUrlDecoder() else Base64.getDecoder()
-            decoder.decode(trimmed)
-        } catch (_: IllegalArgumentException) {
-            return PinResult.Invalid
+        if (unseparated.isNotEmpty() && HEX_ONLY.matches(unseparated)) {
+            unseparated.takeIf { it.length == PIN_HEX_LENGTH }?.lowercase()
+        } else {
+            decodeBase64Pin(trimmed)?.takeIf { it.size == PIN_BYTES }?.joinToString("") { "%02x".format(it) }
         }
-    if (bytes.size != PIN_BYTES) return PinResult.Invalid
-    return PinResult.Ok(bytes.joinToString("") { "%02x".format(it) })
+    return bytes?.let { PinResult.Ok(it) } ?: PinResult.Invalid
 }
+
+private fun decodeBase64Pin(text: String): ByteArray? =
+    try {
+        val decoder = if ('-' in text || '_' in text) Base64.getUrlDecoder() else Base64.getDecoder()
+        decoder.decode(text)
+    } catch (_: IllegalArgumentException) {
+        null
+    }

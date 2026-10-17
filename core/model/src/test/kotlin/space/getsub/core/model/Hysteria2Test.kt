@@ -2,11 +2,11 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.model
 
-import java.util.Base64
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.Test
+import java.util.Base64
 
 class Hysteria2Test {
     private val hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -23,6 +23,30 @@ class Hysteria2Test {
         val bytes = ByteArray(32) { it.toByte() }
         val expected = bytes.joinToString("") { "%02x".format(it) }
         normalisePin(Base64.getEncoder().encodeToString(bytes)) shouldBe PinResult.Ok(expected)
+    }
+
+    @Test
+    fun unpaddedBase64PinNormalises() {
+        val bytes = ByteArray(32) { it.toByte() }
+        val encoded = Base64.getEncoder().withoutPadding().encodeToString(bytes)
+        (encoded.endsWith("=")) shouldBe false
+        normalisePin(encoded) shouldBe PinResult.Ok(bytes.joinToString("") { "%02x".format(it) })
+    }
+
+    @Test
+    fun urlSafeBase64PinNormalises() {
+        val bytes = ByteArray(32) { 0xfb.toByte() }
+        val encoded = Base64.getUrlEncoder().encodeToString(bytes)
+        (encoded.contains('-') || encoded.contains('_')) shouldBe true
+        normalisePin(encoded) shouldBe PinResult.Ok("fb".repeat(32))
+    }
+
+    @Test
+    fun surroundingWhitespaceIsIgnored() {
+        normalisePin("  \t$hex\n") shouldBe PinResult.Ok(hex)
+        val bytes = ByteArray(32) { it.toByte() }
+        val encoded = Base64.getEncoder().encodeToString(bytes)
+        normalisePin(" $encoded ") shouldBe PinResult.Ok(bytes.joinToString("") { "%02x".format(it) })
     }
 
     @Test
