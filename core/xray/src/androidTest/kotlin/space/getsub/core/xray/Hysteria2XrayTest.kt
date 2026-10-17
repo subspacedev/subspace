@@ -251,4 +251,32 @@ class Hysteria2XrayTest {
             assertEquals(listOf("noise"), udpMaskTypes(json))
             assertTrue("core refused injected noise on a bare hysteria outbound", accepted(json))
         }
+
+    /**
+     * Final review I4: Remnawave's v26.7.11 `quicParams.udpHop` shape, which v26.10.10 no longer reads.
+     * The composer rewrites it into a last `udphop` mask (after the user's noise) and drops the old key,
+     * and the core must accept the result.
+     */
+    @Test
+    fun aRawHysteriaConfigWithTheLegacyUdpHopIsRewrittenAndPasses() =
+        runTest {
+            val root = Json.parseToJsonElement(rawHysteria).jsonObject
+            val outbounds =
+                root.getValue("outbounds").jsonArray.map { outbound ->
+                    val o = outbound.jsonObject
+                    val stream = o["streamSettings"] as? JsonObject ?: return@map o
+                    val fm = stream.getValue("finalmask").jsonObject
+                    val udp = fm.getValue("udp").jsonArray.filterNot { "udphop" in it.toString() }
+                    val legacyHop = Json.parseToJsonElement("""{"ports":"20000-30000","interval":15}""")
+                    val quic = JsonObject(fm.getValue("quicParams").jsonObject + ("udpHop" to legacyHop))
+                    val newFm = JsonObject(fm + ("udp" to JsonArray(udp)) + ("quicParams" to quic))
+                    JsonObject(o + ("streamSettings" to JsonObject(stream + ("finalmask" to newFm))))
+                }
+            val legacy = JsonObject(root + ("outbounds" to JsonArray(outbounds))).toString()
+            check("udphop" !in legacy && "udpHop" in legacy) { "fixture rewrite did not apply" }
+            val json = composed(legacy, withNoise)
+            assertEquals(listOf("salamander", "noise", "udphop"), udpMaskTypes(json))
+            assertTrue("the legacy key survived the composer", "udpHop" !in json)
+            assertTrue("core refused the rewritten legacy udpHop config", accepted(json))
+        }
 }
