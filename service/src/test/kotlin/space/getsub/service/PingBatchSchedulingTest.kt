@@ -189,7 +189,7 @@ class PingBatchSchedulingTest {
     fun tcpModeNeverTouchesPingClient() =
         runTest {
             val connector = FakePingConnector()
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
             val results = mutableListOf<LatencyResult>()
             val runner =
                 LatencyRunner<Long>(
@@ -200,7 +200,7 @@ class PingBatchSchedulingTest {
                         planLatency(options, { false }, rawJson = null, outbound = vless) { "config" }
                     },
                     measureBatch = { group, targets -> client.measure(targets, group.timeoutSeconds, group.url) },
-                    onRunEnded = client::release,
+                    onRunEnded = client::releaseAfterGrace,
                 )
 
             runner.start(1L, longArrayOf(1, 2, 3), { tcp }, { _, _, r -> results += r }, {})

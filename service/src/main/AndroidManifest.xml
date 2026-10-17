@@ -58,8 +58,10 @@
              instance, and the tunnel's lives in :bg. The libXray README allows one
              Go runtime per process, and each separate process may load its own, so
              this second process loads the same AAR and never calls runXray.
-             Bound on demand by :bg's PingClient; ends its own process 30 s after
-             the last unbind (IdleExit). Not exported: only this app binds it. -->
+             Bound on demand by :bg's PingClient, which unbinds 30 s after its last
+             batch (IdleTimer, in :bg because the cached-app freezer can stop an
+             unbound :ping); on that unbind this process ends itself once no batch
+             is queued or running (ExitWhenIdle). Not exported: only this app binds it. -->
         <service
             android:name=".PingService"
             android:process=":ping"

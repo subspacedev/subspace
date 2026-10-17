@@ -9,6 +9,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.RemoteException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -50,9 +51,13 @@ internal fun interface PingRemote {
 /**
  * `:bg`'s handle on `:ping` (libXray stock upgrade spec §4).
  *
- * Binds on the first [measure] and holds the binding until [release], which
- * [LatencyRunner] triggers when a run ends or is superseded — the unbind is what
- * starts `:ping`'s idle exit (spec §9.7). Never fails a call by throwing: every
+ * Binds on the first [measure]. [releaseAfterGrace] — which [LatencyRunner]
+ * triggers when a run finishes, is superseded or is cancelled — keeps the
+ * binding for [IdleTimer.IDLE_GRACE_MILLIS] and then unbinds; a [measure]
+ * inside the grace cancels the unbind and reuses the binding. The unbind is
+ * what ends `:ping` ([ExitWhenIdle]); the grace lives here because `:bg` is
+ * active while a run can start, and an unbound `:ping` may be frozen (Ruling
+ * P8, spec §9.7). [close] unbinds at once. Never fails a call by throwing: every
  * path that cannot produce a measurement fails the batch's servers as
  * [LatencyOutcome.UNREACHABLE].
  *
@@ -69,10 +74,13 @@ internal fun interface PingRemote {
  */
 internal class PingClient(
     private val connector: PingConnector,
+    idleScope: CoroutineScope,
+    graceMillis: Long = IdleTimer.IDLE_GRACE_MILLIS,
     private val bindTimeoutMillis: Long = BIND_TIMEOUT_MILLIS,
 ) {
     private val calls = Mutex()
     private val lock = Any()
+    private val idle = IdleTimer(idleScope, graceMillis) { dropCurrent() }
 
     // Guarded by `lock`.
     private var session: Session? = null
@@ -98,13 +106,22 @@ internal class PingClient(
         url: String,
     ): Map<Long, LatencyResult> {
         if (batch.isEmpty()) return emptyMap()
+        idle.disarm()
         val reply = calls.withLock { exchange(PingBatchParcel.of(batch, timeoutSeconds, url), timeoutSeconds) }
         val results = reply?.toResults().orEmpty()
         return batch.associate { it.key to (results[it.key] ?: LatencyResult.failed(LatencyOutcome.UNREACHABLE)) }
     }
 
-    /** Unbinds, failing anything still waiting. Harmless when not bound. */
-    fun release() {
+    /** A run is done with `:ping`: unbind once [IdleTimer.IDLE_GRACE_MILLIS] passes with no [measure]. */
+    fun releaseAfterGrace() = idle.arm()
+
+    /** Unbinds now, failing anything still waiting. Harmless when not bound. */
+    fun close() {
+        idle.disarm()
+        dropCurrent()
+    }
+
+    private fun dropCurrent() {
         synchronized(lock) { session }?.let(::drop)
     }
 

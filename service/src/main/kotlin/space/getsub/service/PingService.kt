@@ -8,9 +8,6 @@ import android.os.IBinder
 import android.os.Process
 import android.os.RemoteException
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.xray.LibXrayPingBatchCall
 import space.getsub.core.xray.PingBatch
@@ -31,12 +28,13 @@ private const val TAG = "PingService"
  * in every per-app mode, and that exclusion is by UID, which `:ping` shares, so
  * its sockets go direct exactly as `:bg`'s in-process pings did.
  *
- * **Lifetime.** Started by `:bg`'s bind ([PingClient]); idle after the last
- * unbind; ends its own process [IdleExit.IDLE_GRACE_MILLIS] later. The timer
- * and the worker are process-wide rather than per instance: a bound-only
- * service is destroyed as soon as its last client unbinds, and a new bind then
- * creates a fresh instance in the same process — whose `onBind` is what must
- * cancel the pending exit.
+ * **Lifetime (Ruling P8).** Started by `:bg`'s bind ([PingClient]). `:bg`
+ * holds the binding for [IdleTimer.IDLE_GRACE_MILLIS] after its last batch and
+ * then unbinds; this process ends itself on that unbind if nothing is queued or
+ * running, or right after the last batch otherwise ([ExitWhenIdle]). No timer
+ * runs here: an unbound `:ping` is a cached process the freezer can stop.
+ * The exit state and the worker are process-wide rather than per instance,
+ * because a bound-only service is destroyed as soon as its last client unbinds.
  */
 public class PingService : Service() {
     override fun onCreate() {
@@ -45,23 +43,21 @@ public class PingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder {
-        idleExit.disarm()
+        exitWhenIdle.onBind()
         return binder
     }
 
     override fun onRebind(intent: Intent?) {
-        idleExit.disarm()
+        exitWhenIdle.onBind()
     }
 
     /** True so [onRebind] is called if this instance is still alive at the next bind. */
     override fun onUnbind(intent: Intent?): Boolean {
-        idleExit.arm()
+        exitWhenIdle.onUnbind()
         return true
     }
 
     override fun onDestroy() {
-        // The idle timer is deliberately left running: destruction follows the
-        // last unbind, which is exactly when it should count.
         if (current === this) current = null
         super.onDestroy()
     }
@@ -76,12 +72,17 @@ public class PingService : Service() {
                     Log.w(TAG, "ping batch refused: incomplete request")
                     return
                 }
+                exitWhenIdle.batchQueued()
                 worker.execute {
-                    val reply =
-                        answerPingBatch(request, LibXrayPingBatchCall()) { name ->
-                            Log.w(TAG, "ping batch failed: $name")
-                        }
-                    deliver { callback.onResult(reply) }
+                    try {
+                        val reply =
+                            answerPingBatch(request, LibXrayPingBatchCall()) { name ->
+                                Log.w(TAG, "ping batch failed: $name")
+                            }
+                        deliver { callback.onResult(reply) }
+                    } finally {
+                        exitWhenIdle.batchDone()
+                    }
                 }
             }
         }
@@ -100,9 +101,8 @@ public class PingService : Service() {
             Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ping-batch").apply { isDaemon = true } }
         }
 
-        @Suppress("InjectDispatcher") // A process-wide timer with no Hilt graph in :ping.
-        val idleExit: IdleExit by lazy {
-            IdleExit(CoroutineScope(SupervisorJob() + Dispatchers.Default)) {
+        val exitWhenIdle: ExitWhenIdle by lazy {
+            ExitWhenIdle {
                 // stopSelf first so the system records the service as stopped, then
                 // end the process: a cached process is not reclaimed on our schedule.
                 current?.stopSelf()

@@ -846,13 +846,13 @@ class TunnelService : VpnService() {
             onMeasurementError = { name -> Log.w(TAG, "measurement failed: $name") },
             plan = { profile, options -> planOne(profile, options) },
             measureBatch = { group, targets -> pingClient.measure(targets, group.timeoutSeconds, group.url) },
-            // Unbinding is what starts :ping's idle exit (spec §9.7).
-            onRunEnded = { pingClient.release() },
+            // Ruling P8: :bg holds the grace, then unbinds; :ping exits on that unbind.
+            onRunEnded = { pingClient.releaseAfterGrace() },
         )
     }
 
-    /** `:bg`'s binding to `:ping`; bound only while a run has proxy-head batches. */
-    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext)) }
+    /** `:bg`'s binding to `:ping`: bound by a run's first proxy-head batch, held for the grace after the run. */
+    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext), idleScope = scope) }
 
     // All guarded by `lock`.
     private var controller: XrayController? = null
@@ -3431,8 +3431,8 @@ class TunnelService : VpnService() {
         stopTunnel(finalState)
         commandCoordinator.close()
         callbacks.kill()
-        // Lets :ping's idle exit start rather than leaking the connection.
-        pingClient.release()
+        // Unbinds now (no grace: this process is going), so :ping exits too.
+        pingClient.close()
         scope.cancel()
         super.onDestroy()
     }

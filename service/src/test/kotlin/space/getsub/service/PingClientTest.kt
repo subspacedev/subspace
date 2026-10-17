@@ -8,6 +8,7 @@ import io.kotest.matchers.maps.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -63,7 +64,7 @@ class PingClientTest {
     fun resultsComeBackKeyedByTarget() =
         runTest {
             val connector = FakePingConnector()
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
 
             client.measure(batch, 5, "https://x.invalid") shouldContainExactly
                 mapOf(1L to LatencyResult.ok(7), 2L to LatencyResult.ok(7))
@@ -80,7 +81,7 @@ class PingClientTest {
                     reply(null)
                 })
 
-            PingClient(connector).measure(batch, 4, "https://x.invalid")
+            PingClient(connector, TestScope(testScheduler)).measure(batch, 4, "https://x.invalid")
 
             val request = checkNotNull(seen)
             request.keys.toList() shouldContainExactly listOf(1L, 2L)
@@ -93,7 +94,7 @@ class PingClientTest {
     fun binderDeathFailsInFlightServersAndNextRunRebinds() =
         runTest {
             val connector = FakePingConnector(remote = { _, _ -> throw deadObject() })
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
 
             client.measure(batch, 5, "https://x.invalid") shouldContainExactly bothFailed
             // The binding is dropped, so BIND_AUTO_CREATE cannot resurrect :ping on
@@ -114,7 +115,7 @@ class PingClientTest {
         runTest {
             // :ping accepted the oneway call, then was killed before answering.
             val connector = FakePingConnector(remote = { _, _ -> })
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
 
             val pending = async { client.measure(batch, 5, "https://x.invalid") }
             runCurrent()
@@ -127,14 +128,15 @@ class PingClientTest {
     @Test
     fun aRefusedBindFailsTheBatch() =
         runTest {
-            PingClient(FakePingConnector(refuse = true)).measure(batch, 5, "https://x.invalid") shouldContainExactly
-                bothFailed
+            val client = PingClient(FakePingConnector(refuse = true), TestScope(testScheduler))
+
+            client.measure(batch, 5, "https://x.invalid") shouldContainExactly bothFailed
         }
 
     @Test
     fun aServiceThatNeverAnswersFailsTheBatchAfterTheWatchdog() =
         runTest {
-            val client = PingClient(FakePingConnector(remote = { _, _ -> }))
+            val client = PingClient(FakePingConnector(remote = { _, _ -> }), TestScope(testScheduler))
 
             val pending = async { client.measure(batch, 5, "https://x.invalid") }
             advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
@@ -143,18 +145,18 @@ class PingClientTest {
         }
 
     @Test
-    fun releaseUnbindsAndFailsWhatIsStillWaiting() =
+    fun closeUnbindsAtOnceAndFailsWhatIsStillWaiting() =
         runTest {
             val connector = FakePingConnector(remote = { _, _ -> })
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
 
             val pending = async { client.measure(batch, 5, "https://x.invalid") }
             runCurrent()
-            client.release()
+            client.close()
 
             pending.await() shouldContainExactly bothFailed
             connector.unbinds shouldBe 1
-            client.release()
+            client.close()
             connector.unbinds shouldBe 1
         }
 
@@ -167,7 +169,7 @@ class PingClientTest {
                     val size = request.keys.size
                     replies += { reply(PingBatchResultParcel(request.keys, IntArray(size), IntArray(size))) }
                 })
-            val client = PingClient(connector)
+            val client = PingClient(connector, TestScope(testScheduler))
 
             val first = async { client.measure(batch, 5, "https://x.invalid") }
             val second = async { client.measure(batch, 5, "https://x.invalid") }
@@ -191,6 +193,70 @@ class PingClientTest {
                     reply(PingBatchResultParcel(longArrayOf(1, 99), intArrayOf(10000, 5), intArrayOf(42, 0)))
                 })
 
-            PingClient(connector).measure(batch, 5, "https://x.invalid") shouldContainExactly bothFailed
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            client.measure(batch, 5, "https://x.invalid") shouldContainExactly bothFailed
+        }
+
+    // ── The grace before unbinding (Ruling P8) ─────────────────────────────────
+
+    @Test
+    fun theIdleUnbindFiresOnlyAfterTheGraceFollowingTheLastBatch() =
+        runTest {
+            val connector = FakePingConnector()
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            client.measure(batch, 5, "https://x.invalid")
+            advanceTimeBy(10 * IdleTimer.IDLE_GRACE_MILLIS)
+            runCurrent()
+            // Bound and idle with no run ended: nothing lets go.
+            connector.unbinds shouldBe 0
+
+            client.releaseAfterGrace() // the run ended
+            advanceTimeBy(IdleTimer.IDLE_GRACE_MILLIS - 1)
+            runCurrent()
+            connector.unbinds shouldBe 0
+            advanceTimeBy(1)
+            runCurrent()
+            connector.unbinds shouldBe 1
+        }
+
+    @Test
+    fun aMeasureInsideTheGraceCancelsTheUnbindAndDoesNotRebind() =
+        runTest {
+            val connector = FakePingConnector()
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            client.measure(batch, 5, "https://x.invalid")
+            client.releaseAfterGrace()
+            advanceTimeBy(IdleTimer.IDLE_GRACE_MILLIS - 1)
+            client.measure(batch, 5, "https://x.invalid") shouldContainExactly
+                mapOf(1L to LatencyResult.ok(7), 2L to LatencyResult.ok(7))
+            advanceTimeBy(10 * IdleTimer.IDLE_GRACE_MILLIS)
+            runCurrent()
+
+            connector.binds shouldBe 1
+            connector.unbinds shouldBe 0
+
+            // The next run's end starts a full grace of its own.
+            client.releaseAfterGrace()
+            advanceTimeBy(IdleTimer.IDLE_GRACE_MILLIS)
+            runCurrent()
+            connector.unbinds shouldBe 1
+        }
+
+    @Test
+    fun aMeasureAfterTheGraceExpiredBindsAgain() =
+        runTest {
+            val connector = FakePingConnector()
+            val client = PingClient(connector, TestScope(testScheduler))
+
+            client.measure(batch, 5, "https://x.invalid")
+            client.releaseAfterGrace()
+            advanceTimeBy(IdleTimer.IDLE_GRACE_MILLIS)
+            runCurrent()
+            client.measure(batch, 5, "https://x.invalid")
+
+            connector.binds shouldBe 2
         }
 }

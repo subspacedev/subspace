@@ -95,7 +95,8 @@ internal class LatencyRunner<T>(
         { _, _ -> emptyMap() },
     /**
      * Called, under the runner's lock, when the active run finishes, is
-     * superseded, or is cancelled — the moment `:bg` lets go of `:ping`.
+     * superseded, or is cancelled — the moment `:bg`'s grace before letting go
+     * of `:ping` starts (Ruling P8).
      */
     private val onRunEnded: () -> Unit = {},
 ) {
@@ -149,8 +150,8 @@ internal class LatencyRunner<T>(
         val previous =
             synchronized(lock) {
                 val old = job
-                // Superseding a live run lets go of `:ping` for it; this run binds
-                // again on its first batch.
+                // Superseding a live run ends it; this run's first batch cancels
+                // the grace and reuses the binding.
                 if (activeRunId != NO_RUN) onRunEnded()
                 activeRunId = runId
                 old
