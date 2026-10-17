@@ -120,7 +120,8 @@ public data class StoredProfile(
                 is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
-                // Final rule is `o.notConnectableReason == null`; Task 6 (generation) flips it once the generator can write it.
+                // Final rule is `o.notConnectableReason == null`; M9-D1 Task 6 flips it once the
+                // generator can write Hysteria2.
                 is Hysteria2Outbound -> false
                 null -> false
             }
