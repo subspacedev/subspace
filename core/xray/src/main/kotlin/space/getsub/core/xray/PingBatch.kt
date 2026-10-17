@@ -13,7 +13,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
-import org.json.JSONObject
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Obfuscation
@@ -40,10 +39,17 @@ public fun interface PingBatchCall {
     public fun invoke(requestPayload: String): String?
 }
 
-/** Production [PingBatchCall]: `LibXrayInvoke.call("pingBatch", …)`. Must run in the `:ping` process. */
+/**
+ * Production [PingBatchCall]. Must run in the `:ping` process: libXray refuses
+ * `pingBatch` in a process holding a managed instance.
+ *
+ * [LibXrayInvoke.callJson], not `call(…, JSONObject(payload))`: the payload is
+ * never re-parsed through `org.json`, so a `JSONException` quoting config text
+ * cannot arise here (ARCHITECTURE.md §5.6).
+ */
 public class LibXrayPingBatchCall : PingBatchCall {
     override fun invoke(requestPayload: String): String? =
-        LibXrayInvoke.call("pingBatch", JSONObject(requestPayload))?.toString()
+        LibXrayInvoke.callJson("pingBatch", requestPayload)?.toString()
 }
 
 /**

@@ -4,8 +4,7 @@ package space.getsub.core.xray
 
 /**
  * Bounded so a genuinely exhausted ephemeral range fails fast rather than
- * spinning — the same shape as [ProxyHeadProbe]'s single retry, widened
- * slightly because this guards a stronger property (see [allocateDistinctPorts]).
+ * spinning, rather than looping until one shows up (see [allocateDistinctPorts]).
  */
 private const val MAX_ALLOCATE_DISTINCT_ATTEMPTS = 3
 
@@ -20,7 +19,7 @@ private const val MAX_ALLOCATE_DISTINCT_ATTEMPTS = 3
  * distinctness itself, as a guard that costs nothing, rather than trusting the call.
  *
  * A free function rather than a method on [XrayController], for the same
- * reason [XrayPingApi] is a separate interface from [ProxyHeadProbe]: the
+ * reason [PingBatchCall] is a seam under [PingBatch]: the
  * underlying libXray call ([LibXrayInvoke], backed by native `LibXray.invoke`)
  * cannot run on the JVM, but the retry loop that consumes it can, with [fetch]
  * faked — see `PortAllocationTest`.

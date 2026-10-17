@@ -38,11 +38,13 @@ private fun currentProcessName(): String =
     }
 
 /**
- * `:bg` is `TunnelService`'s process (§3) — this [Application] class is instantiated in both, so any
- * work that must run exactly once per app launch (not once per process) has to check which one it is
- * in before doing anything.
+ * `:bg` is `TunnelService`'s process (§3) and `:ping` is `PingService`'s (libXray stock upgrade spec
+ * §4) — this [Application] class is instantiated in every one of them, so any work that must run
+ * exactly once per app launch (not once per process) has to check which one it is in before doing
+ * anything. The main process is the one with no `:suffix`; testing for `:bg` alone let `:ping` run
+ * the subscription and geo schedulers as a second "main".
  */
-private fun isMainProcess(): Boolean = !currentProcessName().endsWith(":bg")
+private fun isMainProcess(): Boolean = ':' !in currentProcessName()
 
 @HiltAndroidApp
 class SubspaceApplication : Application(), Configuration.Provider {
@@ -95,8 +97,8 @@ class SubspaceApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
-        // Only in :main (see isMainProcess's KDoc) — :bg is TunnelService's process and has no
-        // business refreshing subscriptions or touching WorkManager.
+        // Only in :main (see isMainProcess's KDoc) — :bg and :ping have no business refreshing
+        // subscriptions or touching WorkManager.
         if (isMainProcess()) {
             // Resolved here, after super.onCreate() completed member injection — see the field's
             // own KDoc. Captured once so the two call sites cannot disagree about which instance

@@ -53,6 +53,7 @@ import space.getsub.core.model.FailureReason
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Retryability
@@ -69,9 +70,7 @@ import space.getsub.core.xray.ComposeResult
 import space.getsub.core.xray.ConfigResult
 import space.getsub.core.xray.DnsPlan
 import space.getsub.core.xray.DnsPlanner
-import space.getsub.core.xray.LibXrayPingApi
 import space.getsub.core.xray.METRICS_RESERVED_TAG
-import space.getsub.core.xray.ProxyHeadProbe
 import space.getsub.core.xray.RawConfigComposer
 import space.getsub.core.xray.ServerAddressPin
 import space.getsub.core.xray.SocketProtector
@@ -81,6 +80,7 @@ import space.getsub.core.xray.TunnelSettings
 import space.getsub.core.xray.XrayConfigGenerator
 import space.getsub.core.xray.XrayController
 import space.getsub.core.xray.XrayException
+import space.getsub.core.xray.pingConfig
 import space.getsub.service.log.LogCapture
 import space.getsub.service.log.LogRing
 import space.getsub.service.log.TeardownStep
@@ -498,6 +498,36 @@ internal fun resolveOverrideBreakdown(
 internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
     LatencyOutcome.UNSUPPORTED.takeIf { rawJson != null && analysePassthrough(rawJson).isBalancer }
 
+/**
+ * The guards every measurement passes before any batching, then the mode.
+ *
+ * The foreign-VPN and balancer guards apply to both modes: under another
+ * client's VPN neither mode can reach the server, and a balancer row would time
+ * one arbitrary member (§10.1). A raw row with no projectable [outbound], or a
+ * protocol [pingConfig] cannot generate, is [LatencyOutcome.UNSUPPORTED] — not a
+ * network failure, which would send the user looking for a problem with their
+ * server. Only a proxy-head server that passes all of them reaches a batch.
+ */
+internal suspend fun planLatency(
+    options: LatencyOptions,
+    foreignVpnHoldsRoute: () -> Boolean,
+    rawJson: String?,
+    outbound: Outbound?,
+    pingConfig: suspend (Outbound) -> String?,
+): LatencyPlan {
+    val unsupported = LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+    return when {
+        foreignVpnHoldsRoute() -> LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.FOREIGN_VPN))
+        balancerLatencyRefusal(rawJson) != null -> unsupported
+        options.mode == PingMode.TCP -> LatencyPlan.InPlace
+        outbound == null -> unsupported
+        else ->
+            pingConfig(outbound)
+                ?.let { LatencyPlan.Batched(it, PingGroup(options.timeoutSeconds, options.checkUrl)) }
+                ?: unsupported
+    }
+}
+
 /** Maps composition failures to the user-actionable service reason they represent. */
 internal fun compositionFailureReason(reason: ComposeFailure): FailureReason =
     when (reason) {
@@ -794,7 +824,9 @@ class TunnelService : VpnService() {
     private val foreignVpn by lazy { ForeignVpn(applicationContext) }
 
     /**
-     * Latency measurement lives in `:bg` because §5.1's protector does.
+     * Latency measurement is scheduled in `:bg` because ARCHITECTURE.md §5.1's
+     * protector is here, which TCP probes need. Proxy-head servers are batched
+     * and sent to `:ping` through [pingClient] (libXray stock upgrade spec §4).
      *
      * `by lazy` rather than an initialiser: it captures [scope] and reaches
      * [profileRepository], which Hilt field-injects during `super.onCreate()`.
@@ -805,14 +837,22 @@ class TunnelService : VpnService() {
      */
     private val latencyRunner by lazy {
         LatencyRunner<StoredProfile>(
-            measure = { profile, options -> measureOne(profile, options) },
+            // Only TCP is planned in place; see planOne.
+            measure = { profile, options -> measureTcp(profile, options) },
             loadProfile = { id -> profileRepository.profile(id) },
             scope = scope,
             // §10.4: a swallowed failure still gets a line. The class name only —
             // a Room or libXray message can quote a stored config value (ARCHITECTURE.md §5.6).
             onMeasurementError = { name -> Log.w(TAG, "measurement failed: $name") },
+            plan = { profile, options -> planOne(profile, options) },
+            measureBatch = { group, targets -> pingClient.measure(targets, group.timeoutSeconds, group.url) },
+            // Unbinding is what starts :ping's idle exit (spec §9.7).
+            onRunEnded = { pingClient.release() },
         )
     }
+
+    /** `:bg`'s binding to `:ping`; bound only while a run has proxy-head batches. */
+    private val pingClient by lazy { PingClient(AndroidPingConnector(applicationContext)) }
 
     // All guarded by `lock`.
     private var controller: XrayController? = null
@@ -3391,6 +3431,8 @@ class TunnelService : VpnService() {
         stopTunnel(finalState)
         commandCoordinator.close()
         callbacks.kill()
+        // Lets :ping's idle exit start rather than leaking the connection.
+        pingClient.release()
         scope.cancel()
         super.onDestroy()
     }
@@ -3398,54 +3440,32 @@ class TunnelService : VpnService() {
     // ── Latency measurement ─────────────────────────────────────────────────
 
     /**
-     * Measures one server, in whichever mode the run asked for.
+     * Plans one server for [latencyRunner]: the guards, then TCP in place or a
+     * proxy-head batch for `:ping`.
      *
-     * ARCHITECTURE.md §5.1 is the whole reason this runs in `:bg`: this is the only place a live
-     * `VpnService` exists to protect the socket. While a session is up, an
-     * unprotected measurement is routed back into the TUN and times the server
-     * *through* the tunnel rather than timing the server. While no session is up
-     * `protect` is a harmless no-op — there is nothing to escape.
-     *
-     * `ping` builds its own core through libXray's `StartXray`, which never
-     * touches the `coreServer` singleton `runXray`/`stopXray` guard, so this does
-     * not disturb a running tunnel. That is read from upstream source and is the
-     * central claim the device checklist exists to confirm.
+     * TCP stays here because ARCHITECTURE.md §5.1's protector does: while a
+     * session is up, an unprotected probe is routed back into the TUN and times
+     * the server *through* the tunnel. Proxy-head needs no protector: `:ping`
+     * shares this app's UID, which is excluded from the VPN in every per-app mode
+     * ([excludeSelf] in the two disallow plans; absent from the allow list in
+     * the third), so its sockets go direct.
      */
-    private suspend fun measureOne(
+    private suspend fun planOne(
         profile: StoredProfile,
         options: LatencyOptions,
-    ): LatencyResult =
-        // Checked before either mode runs: under another client's VPN neither can
-        // reach the server, and both would return a number timing that client's
-        // local endpoint instead (§10.1).
-        if (foreignVpn.holdsDefaultRoute(ownTunnelActive())) {
-            LatencyResult.failed(LatencyOutcome.FOREIGN_VPN)
-        } else if (balancerLatencyRefusal(profile.rawJson) != null) {
-            // Checked before either mode, for the same reason the foreign-VPN guard is:
-            // both modes would otherwise return a number that describes one member.
-            LatencyResult.failed(LatencyOutcome.UNSUPPORTED)
-        } else {
-            when (options.mode) {
-                PingMode.TCP -> measureTcp(profile, options)
-
-                PingMode.PROXY_HEAD -> {
-                    val outbound = profile.outbound
-                    if (outbound == null) {
-                        // A RAW_JSON row whose outbound could not be projected. Not
-                        // a network failure, and saying "unreachable" would send the
-                        // user looking for a problem with their server.
-                        LatencyResult.failed(LatencyOutcome.UNSUPPORTED)
-                    } else {
-                        ProxyHeadProbe(LibXrayPingApi(), cacheDir).measure(
-                            Profile(id = profile.id.toString(), name = profile.name, outbound = outbound),
-                            options,
-                            // Ruling R5: a raw row is probed through its typed projection, so a
-                            // config's own fragment is not represented here.
-                            obfuscation = obfuscationResolver.forConfig(profile.id),
-                        )
-                    }
-                }
-            }
+    ): LatencyPlan =
+        planLatency(
+            options = options,
+            foreignVpnHoldsRoute = { foreignVpn.holdsDefaultRoute(ownTunnelActive()) },
+            rawJson = profile.rawJson,
+            outbound = profile.outbound,
+        ) { outbound: Outbound ->
+            pingConfig(
+                Profile(id = profile.id.toString(), name = profile.name, outbound = outbound),
+                // Ruling R5: a raw row is probed through its typed projection, so a
+                // config's own fragment is not represented here.
+                obfuscation = obfuscationResolver.forConfig(profile.id),
+            )
         }
 
     /**

@@ -12,7 +12,7 @@ import org.junit.Test
  * on the JVM, so [allocateDistinctPorts] — the retry loop that gives
  * [XrayController.allocatePorts] its distinctness guarantee — is exercised
  * here directly with a faked `fetch`, the same seam-extraction
- * [ProxyHeadProbeTest] uses for [XrayPingApi].
+ * `PingBatchTest` uses for [PingBatchCall].
  */
 class PortAllocationTest {
     @Test
