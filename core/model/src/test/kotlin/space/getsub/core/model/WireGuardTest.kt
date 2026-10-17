@@ -33,6 +33,18 @@ class WireGuardTest {
     }
 
     @Test
+    fun keyMixingBothAlphabetsIsRejectedAndNothingIsTrimmed() {
+        val raw = ByteArray(32)
+        byteArrayOf(0xFB.toByte(), 0xEF.toByte(), 0xBE.toByte(), -1, -1, -1).copyInto(raw)
+        val valid = Base64.getEncoder().encodeToString(raw)
+        valid.contains('+') shouldBe true
+        valid.contains('/') shouldBe true
+        WireGuardRules.keyValid(valid) shouldBe true
+        WireGuardRules.keyValid(valid.replaceFirst('/', '_')) shouldBe false
+        WireGuardRules.keyValid(" $valid") shouldBe false
+    }
+
+    @Test
     fun reservedParsesListBase64AndBlank() {
         WireGuardRules.parseReserved("1,2,3") shouldBe listOf(1, 2, 3)
         WireGuardRules.parseReserved(" 0, 255 ,7 ") shouldBe listOf(0, 255, 7)

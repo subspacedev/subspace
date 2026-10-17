@@ -50,10 +50,16 @@ class KcpTest {
     }
 
     @Test
-    fun blankSeedCountsAsNoSeed() {
+    fun emptySeedCountsAsNoSeed() {
         KcpRules.masks(KcpObfuscation("", null, false)) shouldBe emptyList()
         KcpRules.masks(KcpObfuscation("", KcpHeader.DNS, false)) shouldBe
             listOf(KcpMask.Original, KcpMask.Header(KcpHeader.DNS))
+    }
+
+    @Test
+    fun whitespaceSeedIsARealSeedTakenVerbatim() {
+        // D2-R6: the core uses the seed as a password; only "" means none.
+        KcpRules.masks(KcpObfuscation(" ", null, false)) shouldBe listOf(KcpMask.Seed(" "))
     }
 
     @Test
