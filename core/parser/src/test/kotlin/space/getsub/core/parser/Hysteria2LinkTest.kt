@@ -459,4 +459,20 @@ class Hysteria2LinkTest {
                 FailureDetail.Malformed(DetailField.HopInterval)
         }
     }
+
+    @Test
+    fun `pcs is libXray's pin key and joins pinSHA256`() {
+        val other = "cd".repeat(32)
+        ok("hysteria2://pw@h.example:443?pcs=$pinHex,$other").tls.pins shouldBe listOf(pinHex, other)
+        ok("hysteria2://pw@h.example:443?pinSHA256=$pinHex&pcs=${other.uppercase()},$pinHex").tls.pins shouldBe
+            listOf(pinHex, other)
+        bad("hysteria2://pw@h.example:443?pcs=not-a-pin").detail shouldBe FailureDetail.Malformed(DetailField.Pin)
+    }
+
+    @Test
+    fun `vcn is ignored`() {
+        val out = ok("hysteria2://pw@h.example:443?sni=s.example&vcn=other.example")
+        out.tls.serverName shouldBe "s.example"
+        out.notConnectableReason shouldBe null
+    }
 }

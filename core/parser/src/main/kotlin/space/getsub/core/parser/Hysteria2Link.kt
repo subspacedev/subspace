@@ -38,7 +38,6 @@ private data class Authority(
     val host: String,
     val portText: String,
     val query: Map<String, String>,
-    val fragment: String,
 )
 
 private data class Hops(
@@ -58,10 +57,15 @@ private data class Hops(
  * - `obfs` is `salamander`, `gecko` (needs `obfs-min-packet-size` / `obfs-max-packet-size`, the
  *   names Mihomo uses) or `none`; the password is at least 4 characters.
  * - `up` / `down` become Brutal bandwidths, see [normaliseBandwidth]. A bare number is Mbps.
- * - `pinSHA256` is one or more comma-separated pins; `insecure=1` only records the request.
+ * - `pinSHA256` (and `pcs`, libXray's key for the same thing) is one or more comma-separated pins;
+ *   when both are present their union is kept. `vcn` is ignored. `insecure=1` only records the request.
  * - `fm=` is Xray `finalmask` JSON (see [readHysteria2Finalmask]) and wins over the query for
  *   whatever it sets. `fp` is ignored: the hysteria transport has no fingerprint.
  * - At most one value per query key.
+ * - `+`: keys and values are percent-decoded with a literal `+` kept as `+`, because passwords,
+ *   `obfs-password`, `sni` and base64 pins can legitimately contain it and a panel that means a space
+ *   writes `%20`. Only `up` / `down` turn `+` into a space, matching libXray, which reads the query with
+ *   Go's `url.ParseQuery` (where `+` is a space), so `up=100+mbps` means `100 mbps` there and here.
  *
  * Failures name only the field and reason, never a value (ARCHITECTURE.md §5.6).
  */
@@ -132,7 +136,6 @@ private fun splitLink(raw: String): Step<Authority> {
     val rest = text.substring(schemeEnd + SCHEME_SEPARATOR.length)
     val hash = rest.indexOf('#')
     val beforeFragment = if (hash >= 0) rest.substring(0, hash) else rest
-    val fragment = if (hash >= 0) percentDecode(rest.substring(hash + 1)) else ""
     val authorityEnd = beforeFragment.indexOfAny(charArrayOf('/', '?')).takeIf { it >= 0 } ?: beforeFragment.length
     val authority = beforeFragment.substring(0, authorityEnd)
     val afterAuthority = beforeFragment.substring(authorityEnd)
@@ -147,7 +150,7 @@ private fun splitLink(raw: String): Step<Authority> {
     val password = if (at >= 0) percentDecode(authority.substring(0, at)) else ""
     val hostPort = authority.substring(at + 1)
     val hostAndPort = splitHostPort(hostPort) ?: return uriFail(FailureDetail.Malformed(DetailField.Address))
-    return Step.Ok(Authority(password, hostAndPort.first, hostAndPort.second, query, fragment))
+    return Step.Ok(Authority(password, hostAndPort.first, hostAndPort.second, query))
 }
 
 /** Null when a key repeats: a link that says two things about one setting is ambiguous. */
@@ -260,11 +263,17 @@ internal fun buildTls(
     val security = query["security"]?.lowercase()
     if (!security.isNullOrEmpty() && security != "tls") return uriFail(FailureDetail.Unsupported(DetailField.Security))
     val pins = mutableListOf<String>()
-    for (item in query["pinSHA256"]
-        .orEmpty()
-        .split(',')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }) {
+    // `pcs` is libXray's own key for the same pins (share/stream.go: `pinnedPeerCertSha256`); both
+    // are read and their union kept, `pinSHA256` first. `vcn` (verifyPeerCertByName) is not modelled.
+    val pinItems =
+        listOf("pinSHA256", "pcs").flatMap { key ->
+            query[key]
+                .orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+    for (item in pinItems) {
         when (val pin = normalisePin(item)) {
             is PinResult.Ok -> if (pin.hex !in pins) pins += pin.hex
             PinResult.Invalid -> return uriFail(FailureDetail.Malformed(DetailField.Pin))
