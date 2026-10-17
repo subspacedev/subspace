@@ -129,6 +129,15 @@ class StoredProfileTest {
         profile(protocol = "vless", network = "kcp").connectable shouldBe false
         profile(protocol = "vless", network = "httpupgrade").connectable shouldBe false
         profile(protocol = "vless", network = "hysteria").connectable shouldBe false
+        // VMess and Trojan share VLESS's network set, so the same unemitted networks stay refused.
+        // Hysteria2 must be gated by its own Outbound branch in `connectable`, not by adding
+        // `hysteria` to CONNECTABLE_NETWORKS: that would make a VLESS/VMess/Trojan row over
+        // `hysteria` connectable and write a stream block no such protocol can run.
+        for (protocol in listOf("vmess", "trojan")) {
+            for (network in listOf("kcp", "httpupgrade", "hysteria")) {
+                profile(protocol = protocol, network = network).connectable shouldBe false
+            }
+        }
     }
 
     @Test

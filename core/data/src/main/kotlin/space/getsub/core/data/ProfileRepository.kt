@@ -142,7 +142,9 @@ public data class StoredProfile(
  *
  * `kcp`/`mkcp`, `httpupgrade` and `hysteria` are real transports Xray supports and this
  * generator does not, so they are absent on purpose. Hysteria2 generation is M8's, and ARCHITECTURE.md §6
- * warns its config shape is unlike every other protocol's.
+ * warns its config shape is unlike every other protocol's. Hysteria2 must be gated by its own
+ * Outbound branch in `connectable`, not by adding `hysteria` here: this set is shared by VLESS, VMess
+ * and Trojan, and a row of those over `hysteria` would then claim a config nothing can write.
  *
  * Lives in `:core:data` rather than `:core:xray` because `:core:data` cannot depend on
  * `:core:xray` (§4 module rules) — [StoredProfile] is the type the UI reads. It is therefore
