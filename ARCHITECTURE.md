@@ -992,23 +992,32 @@ are load-bearing enough that guessing from the list above will mislead you:
 The base64 column can never differ from the share-link column: a blob is
 decoded and re-fed through detection, which lands on the link-list path.
 
-**A Clash config's `vless` entries are now connectable.** VLESS is the only
-protocol `:core:xray` can emit a config for, and it used to be the one cell
-Clash lacked — every Clash `vless` entry produced a profile that failed at
-connect time with `ProtocolNotSupported`. That gap is closed: `reality-opts`
-and `ws-opts` map into `StreamSettings`, so a Clash entry with `type: vless`
-now parses into a working profile the same way a `vless://` link does.
+**A Clash config's `vless` entries are now connectable.** VLESS was, until
+M9-D2a, the only protocol `:core:xray` could emit a config for, and it used to
+be the one cell Clash lacked — every Clash `vless` entry produced a profile
+that failed at connect time with `ProtocolNotSupported`. That gap is closed:
+`reality-opts` and `ws-opts` map into `StreamSettings`, so a Clash entry with
+`type: vless` now parses into a working profile the same way a `vless://` link
+does.
+
+**Since M9-D2a, every typed row in the table is connectable.**
+`XrayConfigGenerator` emits VMess, Trojan, Shadowsocks and SOCKS outbounds as
+well as VLESS (M9-D2a spec §1), so a share link, base64 list or Clash entry of
+any of the five protocols becomes a profile that connects. The exceptions are
+rows the core itself would refuse. A Shadowsocks row with a cipher v26.10.10
+no longer has, or a 2022 key the core would reject, stays marked "Can't
+connect with this build" with the reason. Plaintext Trojan to a public
+address is refused at connect time (§14.10 of this document).
+Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
+traffic and measures latency in both modes.
 
 **M3 fills two of the six gaps that remained, not all of them:** Clash
 `vless` and `socks5`. The Clash column is now complete — every protocol Clash
 can express, this parser can turn into a profile. Raw Xray JSON's four
-missing cells wait, because filling them would produce profiles that parse
-and then fail at connect with `ProtocolNotSupported`; they belong with the
-milestone that makes those protocols connectable, and each of those needs its
-own device verification (§10.1). SOCKS itself stays in the same position it
-was already in: `:core:xray` cannot emit a SOCKS outbound, so a Clash
-`socks5` entry parses into a profile that is visibly not-connectable in the
-UI, exactly like a `socks://` share link.
+missing cells were held back because, at the time, filling them would have
+produced profiles that parse and then fail at connect with
+`ProtocolNotSupported`. M9-D2a removed that reason (the generator now emits
+all four) but did not fill the cells; they remain open.
 
 `CapabilityMatrixTest` in `:core:parser` pins every cell of this table, so it
 fails if one changes without this table changing with it.
@@ -1778,7 +1787,9 @@ Mandatory rules:
 ## A.2 Tier 1 — table stakes (MVP)
 
 - [ ] Protocols: VLESS (REALITY, XTLS Vision), VMess, Trojan, Shadowsocks,
-      SOCKS5, Hysteria2 — all native to Xray-core now (see §6)
+      SOCKS5, Hysteria2 — all native to Xray-core now (see §6). VLESS, VMess,
+      Trojan, Shadowsocks and SOCKS5 typed rows connect (M9-D2a, verified on
+      the Pixel 8 on 2026-10-17); left unchecked until Hysteria2 (M9-D1) lands.
 - [ ] Import: manual entry, clipboard, QR camera scan, file, URL
 - [ ] Subscription import with auto-update on an interval, plus update on
       app launch
