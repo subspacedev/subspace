@@ -54,7 +54,7 @@ private data class Hops(
  *   a range, means port hopping and the outbound port is the first port. `ports` / `mport` in the
  *   query give the same list for an authority that is a single port; combining them with a
  *   multi-port authority, or giving both, is a failure.
- * - `hop-interval` is whole seconds, at least 5; without hopping it is a failure.
+ * - `hop-interval` is whole seconds, at least 5 when hopping; without hopping it is ignored.
  * - `obfs` is `salamander`, `gecko` (needs `obfs-min-packet-size` / `obfs-max-packet-size`, the
  *   names Mihomo uses) or `none`; the password is at least 4 characters.
  * - `up` / `down` become Brutal bandwidths, see [normaliseBandwidth]. A bare number is Mbps.
@@ -110,11 +110,6 @@ private fun buildOutbound(raw: String): Step<Hysteria2Outbound> {
 
     val mask = (fm as Step.Ok).value
     val hopping = mask?.hopping ?: (queryHop as Step.Ok).value
-    // A blank hop-interval means "not set", with or without hopping (as in queryHopping).
-    // fm= hopping replaces an authority/ports hop list wholesale (fm is the panel's own config).
-    if (hopping == null && query["hop-interval"]?.isNotBlank() == true) {
-        return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
-    }
     return Step.Ok(
         Hysteria2Outbound(
             address = parts.host,
@@ -211,6 +206,8 @@ private fun queryHopping(
     query: Map<String, String>,
     hops: Hops,
 ): Step<PortHopping?> {
+    // Without hopping, hop-interval is a harmless extra (panels emit it as a default): ignored.
+    val ranges = hops.ranges ?: return Step.Ok(null)
     val text = query["hop-interval"]?.takeIf { it.isNotBlank() }
     val interval =
         if (text == null) {
@@ -219,7 +216,7 @@ private fun queryHopping(
             text.takeIf { it.all(Char::isDigit) }?.toIntOrNull()?.takeIf { it >= MIN_HOP_INTERVAL }
                 ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
         }
-    return Step.Ok(hops.ranges?.let { PortHopping(it, interval) })
+    return Step.Ok(PortHopping(ranges, interval))
 }
 
 @Suppress("ReturnCount")

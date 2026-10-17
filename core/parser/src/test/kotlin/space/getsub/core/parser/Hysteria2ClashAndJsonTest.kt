@@ -242,14 +242,13 @@ class Hysteria2ClashAndJsonTest {
     }
 
     @Test
-    fun `clash single-value ports with hop-interval is a hop-interval failure`() {
-        clash("password: pw\nports: 20000\nhop-interval: 10").failures.single().detail shouldBe
-            FailureDetail.Malformed(DetailField.HopInterval)
+    fun `clash single-value ports with hop-interval is ignored`() {
+        clashOk("password: pw\nports: 20000\nhop-interval: 10").hopping shouldBe null
     }
 
     @Test
-    fun `clash hop-interval without ports is a hop-interval failure`() {
-        clash("password: pw\nhop-interval: 10").failures.single().detail shouldBe
-            FailureDetail.Malformed(DetailField.HopInterval)
+    fun `clash hop-interval without ports is ignored`() {
+        clashOk("password: pw\nhop-interval: 10").hopping shouldBe null
+        clashOk("password: pw\nhop-interval: x").hopping shouldBe null
     }
 }

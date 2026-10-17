@@ -89,8 +89,16 @@ private fun clashQuery(
     return entries.mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
 }
 
-/** `ports` makes a hop list when it names more than one port; `hop-interval` needs one. */
+/** `ports` makes a hop list when it names more than one port; `hop-interval` only matters then. */
 private fun clashHopping(proxy: YamlMap): Step<PortHopping?> {
+    val portsText = proxy.text("ports") ?: return Step.Ok(null)
+    val ranges =
+        parsePortList(portsText) ?: return Step.Fail(
+            ParseFailureReason.InvalidPort,
+            FailureDetail.Malformed(DetailField.Port),
+        )
+    // Without hopping, hop-interval is a harmless extra (panels emit it as a default): ignored.
+    if (ranges.size == 1 && ranges[0].first == ranges[0].last) return Step.Ok(null)
     val intervalText = proxy.text("hop-interval")
     val interval =
         if (intervalText == null) {
@@ -99,17 +107,5 @@ private fun clashHopping(proxy: YamlMap): Step<PortHopping?> {
             intervalText.takeIf { it.all(Char::isDigit) }?.toIntOrNull()?.takeIf { it >= MIN_HOP_INTERVAL }
                 ?: return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
         }
-    val portsText = proxy.text("ports")
-    val ranges =
-        if (portsText == null) {
-            null
-        } else {
-            parsePortList(portsText) ?: return Step.Fail(
-                ParseFailureReason.InvalidPort,
-                FailureDetail.Malformed(DetailField.Port),
-            )
-        }
-    val hops = ranges != null && (ranges.size > 1 || ranges[0].first != ranges[0].last)
-    if (!hops && intervalText != null) return uriFail(FailureDetail.Malformed(DetailField.HopInterval))
-    return Step.Ok(if (hops) PortHopping(ranges.orEmpty(), interval) else null)
+    return Step.Ok(PortHopping(ranges, interval))
 }

@@ -115,11 +115,11 @@ class Hysteria2LinkTest {
     }
 
     @Test
-    fun `hop interval below 5 or without hopping is a failure`() {
+    fun `hop interval below 5 or malformed is a failure only when hopping`() {
         bad("hysteria2://pw@host.example:443,20000-30000?hop-interval=4").detail shouldBe
             FailureDetail.Malformed(DetailField.HopInterval)
-        bad("hysteria2://pw@host.example:443?hop-interval=30").detail shouldBe
-            FailureDetail.Malformed(DetailField.HopInterval)
+        ok("hysteria2://pw@host.example:443?hop-interval=30").hopping shouldBe null
+        ok("hysteria2://pw@host.example:443?hop-interval=x").hopping shouldBe null
         bad("hysteria2://pw@host.example:443,2000-3000?hop-interval=x").detail shouldBe
             FailureDetail.Malformed(DetailField.HopInterval)
     }
