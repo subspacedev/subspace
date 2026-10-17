@@ -214,7 +214,7 @@
     <string name="editor_security_refused_without_tls">The core refuses VLESS or Trojan without TLS to a public server. Choose TLS or Reality, or use a private address.</string>
     <string name="editor_tls_server_name_label">Server name (SNI)</string>
     <string name="editor_tls_fingerprint_label">Fingerprint</string>
-    <string name="editor_tls_allow_insecure_label">Allow insecure</string>
+    <string name="editor_tls_insecure_ignored">Certificate checks stay on — this server\'s source asked to skip them (allowInsecure), which the current Xray core no longer allows</string>
     <string name="editor_reality_server_name_label">Server name (SNI)</string>
     <string name="editor_reality_public_key_label">Public key</string>
     <string name="editor_reality_short_id_label">Short ID</string>
@@ -296,6 +296,11 @@
         This file sets up a reverse proxy, which would let its server open connections out of this
         device, so it cannot be run as written. The server details below were recovered from it and
         are used instead.
+    </string>
+    <string name="editor_raw_json_rejected_skips_cert_checks">
+        This file turns off certificate checks (allowInsecure), which the current Xray core no longer
+        allows, so it cannot be run as written. The server details below were recovered from it and
+        are used instead, with certificate checks on.
     </string>
     <string name="editor_raw_json_rejected_core_rejected">
         Xray rejected this file, so it cannot be run as written. The server details below were

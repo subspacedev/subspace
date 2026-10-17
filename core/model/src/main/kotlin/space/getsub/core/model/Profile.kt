@@ -131,6 +131,12 @@ public sealed interface Security {
         val spiderX: String,
     ) : Security
 
+    /**
+     * @property allowInsecure the source (a link's `allowInsecure=1`, Clash `skip-cert-verify`, an
+     *   imported `tlsSettings.allowInsecure`) asked to skip certificate checks. Recorded so the
+     *   editor can say it was ignored, and **never emitted**: Xray-core v26.3.27+ removed the
+     *   option and fails the whole config build on `true` (`infra/conf/transport_security.go`).
+     */
     public data class Tls(
         val serverName: String,
         val fingerprint: String,

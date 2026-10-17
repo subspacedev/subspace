@@ -1606,7 +1606,7 @@ takes effect on Android 13+. Rendering on Android 8–11 is owner-pending
 ### 14.10 Stock libXray v26.10.10 — what changed for users and raw configs
 
 The move from the locally patched v26.7.11 to the official libXray v26.10.10
-(spec `docs/agent/specs/2026-10-17-libxray-stock-upgrade-design.md`) changes two
+(spec `docs/agent/specs/2026-10-17-libxray-stock-upgrade-design.md`) changes three
 things a user can see, both from Xray-core and not from Subspace:
 
 - **VLESS and Trojan without TLS (or REALITY) to a public address are refused at
@@ -1622,6 +1622,14 @@ things a user can see, both from Xray-core and not from Subspace:
   and migrated to `streamSettings.sockopt.dialerProxy`). Subspace never emits
   it, but a raw or Remnawave config that chains with the old key will now fail
   to start. The core's message names the replacement.
+- **TLS `allowInsecure` was removed** earlier (v26.3.27, `infra/conf/transport_security.go`
+  `PrintRemovedFeatureError`, pointing at `pinnedPeerCertSha256`): `"allowInsecure": true`
+  fails the whole build. Subspace still reads the flag from links (`allowInsecure=1`), Clash
+  (`skip-cert-verify`) and imported JSON into `Security.Tls.allowInsecure`, but only to say in
+  the editor that it was ignored; the generator never emits the key, so certificate checks
+  always stay on, and the editor no longer offers the switch. A raw config that sets it is
+  `PassthroughRejection.SkipsCertificateChecks` and runs through its typed projection.
+  Certificate pinning (`pinnedPeerCertSha256`) arrives with Hysteria2 (M9-D1).
 
 Everything else in the review is in
 `docs/agent/research/2026-10-17-xray-core-v26.7.11-to-v26.10.10.md`.

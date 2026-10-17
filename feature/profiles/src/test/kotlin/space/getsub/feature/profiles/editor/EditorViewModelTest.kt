@@ -402,6 +402,41 @@ class EditorViewModelTest {
             source.profile(typedProfile.id)?.address shouldBe "198.51.100.99"
         }
 
+    // Xray-core v26.3.27+ removed TLS allowInsecure: the editor no longer offers a switch, says the
+    // source's flag was ignored, and carries it through a save so the note keeps saying so.
+    @Test
+    fun `a TLS profile whose source asked for insecure is shown as ignored and keeps the flag on save`() =
+        runTest {
+            val insecureTls = Security.Tls(serverName = "tls.example", fingerprint = "chrome", allowInsecure = true)
+            val profile = typedProfile.copy(outbound = typedOutbound.copy(stream = StreamSettings("tcp", insecureTls)))
+            val source = FakeProfileSource(listOf(profile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.tlsInsecureIgnored shouldBe true
+
+            viewModel.onAddressChanged("198.51.100.99")
+            viewModel.save()
+            advanceUntilIdle()
+
+            val saved = (source.lastUpdate?.third as VlessOutbound).stream.security
+            saved shouldBe insecureTls
+        }
+
+    @Test
+    fun `a TLS profile without the flag shows no ignored note`() =
+        runTest {
+            val tls = Security.Tls(serverName = "tls.example", fingerprint = "chrome", allowInsecure = false)
+            val profile = typedProfile.copy(outbound = typedOutbound.copy(stream = StreamSettings("tcp", tls)))
+            val source = FakeProfileSource(listOf(profile))
+            val viewModel = editorViewModel(source)
+            viewModel.load(profile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.tlsInsecureIgnored shouldBe false
+        }
+
     @Test
     fun `plaintext vless to a public address warns, and clears with TLS or a private address`() =
         runTest {

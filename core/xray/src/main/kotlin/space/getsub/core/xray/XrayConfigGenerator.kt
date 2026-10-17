@@ -416,8 +416,10 @@ public object XrayConfigGenerator {
                 sb.appendLine("""        "security": "tls",""")
                 sb.appendLine("""        "tlsSettings": {""")
                 sb.appendLine("""          "serverName": ${jsonString(security.serverName.fillBlank(pinDomain))},""")
-                sb.appendLine("""          "fingerprint": ${jsonString(security.fingerprint)},""")
-                sb.appendLine("""          "allowInsecure": ${security.allowInsecure}""")
+                // No `allowInsecure`: Xray-core v26.3.27+ removed it and fails the whole build on
+                // `true` (`infra/conf/transport_security.go`). Certificate checks always stay on;
+                // Security.Tls.allowInsecure only records that the source asked otherwise.
+                sb.appendLine("""          "fingerprint": ${jsonString(security.fingerprint)}""")
                 sb.appendLine("""        }$tail""")
             }
 

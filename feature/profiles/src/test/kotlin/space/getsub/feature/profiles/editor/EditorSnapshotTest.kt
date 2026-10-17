@@ -39,7 +39,6 @@ class EditorSnapshotTest {
             onSecurityKindChanged = {},
             onTlsServerNameChanged = {},
             onTlsFingerprintChanged = {},
-            onTlsAllowInsecureChanged = {},
             onRealityServerNameChanged = {},
             onRealityPublicKeyChanged = {},
             onRealityShortIdChanged = {},

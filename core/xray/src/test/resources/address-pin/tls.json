@@ -45,8 +45,7 @@
         "security": "tls",
         "tlsSettings": {
           "serverName": "",
-          "fingerprint": "chrome",
-          "allowInsecure": false
+          "fingerprint": "chrome"
         }
       }
     },
