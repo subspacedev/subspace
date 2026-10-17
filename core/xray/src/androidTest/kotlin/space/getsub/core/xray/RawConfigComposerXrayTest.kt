@@ -82,8 +82,7 @@ class RawConfigComposerXrayTest {
         val controller = XrayController()
         val result = RawConfigComposer.compose(raw, settings, assetDir.absolutePath, override)
         check(result is ComposeResult.Ok) { "composer refused the fixture: $result" }
-        val file = File(context.cacheDir, "passthrough-test.json").apply { writeText(result.json) }
-        return runCatching { controller.validate(file.readText()) }
+        return runCatching { controller.validate(result.json) }
     }
 
     /**
@@ -150,65 +149,44 @@ class RawConfigComposerXrayTest {
         """.trimIndent()
 
     /**
-     * §10.5, measured 2026-08-31 on a Pixel 8. The composed config's own
-     * `env["xray.location.asset"]` is the only channel `testXray` resolves geo
-     * files from; `XrayController`'s `geoAssetDir` envelope does not override
-     * it. Asserted by pointing the two at *different* directories and reading
-     * which one the core's refusal names.
+     * §10.5: the composed config's own root `env["xray.location.asset"]` is the
+     * only channel `testXray` resolves geo files from (libXray v26.10.10 has no
+     * invoke-level `env`). Asserted by composing against an empty directory and
+     * reading which path the core's refusal names.
      *
      * Deliberately asserts the negative — a rejection naming the composed
      * directory — rather than a success: a positive case would need a real
      * multi-megabyte `geosite.dat` committed as a fixture, and the direction
      * that matters here is which path the core went looking down.
+     * `AssetLocationProbeTest` carries the positive.
      */
     @Test
-    fun theComposedEnvNotTheInvokeEnvelopeIsWhereTheCoreResolvesGeoFiles() =
+    fun theComposedEnvBlockIsWhereTheCoreResolvesGeoFiles() =
         runTest {
-            val fromJson =
+            val geoDir =
                 File(context.filesDir, "geo-json").apply {
                     deleteRecursively()
                     mkdirs()
                 }
-            val fromEnvelope =
-                File(context.filesDir, "geo-envelope").apply {
-                    deleteRecursively()
-                    mkdirs()
-                }
 
-            val composed = RawConfigComposer.compose(geoRuleConfig, settings, fromJson.absolutePath, null)
+            val composed = RawConfigComposer.compose(geoRuleConfig, settings, geoDir.absolutePath, null)
             check(composed is ComposeResult.Ok)
-            val file = File.createTempFile("geo-channel", ".json", context.cacheDir)
             val result =
                 try {
-                    file.writeText(composed.json)
-                    runCatching { XrayController().validate(file.readText()) }
+                    runCatching { XrayController().validate(composed.json) }
                 } finally {
-                    file.delete()
-                    // Cleaned here, not only at the next run's setup, so this test leaves no
-                    // trace in the app's files dir regardless of how it exits — matching the
-                    // temp config file above rather than leaving an asymmetry.
-                    fromJson.deleteRecursively()
-                    fromEnvelope.deleteRecursively()
+                    geoDir.deleteRecursively()
                 }
 
             val message = result.exceptionOrNull()?.message.orEmpty()
             // ARCHITECTURE.md §5.6: XrayException's message can quote the config back (LibXrayInvoke's own
             // KDoc), so only the exception's class name is safe to surface in a failure
-            // message — never `.exceptionOrNull()`. `message` above is read only for the
-            // assertions themselves; the failure text below names the two directories (this
-            // test's own, not config-derived) and a boolean instead of the message itself.
+            // message. `message` above is read only for the assertions themselves.
             check("failed to open geosite.dat" in message) {
                 "expected a geo-asset refusal; got a ${result.exceptionOrNull()?.javaClass?.simpleName}"
             }
-            check(fromJson.absolutePath in message) {
-                "the core looked somewhere other than the composed env " +
-                    "(composedDir=${fromJson.name}, envelopeDir=${fromEnvelope.name}, " +
-                    "sawComposedDir=${fromJson.absolutePath in message})"
-            }
-            check(fromEnvelope.absolutePath !in message) {
-                "the core read the invoke envelope after all " +
-                    "(composedDir=${fromJson.name}, envelopeDir=${fromEnvelope.name}, " +
-                    "sawEnvelopeDir=${fromEnvelope.absolutePath in message})"
+            check(geoDir.absolutePath in message) {
+                "the core looked somewhere other than the composed env (composedDir=${geoDir.name})"
             }
         }
 
