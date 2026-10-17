@@ -208,4 +208,48 @@ class Hysteria2ClashAndJsonTest {
         val json = raw().profiles.single().rawJson!!
         analysePassthrough(json).rejection shouldBe null
     }
+
+    @Test
+    fun `raw allowInsecure true is recorded as skipChecksRequested`() {
+        rawOk(tls = """{"serverName":"s","allowInsecure":true}""").tls.skipChecksRequested shouldBe true
+        rawOk(tls = """{"serverName":"s"}""").tls.skipChecksRequested shouldBe false
+    }
+
+    @Test
+    fun `raw security that is present but not tls is unsupported`() {
+        for (security in listOf("reality", "none")) {
+            val outcome =
+                parseXrayJson(
+                    """{"outbounds":[{"protocol":"hysteria","settings":{"version":2,"address":"h.example","port":1},
+                    "streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"x"},
+                    "security":"$security"}}]}""",
+                )
+            outcome.profiles shouldBe emptyList()
+            outcome.failures.single().detail shouldBe FailureDetail.Unsupported(DetailField.Security)
+        }
+    }
+
+    @Test
+    fun `a raw row with two hysteria outbounds yields two profiles`() {
+        fun one(host: String) =
+            """{"protocol":"hysteria","settings":{"version":2,"address":"$host","port":443},
+            "streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"pw"},
+            "security":"tls","tlsSettings":{"serverName":"$host"}}}"""
+        val outcome = parseXrayJson("""{"outbounds":[${one("a.example")},${one("b.example")}]}""")
+        outcome.failures shouldBe emptyList()
+        outcome.profiles.map { (it.outbound as Hysteria2Outbound).address } shouldBe
+            listOf("a.example", "b.example")
+    }
+
+    @Test
+    fun `clash single-value ports with hop-interval is a hop-interval failure`() {
+        clash("password: pw\nports: 20000\nhop-interval: 10").failures.single().detail shouldBe
+            FailureDetail.Malformed(DetailField.HopInterval)
+    }
+
+    @Test
+    fun `clash hop-interval without ports is a hop-interval failure`() {
+        clash("password: pw\nhop-interval: 10").failures.single().detail shouldBe
+            FailureDetail.Malformed(DetailField.HopInterval)
+    }
 }
