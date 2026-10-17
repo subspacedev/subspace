@@ -75,6 +75,15 @@ class ShadowsocksCoreTest {
     }
 
     @Test
+    fun `2022 chacha20 takes exactly one key`() {
+        // outbound.go NewClient: "multi-key is not supported for chacha20-poly1305". Found on the device.
+        val good = b64(32)
+        shadowsocksCoreRefusal("2022-blake3-chacha20-poly1305", good) shouldBe null
+        shadowsocksCoreRefusal("2022-blake3-chacha20-poly1305", "$good:$good") shouldBe ShadowsocksRefusal.Key
+        shadowsocksCoreRefusal("2022-BLAKE3-CHACHA20-POLY1305", "$good:$good") shouldBe ShadowsocksRefusal.Key
+    }
+
+    @Test
     fun `2022 raw ascii key falls back to byte length when it is not base64`() {
         // A '-' is outside the standard alphabet, so Go's StdEncoding fails and ParseKey keeps the raw bytes.
         shadowsocksCoreRefusal("2022-blake3-aes-256-gcm", "0123456789abcdef-123456789abcdef") shouldBe null

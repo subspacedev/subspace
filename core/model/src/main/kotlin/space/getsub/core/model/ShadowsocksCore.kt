@@ -32,6 +32,7 @@ public val SHADOWSOCKS_CORE_METHODS: List<String> =
 
 private const val KEY_LENGTH_128 = 16
 private const val KEY_LENGTH_256 = 32
+private const val CHACHA_2022 = "2022-blake3-chacha20-poly1305"
 
 /**
  * Upstream `proxy/shadowsocks_2022/cipher.go:18-22` (`methods`, v26.10.10): the 2022 methods and
@@ -41,7 +42,7 @@ private val METHODS_2022: Map<String, Int> =
     mapOf(
         "2022-blake3-aes-128-gcm" to KEY_LENGTH_128,
         "2022-blake3-aes-256-gcm" to KEY_LENGTH_256,
-        "2022-blake3-chacha20-poly1305" to KEY_LENGTH_256,
+        CHACHA_2022 to KEY_LENGTH_256,
     )
 
 /**
@@ -72,7 +73,12 @@ public fun shadowsocks2022KeyLength(method: String): Int? = METHODS_2022[method.
  * Order follows `infra/conf/shadowsocks.go:56` and :242: a 2022 method (`GetCipherMethod`) is tried
  * first; otherwise `cipherFromString` must know the name, else [ShadowsocksRefusal.Cipher]. Only a
  * 2022 method constrains the password, via `ParsePSKList` (`proxy/shadowsocks_2022/kdf.go:27-38`):
- * split on `:` and every part must pass `ParseKey`, else [ShadowsocksRefusal.Key].
+ * split on `:` and every part must pass `ParseKey`, else [ShadowsocksRefusal.Key]. `NewClient`
+ * (`proxy/shadowsocks_2022/outbound.go:48-50`) then refuses more than one key for
+ * `2022-blake3-chacha20-poly1305` ("multi-key is not supported"), also [ShadowsocksRefusal.Key].
+ *
+ * An empty password is outside the mirror: the core refuses it for every method, but no importer or
+ * the editor produces a Shadowsocks row without one, so only a 2022 method answers for it here.
  */
 public fun shadowsocksCoreRefusal(
     method: String,
@@ -80,8 +86,11 @@ public fun shadowsocksCoreRefusal(
 ): ShadowsocksRefusal? {
     val keyLength = shadowsocks2022KeyLength(method)
     return when {
-        keyLength != null ->
-            if (password.split(':').all { isAcceptedKey(it, keyLength) }) null else ShadowsocksRefusal.Key
+        keyLength != null -> {
+            val parts = password.split(':')
+            val multiKeyChaCha = parts.size > 1 && method.lowercase() == CHACHA_2022
+            if (!multiKeyChaCha && parts.all { isAcceptedKey(it, keyLength) }) null else ShadowsocksRefusal.Key
+        }
         method.lowercase() in LEGACY_CIPHERS -> null
         else -> ShadowsocksRefusal.Cipher
     }
