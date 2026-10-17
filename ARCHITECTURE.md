@@ -1116,7 +1116,8 @@ does.
 **Since M9-D2a, every typed row in the table is connectable.**
 `XrayConfigGenerator` emits VMess, Trojan, Shadowsocks and SOCKS outbounds as
 well as VLESS (M9-D2a spec §1), so a share link, base64 list or Clash entry of
-any of the five protocols becomes a profile that connects. The exceptions are
+any of the six protocols (Hysteria2 included, since M9-D1) becomes a profile that
+connects. The exceptions are
 rows the core itself would refuse. A Shadowsocks row with a cipher v26.10.10
 no longer has, or a 2022 key the core would reject, stays marked "Can't
 connect with this build" in the Servers list (only the profile editor names

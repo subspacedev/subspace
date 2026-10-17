@@ -73,6 +73,14 @@ class LegacyUdpHopTest {
         out.stream(0).finalmask()["quicParams"]!!.jsonObject.keys shouldBe setOf("brutalUp")
     }
 
+    @Test fun `an outbound that already dials through xicmp gets no udphop`() {
+        // Two HandleDial() masks cannot both be last (finalmask.go:147-154); the projection is already
+        // UnknownMask for xicmp, so the config is left exactly as written.
+        val fm = """{"udp":[{"type":"xicmp","settings":{}}],"quicParams":{"udpHop":{"ports":"20000-30000"}}}"""
+        val array = parse(hysteria(fm))
+        LegacyUdpHop.apply(array) shouldBe array
+    }
+
     @Test fun `configs without the legacy shape, or not hysteria, or malformed, are returned unchanged`() {
         val plain = parse(hysteria("""{"quicParams":{"congestion":"bbr"}}"""))
         LegacyUdpHop.apply(plain) shouldBe plain

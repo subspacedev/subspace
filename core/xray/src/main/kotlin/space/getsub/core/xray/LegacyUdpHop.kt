@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * mask that one wins and only the legacy key is dropped. The legacy key always goes once handled,
  * and a `quicParams` left empty by that goes too.
  *
+ * An outbound that already has an `xicmp` mask (which also dials the socket) is left as written.
  * Only `hysteria` outbounds are touched, and only a shape this can read: `finalmask` an object,
  * `udp` absent or an array, `udpHop` an object whose `ports` is a JSON primitive. Anything else is
  * returned exactly as written. Pure; never throws.
@@ -68,7 +69,11 @@ internal object LegacyUdpHop {
         val udpElement = finalmask["udp"]?.takeUnless { it is JsonNull } ?: JsonArray(emptyList())
         val udp = udpElement as? JsonArray ?: return null
 
-        val hasMask = udp.any { ((it as? JsonObject)?.get("type") as? JsonPrimitive)?.content == "udphop" }
+        val types = udp.map { ((it as? JsonObject)?.get("type") as? JsonPrimitive)?.content }
+        // An xicmp mask also dials the socket and must be last too, so there is no valid place for a
+        // udphop; the projection already marks such a row UnknownMask. Leave it exactly as written.
+        if ("xicmp" in types) return null
+        val hasMask = "udphop" in types
         val newUdp = if (hasMask) udp else JsonArray(udp + udphopMask(ports, hop["interval"]))
         val newQuic = quic - "udpHop"
         return JsonObject(
