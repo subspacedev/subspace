@@ -5,15 +5,19 @@ package space.getsub.core.xray
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.Obfuscation
+import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
+import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.SocksOutbound
+import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.OverrideTarget
 
 /** Runtime settings that shape the config but do not belong to a stored profile. */
@@ -143,19 +147,31 @@ private const val DNS_OUT_OUTBOUND_JSON = """{ "tag": "dns-out", "protocol": "dn
  */
 private val TYPED_PATH_TARGET = OverrideTarget.ViaOutbound("proxy")
 
+/**
+ * The stream Shadowsocks and SOCKS dial with. The model gives them none; this is what Xray would
+ * default to, emitted explicitly so the global fragment/noise `finalmask` (M9-A spec §3.3) has a
+ * `streamSettings` to live in (M9-D2a spec §2).
+ */
+private val PLAIN_TCP_STREAM = StreamSettings(network = "tcp", security = Security.None)
+
 // One object per wire shape (ARCHITECTURE.md §6); splitting it would scatter the shape's single author.
 @Suppress("TooManyFunctions")
 public object XrayConfigGenerator {
     /**
      * Dispatches on the profile's protocol.
      *
-     * `:core:xray` currently emits only VLESS. The `when` below is exhaustive
-     * over the sealed [space.getsub.core.model.Outbound] with no
+     * Emits VLESS, VMess, Trojan, Shadowsocks and SOCKS (M9-D2a spec §1). The `when` below is
+     * exhaustive over the sealed [space.getsub.core.model.Outbound] with no
      * `else` — adding a sixth protocol to the model is a compile error here
      * until this generator is taught to emit it, rather than a silent
      * fallthrough to a config that connects to nothing.
      *
-     * Within VLESS it emits `tcp`, `ws`, `grpc` and `xhttp`. That set is mirrored by
+     * A Shadowsocks row the core would refuse is answered with [ConfigResult.Unsupported] before
+     * anything is generated: v26.10.10 has dropped ciphers the importers still accept, and its
+     * Shadowsocks 2022 error quotes the key (M9-D2a spec §0). The protocol string is a fixed
+     * literal because the UI shows it (ARCHITECTURE.md §5.6).
+     *
+     * For VLESS, VMess and Trojan it emits `tcp`, `ws`, `grpc` and `xhttp`. That set is mirrored by
      * `StoredProfile.connectable` in `:core:data`, which decides what the UI offers —
      * `:core:data` cannot depend on this module (§4), so the two are kept in step by
      * hand. Teaching this generator a new transport means widening that set too;
@@ -167,15 +183,18 @@ public object XrayConfigGenerator {
         settings: TunnelSettings,
     ): ConfigResult =
         when (val outbound = profile.outbound) {
-            is VlessOutbound -> ConfigResult.Ok(generateVless(outbound, settings))
-            is VmessOutbound -> ConfigResult.Unsupported("VMess")
-            is TrojanOutbound -> ConfigResult.Unsupported("Trojan")
-            is ShadowsocksOutbound -> ConfigResult.Unsupported("Shadowsocks")
-            is SocksOutbound -> ConfigResult.Unsupported("SOCKS")
+            is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound ->
+                ConfigResult.Ok(generateTyped(outbound, settings))
+            is ShadowsocksOutbound ->
+                when (shadowsocksCoreRefusal(outbound.method, outbound.password)) {
+                    null -> ConfigResult.Ok(generateTyped(outbound, settings))
+                    ShadowsocksRefusal.Cipher -> ConfigResult.Unsupported("Shadowsocks cipher")
+                    ShadowsocksRefusal.Key -> ConfigResult.Unsupported("Shadowsocks 2022 key")
+                }
         }
 
-    private fun generateVless(
-        outbound: VlessOutbound,
+    private fun generateTyped(
+        outbound: Outbound,
         settings: TunnelSettings,
     ): String {
         val sb = StringBuilder()
@@ -340,33 +359,24 @@ public object XrayConfigGenerator {
 
     private fun appendOutbounds(
         sb: StringBuilder,
-        out: VlessOutbound,
+        out: Outbound,
         settings: TunnelSettings,
     ) {
+        // M9-D2a spec §1: every protocol dials the pinned IP in place of its address, as VLESS does.
+        val address = settings.addressPin?.ip ?: out.address
+        val stream =
+            when (out) {
+                is VlessOutbound -> out.stream
+                is VmessOutbound -> out.stream
+                is TrojanOutbound -> out.stream
+                is ShadowsocksOutbound, is SocksOutbound -> PLAIN_TCP_STREAM
+            }
         sb.appendLine("""  "outbounds": [""")
         sb.appendLine("""    {""")
         sb.appendLine("""      "tag": "proxy",""")
-        sb.appendLine("""      "protocol": "vless",""")
-        sb.appendLine("""      "settings": {""")
-        sb.appendLine("""        "vnext": [""")
-        sb.appendLine("""          {""")
-        sb.appendLine("""            "address": ${jsonString(settings.addressPin?.ip ?: out.address)},""")
-        sb.appendLine("""            "port": ${out.port},""")
-        sb.appendLine("""            "users": [""")
-        sb.appendLine("""              {""")
-        sb.appendLine("""                "id": ${jsonString(out.uuid)},""")
-        // VLESS has no transport encryption of its own; "none" is required, not
-        // a weakening — TLS/REALITY in streamSettings is what secures it.
-        sb.appendLine("""                "encryption": "none"${if (out.flow != null) "," else ""}""")
-        out.flow?.let { flow ->
-            sb.appendLine("""                "flow": ${jsonString(flow)}""")
-        }
-        sb.appendLine("""              }""")
-        sb.appendLine("""            ]""")
-        sb.appendLine("""          }""")
-        sb.appendLine("""        ]""")
-        sb.appendLine("""      },""")
-        appendStreamSettings(sb, out, settings.obfuscation, settings.addressPin?.domain)
+        sb.appendLine("""      "protocol": ${jsonString(out.wireProtocol())},""")
+        appendProtocolSettings(sb, out, address)
+        appendStreamSettings(sb, stream, settings.obfuscation, settings.addressPin?.domain)
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
         val needsDnsOutbound = settings.dns != null
@@ -382,13 +392,125 @@ public object XrayConfigGenerator {
         sb.appendLine("""  ],""")
     }
 
+    /**
+     * The `settings` object of the `proxy` outbound: the one-member `vnext`/`servers` array each
+     * protocol's Build demands (M9-D2a spec §1). Keys verified against Xray-core v26.10.10
+     * `infra/conf/`: `vless.go`; `vmess.go` (`VMessOutboundTarget`, `VMessAccount`: `id`,
+     * `security` — there is no `alterId` key, and `experiments` is never emitted); `trojan.go`
+     * (`TrojanServerTarget`; `flow` is a removed feature); `shadowsocks.go`
+     * (`ShadowsocksServerTarget`: `method`, `password`); `socks.go` (`SocksRemoteConfig`,
+     * `SocksAccount`: `user`, `pass`).
+     */
+    private fun appendProtocolSettings(
+        sb: StringBuilder,
+        out: Outbound,
+        address: String,
+    ) {
+        val endpoint = listOf(""""address": ${jsonString(address)}""", """"port": ${out.port}""")
+        when (out) {
+            // VLESS has no transport encryption of its own; "none" is required, not
+            // a weakening — TLS/REALITY in streamSettings is what secures it.
+            is VlessOutbound ->
+                appendServerSettings(
+                    sb,
+                    "vnext",
+                    endpoint,
+                    user =
+                    listOfNotNull(
+                        """"id": ${jsonString(out.uuid)}""",
+                        """"encryption": "none"""",
+                        out.flow?.let { """"flow": ${jsonString(it)}""" },
+                    ),
+                )
+
+            // `security` is emitted as stored: VMessAccount.Build maps an unknown value to `auto`
+            // rather than failing (M9-D2a spec §1). `alterId` is the model's record only.
+            is VmessOutbound ->
+                appendServerSettings(
+                    sb,
+                    "vnext",
+                    endpoint,
+                    user = listOf(""""id": ${jsonString(out.uuid)}""", """"security": ${jsonString(out.security)}"""),
+                )
+
+            is TrojanOutbound ->
+                appendServerSettings(sb, "servers", endpoint + """"password": ${jsonString(out.password)}""")
+
+            is ShadowsocksOutbound ->
+                appendServerSettings(
+                    sb,
+                    "servers",
+                    endpoint +
+                        """"method": ${jsonString(out.method)}""" +
+                        """"password": ${jsonString(out.password)}""",
+                )
+
+            // A blank username means no authentication, mirroring SocksClientConfig.Build, which
+            // attaches a user only when one is named: a password alone is dropped.
+            is SocksOutbound ->
+                appendServerSettings(
+                    sb,
+                    "servers",
+                    endpoint,
+                    user =
+                    out.username?.takeIf { it.isNotBlank() }?.let { name ->
+                        listOf(""""user": ${jsonString(name)}""", """"pass": ${jsonString(out.password.orEmpty())}""")
+                    },
+                )
+        }
+    }
+
+    /**
+     * Writes `"settings": { "<listKey>": [ { <fields>, "users": [ { <user> } ] } ] },` at the
+     * indentation the M1 VLESS block has always had, so that block stays byte-identical. [fields]
+     * and [user] are `"key": value` pairs; a null [user] omits `users`.
+     */
+    private fun appendServerSettings(
+        sb: StringBuilder,
+        listKey: String,
+        fields: List<String>,
+        user: List<String>? = null,
+    ) {
+        val members =
+            buildList {
+                addAll(fields)
+                user?.let { pairs ->
+                    add(
+                        buildString {
+                            appendLine(""""users": [""")
+                            appendLine("""              {""")
+                            pairs.forEachIndexed { index, pair ->
+                                val comma = if (index == pairs.size - 1) "" else ","
+                                appendLine("""                $pair$comma""")
+                            }
+                            appendLine("""              }""")
+                            append("""            ]""")
+                        },
+                    )
+                }
+            }
+        sb.appendLine("""      "settings": {""")
+        sb.appendLine("""        ${jsonString(listKey)}: [""")
+        sb.appendLine("""          {""")
+        members.forEachIndexed { index, member ->
+            val comma = if (index == members.size - 1) "" else ","
+            sb.appendLine("""            $member$comma""")
+        }
+        sb.appendLine("""          }""")
+        sb.appendLine("""        ]""")
+        sb.appendLine("""      },""")
+    }
+
+    /**
+     * The `streamSettings` object, shared by every protocol (M9-D2a spec §2): VLESS, VMess and
+     * Trojan pass their own [stream]; Shadowsocks and SOCKS pass [PLAIN_TCP_STREAM].
+     */
     private fun appendStreamSettings(
         sb: StringBuilder,
-        out: VlessOutbound,
+        stream: StreamSettings,
         obfuscation: Obfuscation?,
         pinDomain: String?,
     ) {
-        val stream = out.stream
         // The security block is last in the object unless a transport block
         // follows it, and JSON has no trailing commas — so whether it ends with
         // one is decided here rather than inside each security branch.
@@ -529,6 +651,16 @@ public object XrayConfigGenerator {
         sb.appendLine("""        }""")
     }
 }
+
+/** The outbound `protocol` value: the name Xray-core v26.10.10 registers each config under. */
+private fun Outbound.wireProtocol(): String =
+    when (this) {
+        is VlessOutbound -> "vless"
+        is VmessOutbound -> "vmess"
+        is TrojanOutbound -> "trojan"
+        is ShadowsocksOutbound -> "shadowsocks"
+        is SocksOutbound -> "socks"
+    }
 
 private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this
 

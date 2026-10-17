@@ -14,9 +14,7 @@ import org.junit.Test
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Profile
-import space.getsub.core.model.Security
-import space.getsub.core.model.StreamSettings
-import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.ShadowsocksOutbound
 
 class PingBatchTest {
     private val a = PingTarget(1L, """{"outbounds":[{"tag":"proxy","secret":"UUID-A"}]}""")
@@ -89,13 +87,13 @@ class PingBatchTest {
     }
 
     @Test
-    fun `pingConfigHasAProxyOutboundAndNullsForUnsupportedProtocols`() {
+    fun `pingConfigHasAProxyOutboundAndNullsForUnsupportedConfigs`() {
         val json = pingConfig(GOLDEN_PROFILE, null)!!
         Json.parseToJsonElement(json).jsonObject.getValue("outbounds").jsonArray.any {
             it.jsonObject["tag"]?.jsonPrimitive?.content == "proxy"
         } shouldBe true
-        val stream = StreamSettings(network = "tcp", security = Security.None)
-        val trojan = TrojanOutbound(address = "example.com", port = 443, password = "pw", stream = stream)
-        pingConfig(Profile(id = "p", name = "t", outbound = trojan), null) shouldBe null
+        // M9-D2a: every protocol generates now; a cipher v26.10.10 dropped is what still refuses.
+        val refused = ShadowsocksOutbound(address = "example.com", port = 8388, method = "aes-192-gcm", password = "pw")
+        pingConfig(Profile(id = "p", name = "t", outbound = refused), null) shouldBe null
     }
 }

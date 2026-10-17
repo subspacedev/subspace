@@ -589,30 +589,28 @@ class XrayConfigGeneratorTest {
     }
 
     @Test
-    fun `refuses a non-vless outbound rather than emitting a broken config`() {
-        val stream = StreamSettings(network = "tcp", security = Security.None)
-        val trojan = TrojanOutbound("host.example", 443, "pw", stream)
-        val profile = Profile(id = "id", name = "n", outbound = trojan)
+    fun `refuses a shadowsocks row the core would reject rather than emitting a broken config`() {
+        val refused = ShadowsocksOutbound("host.example", 8388, "aes-192-gcm", "pw")
+        val profile = Profile(id = "id", name = "n", outbound = refused)
 
         val result = XrayConfigGenerator.generate(profile, settings)
 
         result.shouldBeInstanceOf<ConfigResult.Unsupported>()
-        result.protocol shouldBe "Trojan"
+        result.protocol shouldBe "Shadowsocks cipher"
     }
 
     @Test
-    fun `names every unsupported protocol exactly, and never the address`() {
-        val stream = StreamSettings(network = "tcp", security = Security.None)
+    fun `names every refusal exactly, and never the address or the secret`() {
         val secretAddress = "host.example"
-        val unsupported =
+        val secretKey = "c2hvcnQta2V5" // valid base64, 9 bytes: too short for any 2022 method
+        val refused =
             listOf<Pair<Outbound, String>>(
-                VmessOutbound(secretAddress, 443, "u", 0, "auto", stream) to "VMess",
-                TrojanOutbound(secretAddress, 443, "pw", stream) to "Trojan",
-                ShadowsocksOutbound(secretAddress, 8388, "aes-256-gcm", "pw") to "Shadowsocks",
-                SocksOutbound(secretAddress, 1080, "user", "pw") to "SOCKS",
+                ShadowsocksOutbound(secretAddress, 8388, "aes-192-gcm", secretKey) to "Shadowsocks cipher",
+                ShadowsocksOutbound(secretAddress, 8388, "2022-blake3-aes-256-gcm", secretKey) to
+                    "Shadowsocks 2022 key",
             )
 
-        unsupported.forEach { (outbound, expected) ->
+        refused.forEach { (outbound, expected) ->
             withClue(expected) {
                 val profile = Profile(id = "id", name = "n", outbound = outbound)
                 val result = XrayConfigGenerator.generate(profile, settings)
@@ -621,6 +619,28 @@ class XrayConfigGeneratorTest {
                 result.protocol shouldBe expected
                 // ARCHITECTURE.md §5.6: this string reaches the UI. It must be a fixed literal.
                 result.protocol shouldNotContain secretAddress
+                result.protocol shouldNotContain secretKey
+            }
+        }
+    }
+
+    @Test
+    fun `generates every typed protocol`() {
+        val stream = StreamSettings(network = "tcp", security = Security.None)
+        val outbounds =
+            listOf<Pair<Outbound, String>>(
+                VmessOutbound("host.example", 443, "u", 0, "auto", stream) to "vmess",
+                TrojanOutbound("host.example", 443, "pw", stream) to "trojan",
+                ShadowsocksOutbound("host.example", 8388, "aes-256-gcm", "pw") to "shadowsocks",
+                SocksOutbound("host.example", 1080, "user", "pw") to "socks",
+            )
+
+        outbounds.forEach { (outbound, protocol) ->
+            withClue(protocol) {
+                val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = outbound), settings)
+
+                result.shouldBeInstanceOf<ConfigResult.Ok>()
+                result.json shouldContain "\"protocol\": \"$protocol\""
             }
         }
     }
