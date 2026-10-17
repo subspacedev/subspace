@@ -37,6 +37,33 @@ class TrojanLinkTest {
     }
 
     @Test
+    fun `security none imports a plaintext row`() {
+        val result = parseTrojanLink("trojan://pw@10.0.0.1:8443?security=none&type=ws&path=%2Ft", 0) as LinkResult.Ok
+        val out = result.profile.outbound as TrojanOutbound
+
+        out.stream.security shouldBe Security.None
+        out.stream.network shouldBe "ws"
+        out.stream.transport shouldBe TransportOptions.WebSocket(path = "/t", headers = emptyMap())
+    }
+
+    @Test
+    fun `security none is matched case-insensitively`() {
+        val result = parseTrojanLink("trojan://pw@10.0.0.1:8443?security=NONE", 0) as LinkResult.Ok
+
+        (result.profile.outbound as TrojanOutbound).stream.security shouldBe Security.None
+    }
+
+    @Test
+    fun `explicit and blank security stay tls`() {
+        listOf("security=tls", "security=").forEach { query ->
+            val result = parseTrojanLink("trojan://pw@host.example:443?$query", 0) as LinkResult.Ok
+            val security = (result.profile.outbound as TrojanOutbound).stream.security
+
+            (security is Security.Tls) shouldBe true
+        }
+    }
+
+    @Test
     fun `blank optional values use safe defaults`() {
         val result =
             parseTrojanLink(
