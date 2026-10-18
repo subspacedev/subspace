@@ -4,6 +4,7 @@ package space.getsub.core.xray
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -29,8 +30,11 @@ import space.getsub.core.model.isKcpNetwork
  * are then removed. A `none` header with no seed is bare KCP, so only the keys go.
  *
  * Touched only when all hold: `streamSettings.network` is `kcp`/`mkcp` (any case); `kcpSettings` is an
- * object carrying `header` or `seed`; `finalmask` is absent or an object whose `udp` is absent, null or an
- * empty array. A config that already has masks is the v26.10 shape and wins. A header with no mask
+ * object carrying `header` or `seed`; `finalmask` is absent or an object whose `udp` is absent, null, an
+ * empty array, or an array of `noise` masks only. A config that already has an `mkcp-legacy` (or any other
+ * non-noise) mask is the v26.10 shape and wins. Noise is client-only junk the server never sees (ruling
+ * D2-R12), so noise-only masks still lack the obfuscation: the legacy-derived masks go in front of them,
+ * `[seed or original, header, noise...]`, the order the typed path writes (final review M3). A header with no mask
  * (`http`, an unknown name), or a `dns` header carrying a non-empty `domain` (ruling D2-R11), is left exactly
  * as written: the projection marks that row not connectable.
  * Idempotent (the rewritten outbound no longer has the keys). Pure; never throws.
@@ -54,33 +58,39 @@ internal object LegacyKcp {
         if (network == null || !isKcpNetwork(network)) return null
         val kcp = stream["kcpSettings"] as? JsonObject ?: return null
         if (!kcp.containsKey("header") && !kcp.containsKey("seed")) return null
-        val finalmask = maskFreeFinalmask(stream) ?: return null
+        val (finalmask, noise) = maskFreeFinalmask(stream) ?: return null
         val masks = masksFor(kcp) ?: return null
 
         val newStream = stream.toMutableMap()
         newStream["kcpSettings"] = JsonObject(kcp - "header" - "seed")
         if (masks.isNotEmpty()) {
-            val udp = JsonArray(masks.map { Json.parseToJsonElement(FinalmaskJson.kcpMask(it)) })
+            val udp = JsonArray(masks.map { Json.parseToJsonElement(FinalmaskJson.kcpMask(it)) } + noise)
             newStream["finalmask"] = JsonObject(finalmask + ("udp" to udp))
         }
         return JsonObject(outbound + ("streamSettings" to JsonObject(newStream)))
     }
 
-    /** The stream's `finalmask` (empty when absent) if it has no `udp` mask yet, else null: leave as written. */
+    /**
+     * The stream's `finalmask` (empty when absent) and its `udp` noise masks, if it has no other `udp` mask yet,
+     * else null: leave as written.
+     */
     @Suppress("ReturnCount")
-    private fun maskFreeFinalmask(stream: JsonObject): JsonObject? {
+    private fun maskFreeFinalmask(stream: JsonObject): Pair<JsonObject, List<JsonElement>>? {
         val finalmask =
             when (val f = stream["finalmask"]) {
-                null, is JsonNull -> return JsonObject(emptyMap())
+                null, is JsonNull -> return JsonObject(emptyMap()) to emptyList()
                 is JsonObject -> f
                 else -> return null
             }
         return when (val udp = finalmask["udp"]) {
-            null, is JsonNull -> finalmask
-            is JsonArray -> finalmask.takeIf { udp.isEmpty() }
+            null, is JsonNull -> finalmask to emptyList()
+            is JsonArray -> (finalmask to udp.toList()).takeIf { udp.all(::isNoiseMask) }
             else -> null
         }
     }
+
+    private fun isNoiseMask(element: JsonElement): Boolean =
+        (element as? JsonObject)?.string("type")?.lowercase() == "noise"
 
     /**
      * The masks the classic fields mean, or null when they cannot be written: a header with no mask, or (ruling

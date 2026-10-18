@@ -600,4 +600,29 @@ class ClashAndJsonWireGuardHttpTest {
         o.seed shouldBe "sd"
         o.header shouldBe KcpHeader.SRTP
     }
+
+    // Final review M3: noise-only udp masks do not hide the legacy fields; `:core:xray`'s LegacyKcp puts the
+    // legacy-derived masks in front of the noise, so the projection reads them too.
+    @Test
+    fun `raw kcp with only noise masks projects its legacy header and seed`() {
+        val noise = """{"type":"noise","settings":{"noise":[{"rand":"10-20","delay":"10-16"}]}}"""
+        val view =
+            rawVless(
+                """{"network":"kcp","kcpSettings":{"header":{"type":"srtp"},"seed":"sd"},
+                "finalmask":{"udp":[$noise]}}""",
+            )
+        val o = view.transport.shouldBeInstanceOf<TransportOptions.Kcp>().obfuscation
+        o.unsupported shouldBe null
+        o.seed shouldBe "sd"
+        o.header shouldBe KcpHeader.SRTP
+        val http =
+            rawVless("""{"network":"kcp","kcpSettings":{"header":{"type":"http"}},"finalmask":{"udp":[$noise]}}""")
+        http.transport
+            .shouldBeInstanceOf<TransportOptions.Kcp>()
+            .obfuscation.unsupported shouldBe space.getsub.core.model.KcpUnsupported.HttpHeader
+        val bare = rawVless("""{"network":"kcp","finalmask":{"udp":[$noise]}}""")
+        bare.transport.shouldBeInstanceOf<TransportOptions.Kcp>().obfuscation shouldBe
+            space.getsub.core.model
+                .KcpObfuscation(null, null, false)
+    }
 }

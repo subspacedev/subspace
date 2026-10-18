@@ -54,9 +54,10 @@ private fun failed(reason: KcpUnsupported) = KcpFinalmaskResult(KcpObfuscation(n
  * [trailingNoiseAllowed] (ruling D2-R12, raw JSON only): `noise` masks after every `mkcp-legacy` mask are
  * client-only junk the server never sees (research "Verified for D2" (c): `[S,H,N]` client ↔ `[S,H]` server),
  * so they are dropped before reading and the row stays connectable; the raw config keeps or replaces them as
- * the injector does. Noise alone is then bare KCP, not "no masks": the legacy `kcpSettings` fields are not
- * read, as the core does not read them. A link's `fm=` keeps M9-D1's rule (any noise is UnknownMask), so
- * link callers leave this false.
+ * the injector does. Noise alone is then "no masks" (null): `:core:xray`'s `LegacyKcp` puts the masks the
+ * legacy `kcpSettings` fields mean in front of the noise, so the caller reads those fields, as for no udp at
+ * all (final review M3). A link's `fm=` keeps M9-D1's rule (any noise is UnknownMask), so link callers leave
+ * this false.
  */
 internal fun readKcpFinalmask(
     finalmask: JsonObject,
@@ -64,7 +65,7 @@ internal fun readKcpFinalmask(
 ): KcpFinalmaskResult {
     val all = (finalmask["udp"] as? JsonArray)?.takeIf { it.isNotEmpty() } ?: return KcpFinalmaskResult(null)
     val list = if (trailingNoiseAllowed) all.dropLastWhile { it.isNoiseMask() } else all
-    if (list.isEmpty()) return KcpFinalmaskResult(KcpObfuscation(null, null, false))
+    if (list.isEmpty()) return KcpFinalmaskResult(null)
     val parsed =
         list.map { entry ->
             (entry as? JsonObject)?.let(::parseMask) ?: Parsed.Bad(KcpUnsupported.UnknownMask)

@@ -114,6 +114,29 @@ class LegacyKcpTest {
         LegacyKcp.apply(finalmaskNotObject) shouldBe finalmaskNotObject
     }
 
+    private val rawNoise = """{"type":"noise","settings":{"noise":[{"rand":"10-20","delay":"10-16"}]}}"""
+
+    // Final review M3: noise is client-only junk (ruling D2-R12), so a udp list of only noise masks still means
+    // "no mkcp masks yet". The legacy fields are translated and go in front of the noise.
+    @Test fun `noise-only udp masks get the legacy masks in front, and the inert keys go`() {
+        val extra = ""","finalmask":{"udp":[$rawNoise]}"""
+        val stream = LegacyKcp.apply(parse(kcp("""{"header":{"type":"srtp"},"seed":"abc"}""", extra))).stream(0)
+        stream.udp() shouldBe masks("[${seed("abc")},${header("srtp")},$rawNoise]")
+        stream["kcpSettings"] shouldBe Json.parseToJsonElement("{}")
+        LegacyKcp.apply(JsonArray(listOf(parse(kcp("{}", extra))[0]))).stream(0).udp() shouldBe masks("[$rawNoise]")
+    }
+
+    @Test fun `noise-only udp with a none header just loses the inert keys, and http stays as written`() {
+        val extra = ""","finalmask":{"udp":[$rawNoise]}"""
+        val bare = LegacyKcp.apply(parse(kcp("""{"header":{"type":"none"}}""", extra))).stream(0)
+        bare.udp() shouldBe masks("[$rawNoise]")
+        bare["kcpSettings"] shouldBe Json.parseToJsonElement("{}")
+        val http = parse(kcp("""{"header":{"type":"http"}}""", extra))
+        LegacyKcp.apply(http) shouldBe http
+        val noiseThenMask = parse(kcp("""{"seed":"abc"}""", ""","finalmask":{"udp":[$rawNoise,$original]}"""))
+        LegacyKcp.apply(noiseThenMask) shouldBe noiseThenMask
+    }
+
     @Test fun `the rewrite is idempotent`() {
         val once = LegacyKcp.apply(parse(kcp("""{"header":{"type":"wechat-video"},"seed":"abc"}""")))
         LegacyKcp.apply(once) shouldBe once

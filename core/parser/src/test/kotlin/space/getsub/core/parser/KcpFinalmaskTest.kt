@@ -118,11 +118,12 @@ class KcpFinalmaskTest {
         KcpRules.masks(o) shouldBe listOf(KcpMask.Seed("s"), KcpMask.Header(KcpHeader.WECHAT))
     }
 
+    // Final review M3 reverses the earlier rule: noise alone says nothing about mKCP obfuscation, so the
+    // caller reads the legacy fields (LegacyKcp writes their masks in front of the noise).
     @Test
-    fun `raw noise alone is bare KCP, not a reason to read the legacy fields`() {
-        val o = readRaw(udp(noise)).obfuscation!!
-        o.unsupported shouldBe null
-        KcpRules.masks(o) shouldBe emptyList()
+    fun `raw noise alone is no mkcp masks, so the legacy fields may speak`() {
+        readRaw(udp(noise)).obfuscation shouldBe null
+        readRaw(udp(noise, noise)).obfuscation shouldBe null
     }
 
     @Test
