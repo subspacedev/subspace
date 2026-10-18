@@ -12,8 +12,8 @@ import space.getsub.core.model.ProxyCredentialsFactory
  * The account the loopback inbounds require, from the user's setting (M9-E spec §5.2).
  *
  * Manual uses what the user typed when both fields are usable. An empty field falls back to Auto
- * rather than to an open inbound; the Settings page shows the field error. So does a field SOCKS5
- * cannot carry ([ProxyCredentialRules], shared with that page). Auto keeps [existing] when there
+ * rather than to an open inbound; the Settings page shows the field error. So does a field SOCKS5, HTTP Basic
+ * or hev cannot carry ([ProxyCredentialRules], shared with that page). Auto keeps [existing] when there
  * is one and otherwise mints a random alphanumeric account, which also keeps hev's YAML free of
  * anything that needs escaping.
  */
@@ -21,13 +21,13 @@ internal fun sessionCredentials(
     mode: ProxyAuthSettings,
     existing: ProxyCredentials?,
 ): ProxyCredentials =
-    if (mode.mode == ProxyAuthMode.Manual && usableField(mode.manualUser) && usableField(mode.manualPass)) {
+    if (mode.mode == ProxyAuthMode.Manual &&
+        ProxyCredentialRules.checkUser(mode.manualUser) == null &&
+        ProxyCredentialRules.checkPass(mode.manualPass) == null) {
         ProxyCredentials(mode.manualUser, mode.manualPass)
     } else {
         existing ?: ProxyCredentialsFactory.random()
     }
-
-private fun usableField(value: String): Boolean = ProxyCredentialRules.check(value) == null
 
 /**
  * The credentials one core start uses: the session's own once it holds some, otherwise a value

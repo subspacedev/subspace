@@ -57,6 +57,13 @@ class SessionCredentialsTest {
     }
 
     @Test
+    fun `a manual user name with a colon falls back to auto, a password with one does not`() {
+        // HTTP Basic splits at the first colon: the app's own fetches would get 407 while connected.
+        sessionCredentials(manual.copy(manualUser = "al:ice"), existing) shouldBe existing
+        sessionCredentials(manual.copy(manualPass = "pa:ss"), existing) shouldBe ProxyCredentials("manual-user", "pa:ss")
+    }
+
+    @Test
     fun `a core start in a session that already holds credentials reuses them without reading settings`() =
         runTest {
             var reads = 0

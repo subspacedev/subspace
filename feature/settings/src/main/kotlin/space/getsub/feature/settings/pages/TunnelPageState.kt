@@ -49,6 +49,9 @@ internal sealed interface TunnelFieldError {
     data object TooLong : TunnelFieldError
 
     data object ControlCharacter : TunnelFieldError
+
+    /** HTTP Basic splits at the first colon, so a user name cannot contain one. */
+    data object Colon : TunnelFieldError
 }
 
 internal enum class RouteLineError { NotARange, WholeInternet }
@@ -79,8 +82,8 @@ internal fun TunnelDraft.errors(): TunnelErrors {
     }
     if (mtu.override) mtuError(mtu.value)?.let { fields[TunnelField.Mtu] = it }
     if (proxyAuth.mode == ProxyAuthMode.Manual) {
-        credentialError(proxyAuth.manualUser)?.let { fields[TunnelField.ProxyUser] = it }
-        credentialError(proxyAuth.manualPass)?.let { fields[TunnelField.ProxyPass] = it }
+        userError(proxyAuth.manualUser)?.let { fields[TunnelField.ProxyUser] = it }
+        passError(proxyAuth.manualPass)?.let { fields[TunnelField.ProxyPass] = it }
     }
     val routeLines = if (routes.override) routeLineErrors(routes.ranges) else emptyMap()
     return TunnelErrors(fields, routeLines)
@@ -96,12 +99,16 @@ internal fun muxXudpError(text: String): TunnelFieldError? =
     MuxRules.check(MUX_PROBE, text, Udp443Mode.Reject.wire).toFieldError()
 
 /** [ProxyCredentialRules], the check `:bg` applies before using Manual credentials (it falls back to Auto). */
-internal fun credentialError(value: String): TunnelFieldError? =
-    when (ProxyCredentialRules.check(value)) {
-        null -> null
+internal fun userError(value: String): TunnelFieldError? = ProxyCredentialRules.checkUser(value)?.toFieldError()
+
+internal fun passError(value: String): TunnelFieldError? = ProxyCredentialRules.checkPass(value)?.toFieldError()
+
+private fun ProxyCredentialProblem.toFieldError(): TunnelFieldError =
+    when (this) {
         ProxyCredentialProblem.Empty -> TunnelFieldError.Required
         ProxyCredentialProblem.TooLong -> TunnelFieldError.TooLong
         ProxyCredentialProblem.ControlCharacter -> TunnelFieldError.ControlCharacter
+        ProxyCredentialProblem.Colon -> TunnelFieldError.Colon
     }
 
 /**

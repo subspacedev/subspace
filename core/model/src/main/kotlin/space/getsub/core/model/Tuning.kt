@@ -31,19 +31,27 @@ public data class ProxyAuthSettings(
     }
 }
 
-/** Why a Manual user name or password cannot be used ([ProxyCredentialRules.check]). */
-public enum class ProxyCredentialProblem { Empty, TooLong, ControlCharacter }
+/** Why a Manual user name or password cannot be used ([ProxyCredentialRules]). */
+public enum class ProxyCredentialProblem { Empty, TooLong, ControlCharacter, Colon }
 
 /**
  * Whether a Manual user name or password can go on the local inbounds. RFC 1929 caps each SOCKS5 field
  * at 255 bytes (hev truncates there, `src/hev-config.c:177-178`, and the core would then refuse the
  * truncated value), and a control character would break the single-line YAML scalar hev reads.
+ * A user name must also not contain `:`: HTTP Basic (RFC 7617 §2) splits `user:pass` at the first
+ * colon, so the HTTP inbound would read a different account and the app's own fetches would get 407.
+ * A password may contain one.
  * `:bg` falls back to Auto for a field that fails; the Settings page shows the error.
  */
 public object ProxyCredentialRules {
     public const val MAX_BYTES: Int = 255
 
-    public fun check(value: String): ProxyCredentialProblem? =
+    public fun checkUser(value: String): ProxyCredentialProblem? =
+        common(value) ?: ProxyCredentialProblem.Colon.takeIf { ':' in value }
+
+    public fun checkPass(value: String): ProxyCredentialProblem? = common(value)
+
+    private fun common(value: String): ProxyCredentialProblem? =
         when {
             value.isEmpty() -> ProxyCredentialProblem.Empty
             value.toByteArray(Charsets.UTF_8).size > MAX_BYTES -> ProxyCredentialProblem.TooLong

@@ -96,6 +96,12 @@ class TunnelPageStateTest {
     }
 
     @Test
+    fun `a colon in the manual user name is an error, in the password it is not`() {
+        manual("al:ice", "pass").errors().fields shouldBe mapOf(TunnelField.ProxyUser to TunnelFieldError.Colon)
+        manual("alice", "pa:ss").errors().isEmpty shouldBe true
+    }
+
+    @Test
     fun `auto ignores the manual fields and keeps the stored ones when they are invalid`() {
         val storedManual = stored.copy(proxyAuth = ProxyAuthSettings(ProxyAuthMode.Auto, "alice", "secret"))
         val draft = storedManual.copy(proxyAuth = ProxyAuthSettings(ProxyAuthMode.Auto, "alice", ""))

@@ -69,4 +69,5 @@ internal fun errorText(
         TunnelFieldError.Required -> stringResource(R.string.settings_tunnel_error_required, label)
         TunnelFieldError.TooLong -> stringResource(R.string.settings_tunnel_error_too_long, label)
         TunnelFieldError.ControlCharacter -> stringResource(R.string.settings_tunnel_error_control, label)
+        TunnelFieldError.Colon -> stringResource(R.string.settings_tunnel_error_colon, label)
     }

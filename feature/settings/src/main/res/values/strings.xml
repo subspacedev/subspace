@@ -280,6 +280,7 @@
     <string name="settings_tunnel_error_required">%1$s is required</string>
     <string name="settings_tunnel_error_too_long">%1$s is too long (255 bytes at most)</string>
     <string name="settings_tunnel_error_control">%1$s can\'t contain tabs, line breaks or other control characters</string>
+    <string name="settings_tunnel_error_colon">%1$s can\'t contain a colon (:)</string>
     <string name="settings_tunnel_save">Save</string>
     <string name="settings_tunnel_save_restarts">Saving restarts the connection</string>
     <string name="settings_tunnel_discard_title">Discard changes?</string>

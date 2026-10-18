@@ -25,7 +25,7 @@ internal fun TunnelDraft.forSave(stored: TunnelDraft): TunnelDraft {
         } else {
             routes.copy(ranges = stored.routes.ranges)
         }
-    val credsValid = credentialError(proxyAuth.manualUser) == null && credentialError(proxyAuth.manualPass) == null
+    val credsValid = userError(proxyAuth.manualUser) == null && passError(proxyAuth.manualPass) == null
     val proxyAuth =
         if (proxyAuth.mode == ProxyAuthMode.Manual || credsValid) {
             proxyAuth
