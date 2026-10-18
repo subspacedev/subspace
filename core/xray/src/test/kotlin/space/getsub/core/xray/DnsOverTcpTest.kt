@@ -58,7 +58,14 @@ class DnsOverTcpTest {
         outbound: Outbound,
         plan: DnsPlan?,
     ): JsonObject {
-        val settings = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true, dns = plan)
+        val settings =
+            TunnelSettings(
+                socksPort = 10808,
+                dnsServer = "1.1.1.1",
+                enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
+                dns = plan,
+            )
         val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = outbound), settings)
         check(result is ConfigResult.Ok) { "expected ConfigResult.Ok" }
         return Json.parseToJsonElement(result.json).jsonObject

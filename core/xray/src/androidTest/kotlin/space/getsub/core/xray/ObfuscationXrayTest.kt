@@ -29,7 +29,13 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class ObfuscationXrayTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val fragment =
         FragmentSpec(FragmentPackets.TlsHello, XrayRange(50, 100), XrayRange(10, 20), XrayRange(10, 10))
     private val records = fragment.copy(packets = FragmentPackets.Records(XrayRange(1, 3)), maxSplit = null)

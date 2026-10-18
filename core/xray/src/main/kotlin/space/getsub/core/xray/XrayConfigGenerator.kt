@@ -10,6 +10,7 @@ import space.getsub.core.model.KcpRules
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -33,6 +34,15 @@ public data class TunnelSettings(
     /** Advertised to both the `dns` block and `VpnService.Builder.addDnsServer` (ARCHITECTURE.md §5.2). */
     val dnsServer: String,
     val enableSniffing: Boolean,
+    /**
+     * The username and password both loopback inbounds require (M9-E spec §5.3).
+     *
+     * Required, with no default, so no call site can build an open inbound by forgetting it:
+     * a loopback proxy without auth is reachable by every app on the device. The tunnel passes
+     * the session's credentials, shared with hev; callers whose inbounds nobody dials pass
+     * `ProxyCredentialsFactory.random()`.
+     */
+    val proxyCredentials: ProxyCredentials,
     /**
      * The active routing rule set, or null when routing is off.
      *
@@ -356,10 +366,10 @@ public object XrayConfigGenerator {
                 DEFAULT_SNIFFING
             }
         sb.appendLine("""  "inbounds": [""")
-        sb.append(socksInboundJson(settings.socksPort, sniffing))
+        sb.append(socksInboundJson(settings.socksPort, sniffing, settings.proxyCredentials))
         sb.appendLine(if (settings.httpPort != null) "," else "")
         settings.httpPort?.let { port ->
-            sb.appendLine(httpInboundJson(port))
+            sb.appendLine(httpInboundJson(port, settings.proxyCredentials))
         }
         sb.appendLine("""  ],""")
     }

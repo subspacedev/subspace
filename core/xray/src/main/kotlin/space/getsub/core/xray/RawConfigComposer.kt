@@ -277,15 +277,21 @@ public object RawConfigComposer {
     ): String {
         val socks =
             if (preservedSniffing != null) {
-                socksInboundJsonPreservingSniffing(settings.socksPort, preservedSniffing, tags.socks)
+                socksInboundJsonPreservingSniffing(
+                    settings.socksPort,
+                    preservedSniffing,
+                    settings.proxyCredentials,
+                    tags.socks,
+                )
             } else {
                 socksInboundJson(
                     settings.socksPort,
                     generatedSniffing.takeIf { settings.enableSniffing },
+                    settings.proxyCredentials,
                     tags.socks,
                 )
             }
-        val http = settings.httpPort?.let { httpInboundJson(it, tags.http) }
+        val http = settings.httpPort?.let { httpInboundJson(it, settings.proxyCredentials, tags.http) }
         return listOfNotNull(socks, http).joinToString(",\n")
     }
 

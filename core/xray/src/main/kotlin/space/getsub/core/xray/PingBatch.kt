@@ -17,6 +17,7 @@ import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentialsFactory
 
 /**
  * One server to measure: [key] is the caller's own id (a profile id), [xrayJson]
@@ -166,6 +167,9 @@ public fun pingConfig(
                     socksPort = PING_CONFIG_SOCKS_PORT,
                     dnsServer = PING_CONFIG_DNS,
                     enableSniffing = false,
+                    // pingBatch reads only `outbounds`; the inbounds this config carries are never
+                    // dialled, so a throwaway value keeps the required field honest.
+                    proxyCredentials = ProxyCredentialsFactory.random(),
                     obfuscation = obfuscation,
                 ),
             )

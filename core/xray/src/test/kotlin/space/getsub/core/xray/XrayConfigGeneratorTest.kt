@@ -39,6 +39,7 @@ class XrayConfigGeneratorTest {
             socksPort = 10808,
             dnsServer = "1.1.1.1",
             enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
         )
 
     /**

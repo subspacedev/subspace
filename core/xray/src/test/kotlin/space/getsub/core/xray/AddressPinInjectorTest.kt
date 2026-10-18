@@ -202,7 +202,13 @@ class AddressPinInjectorTest {
             "settings":{"vnext":[{"address":"srv.example","port":443}]},
             "streamSettings":{"security":"tls"}}]}"""
         val settings =
-            TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true, httpPort = 41081)
+            TunnelSettings(
+                socksPort = 41080,
+                dnsServer = "1.1.1.1",
+                enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
+                httpPort = 41081,
+            )
                 .copy(addressPin = pin)
         val result = RawConfigComposer.compose(raw, settings, assetDir = "/data/geo", override = null)
         val json = (result as ComposeResult.Ok).json

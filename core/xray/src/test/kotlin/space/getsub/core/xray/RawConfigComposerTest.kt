@@ -26,6 +26,7 @@ class RawConfigComposerTest {
             socksPort = 41080,
             dnsServer = "1.1.1.1",
             enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
             httpPort = 41081,
         )
 

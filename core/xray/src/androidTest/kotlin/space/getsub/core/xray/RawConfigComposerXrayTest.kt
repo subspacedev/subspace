@@ -29,7 +29,13 @@ class RawConfigComposerXrayTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private val settings =
-        TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true, httpPort = 41081)
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+            httpPort = 41081,
+        )
 
     // The target panel's balancer template, reduced to its structure. Addresses
     // and credentials are placeholders — ARCHITECTURE.md §5.6, and the core does not dial during

@@ -38,7 +38,13 @@ import space.getsub.core.model.XrayRange
  * `transport_security.go:314` (`pinnedPeerCertSha256`), not captured from this generator.
  */
 class XrayConfigGeneratorHysteria2Test {
-    private val settings = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 10808,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val pinA = "ab".repeat(32)
     private val pinB = "cd".repeat(32)
     private val hopping = PortHopping(ports = listOf(20000..30000, 40000..40000))

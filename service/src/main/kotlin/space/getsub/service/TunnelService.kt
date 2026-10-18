@@ -57,6 +57,7 @@ import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentialsFactory
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
@@ -2070,6 +2071,7 @@ class TunnelService : VpnService() {
                 socksPort = socksPort,
                 dnsServer = DNS_SERVER,
                 enableSniffing = SNIFFING_ENABLED,
+                proxyCredentials = ProxyCredentialsFactory.random(),
                 routing = (routing as? RoutingResolution.Active)?.ruleSet,
                 httpPort = httpPort,
                 dns = dnsPlan,

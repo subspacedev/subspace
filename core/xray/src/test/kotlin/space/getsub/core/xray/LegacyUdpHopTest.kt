@@ -23,7 +23,13 @@ import space.getsub.core.model.XrayRange
  * says it hops. The composer rewrites it into the `udphop` mask the core reads.
  */
 class LegacyUdpHopTest {
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
 
     private fun parse(json: String) = Json.parseToJsonElement(json).jsonArray
 

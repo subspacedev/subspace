@@ -3,6 +3,7 @@
 package space.getsub.service
 
 import kotlinx.coroutines.CancellationException
+import space.getsub.core.model.ProxyCredentialsFactory
 import space.getsub.core.xray.ComposeResult
 import space.getsub.core.xray.RawConfigComposer
 import space.getsub.core.xray.TunnelSettings
@@ -96,6 +97,8 @@ public class BoundPassthroughValidator(
                 socksPort = VALIDATION_PORT,
                 dnsServer = DNS_SERVER_DEFAULT,
                 enableSniffing = true,
+                // testXray only checks the config; nothing dials these inbounds.
+                proxyCredentials = ProxyCredentialsFactory.random(),
             )
         val composed = RawConfigComposer.compose(rawJson, settings, assetDir(), override = null)
         if (composed !is ComposeResult.Ok) return false

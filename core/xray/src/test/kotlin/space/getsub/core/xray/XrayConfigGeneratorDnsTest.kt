@@ -41,6 +41,7 @@ class XrayConfigGeneratorDnsTest {
             socksPort = 10808,
             dnsServer = "1.1.1.1",
             enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
             dns = plan,
         )
 
@@ -149,6 +150,7 @@ class XrayConfigGeneratorDnsTest {
                 socksPort = 10808,
                 dnsServer = "1.1.1.1",
                 enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
                 routing = whitelist,
                 dns = defaultPlan,
             )
@@ -257,6 +259,7 @@ class XrayConfigGeneratorDnsTest {
                 socksPort = 10808,
                 dnsServer = "1.1.1.1",
                 enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
                 dns = dns,
             )
         val result = XrayConfigGenerator.generate(GOLDEN_PROFILE, settings)

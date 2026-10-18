@@ -21,6 +21,13 @@
       "listen": "127.0.0.1",
       "port": 10808,
       "settings": {
+        "auth": "password",
+        "accounts": [
+          {
+            "user": "testuser",
+            "pass": "testpass"
+          }
+        ],
         "udp": true
       },
       "sniffing": {

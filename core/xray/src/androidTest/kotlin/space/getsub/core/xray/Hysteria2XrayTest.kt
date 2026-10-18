@@ -46,7 +46,13 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class Hysteria2XrayTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val pinA = "ab".repeat(32)
     private val pinB = "cd".repeat(32)
     private val hopping = PortHopping(ports = listOf(20000..30000, 40000..40000))
