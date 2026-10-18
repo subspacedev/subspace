@@ -99,7 +99,8 @@ public object MuxDetection {
     }
 
     // Absent numbers read as 0 and an absent mode as reject, as Xray-core v26.10.10's MuxConfig does
-    // (`infra/conf/xray.go:106-128`).
+    // (`infra/conf/xray.go:106-128`). An unknown mode also reads as reject here, which the core does
+    // not do: it refuses to build the config, so this spec describes a config that never starts.
     private fun ownSpec(outbound: JsonObject): MuxSpec? {
         val mux =
             (outbound.present("mux") as? JsonObject)

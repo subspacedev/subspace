@@ -83,7 +83,8 @@ private fun rawMux(
     return when {
         ours && resolved.origin == TuningOrigin.Yours -> resolved to true
         own != null -> {
-            val used = own.ownSpec != null && plans.any { it.eligible }
+            // The own block runs only where the core can mux that outbound, whatever its siblings are.
+            val used = own.ownSpec != null && own.eligible
             TuningValue(own.ownSpec, TuningOrigin.Config) to used
         }
         else -> resolved to ours

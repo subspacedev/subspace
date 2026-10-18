@@ -116,4 +116,16 @@ class TuningReportTest {
         report.mux shouldBe providerOn.mux
         report.muxUsed shouldBe false
     }
+
+    @Test fun `an ineligible outbound's own mux is not used even beside an eligible one`() {
+        // Two outermost outbounds: Vision keeps its own mux block (the core cannot mux it), Trojan has none.
+        val raw =
+            """{"outbounds":[
+                {"tag":"a","protocol":"vless","mux":{"enabled":true,"concurrency":4},
+                 "settings":{"vnext":[{"address":"a","port":443,"users":[{"id":"u","flow":"xtls-rprx-vision"}]}]}},
+                {"tag":"b","protocol":"trojan","settings":{"servers":[{"address":"b","port":443,"password":"p"}]}}]}"""
+        val report = tuningReport(row(vmess, raw), resolved(TuningValue(null, TuningOrigin.Default)))
+        report.mux shouldBe TuningValue(MuxSpec(4, 0, Udp443Mode.Reject), TuningOrigin.Config)
+        report.muxUsed shouldBe false
+    }
 }
