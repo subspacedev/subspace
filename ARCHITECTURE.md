@@ -629,7 +629,8 @@ branch below is taken:
   below, this is stripped unconditionally and so is an exception to the pure
   branch's byte-identical promise.
 - address pin — only when M9-C pre-resolution resolves, the proxy outbound's address
-  (`vnext/servers` entries naming the server domain) becomes the chosen IP, and address-derived
+  (`vnext/servers` entries, or the flat `settings.address` of a hysteria, http, VLESS, VMess or Trojan
+  outbound, naming the server domain) becomes the chosen IP, and address-derived
   fields left empty (TLS/REALITY `serverName`, WS/HTTPUpgrade `host` without TLS, gRPC authority and
   XHTTP host with security none) get the domain. An exception to "runs as written", applied only
   when resolution succeeds (M9-C spec §3; evidence in

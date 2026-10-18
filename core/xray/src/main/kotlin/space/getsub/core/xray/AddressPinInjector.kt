@@ -178,10 +178,13 @@ public object AddressPinInjector {
 /**
  * Protocols whose `settings` names the server directly, with no `vnext`/`servers` array:
  * `HysteriaClientConfig` (`infra/conf/hysteria.go`, Xray-core v26.10.10) is `{version, address, port}`, and
- * `HTTPClientConfig`'s flat form (`infra/conf/http.go:61-82`) is `{address, port, user, pass}`.
+ * `HTTPClientConfig`'s flat form (`infra/conf/http.go:61-82`) is `{address, port, user, pass}`. The flat client form
+ * of VLESS (`infra/conf/vless.go:246-247`, folded into a one-entry `vnext` at `:263-270`), VMess
+ * (`infra/conf/vmess.go:112-113`, folded at `:127-134`) and Trojan (`infra/conf/trojan.go:32-33`, folded into a
+ * one-entry `servers` at `:45-55`) is `settings.address`/`port` beside the user fields, with no array.
  * Limited by protocol because other outbounds (`dns`) have a `settings.address` that is not a server.
  */
-private val FLAT_ADDRESS_PROTOCOLS = setOf("hysteria", "http")
+private val FLAT_ADDRESS_PROTOCOLS = setOf("hysteria", "http", "vless", "vmess", "trojan")
 
 private fun JsonObject.isWireGuard(): Boolean =
     (this["protocol"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.lowercase() == "wireguard"
