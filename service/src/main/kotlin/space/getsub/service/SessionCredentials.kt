@@ -20,14 +20,16 @@ import space.getsub.core.model.ProxyCredentialsFactory
 internal fun sessionCredentials(
     mode: ProxyAuthSettings,
     existing: ProxyCredentials?,
-): ProxyCredentials =
-    if (mode.mode == ProxyAuthMode.Manual &&
+): ProxyCredentials {
+    val usable =
         ProxyCredentialRules.checkUser(mode.manualUser) == null &&
-        ProxyCredentialRules.checkPass(mode.manualPass) == null) {
+            ProxyCredentialRules.checkPass(mode.manualPass) == null
+    return if (mode.mode == ProxyAuthMode.Manual && usable) {
         ProxyCredentials(mode.manualUser, mode.manualPass)
     } else {
         existing ?: ProxyCredentialsFactory.random()
     }
+}
 
 /**
  * The credentials one core start uses: the session's own once it holds some, otherwise a value

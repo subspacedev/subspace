@@ -122,11 +122,10 @@ internal fun sessionDnsAddresses(
     dnsPlan: DnsPlan?,
     advertisedDns: String,
     fallbackDns: String,
-): List<String> =
-    (
-        listOf(advertisedDns, fallbackDns) +
-            dnsPlan?.servers.orEmpty().map { it.address }.filter(DnsValidation::isAddressLiteral)
-    ).distinct()
+): List<String> {
+    val planned = dnsPlan?.servers.orEmpty().map { it.address }.filter(DnsValidation::isAddressLiteral)
+    return (listOf(advertisedDns, fallbackDns) + planned).distinct()
+}
 
 /** The shape a session resolved to [tuning] plans, advertising [advertisedDns]. */
 internal fun tunShapeFor(
