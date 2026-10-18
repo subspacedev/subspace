@@ -18,11 +18,14 @@ import space.getsub.core.data.serialization.toOutbound
 import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.KcpRules
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
 import space.getsub.core.model.SocksOutbound
+import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
@@ -119,17 +122,18 @@ public data class StoredProfile(
     public val connectable: Boolean
         get() =
             when (val o = outbound) {
-                is VlessOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
-                is VmessOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
-                is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
+                is VlessOutbound -> o.stream.connectable()
+                is VmessOutbound -> o.stream.connectable()
+                is TrojanOutbound -> o.stream.connectable()
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
                 // Plan ruling R2: its own branch, never `hysteria` in CONNECTABLE_NETWORKS. A reason
                 // means the source carried something the generator cannot write. A BBR profile outside
                 // BBR_PROFILES mirrors the generator's refusal (the core fails `unknown bbr profile`).
                 is Hysteria2Outbound -> o.notConnectableReason == null && !o.hasUnknownBbrProfile()
-                // M9-D2 Task 2 stubs: refused until the generator task writes them.
-                is WireGuardOutbound, is HttpOutbound -> false
+                is WireGuardOutbound -> o.notConnectableReason == null
+                // HTTP over REALITY is not a thing the core supports; plain and TLS are.
+                is HttpOutbound -> o.security !is Security.Reality
                 null -> false
             }
 
@@ -151,9 +155,13 @@ public data class StoredProfile(
  * since it lowercases and accepts either name of a pair, and a stored profile keeps whatever
  * its source wrote.
  *
- * `kcp`/`mkcp`, `httpupgrade` and `hysteria` are real transports Xray supports and this
- * generator does not, so they are absent on purpose. The generator writes Hysteria2 (M9-D1 spec §4) as
- * its own protocol with its own stream block, unlike every other protocol's. Hysteria2 is gated by its own
+ * `kcp`/`mkcp` (mKCP) and `httpupgrade` are emitted since M9-D2 (`kcpSettings` plus `finalmask.udp`
+ * masks, and `httpupgradeSettings`). They are compared case-insensitively, like every entry, and
+ * [connectable] adds the per-row conditions the network name alone cannot express: an unsupported
+ * mKCP obfuscation, and REALITY over either (the core refuses it). `hysteria` is a real transport
+ * this generator does not write through a VLESS row, so it is absent on purpose. The generator writes
+ * Hysteria2 (M9-D1 spec §4) as its own protocol with its own stream block, unlike every other protocol's.
+ * Hysteria2 is gated by its own
  * Outbound branch in `connectable`, not by adding `hysteria` here: this set is shared by VLESS, VMess
  * and Trojan, and a row of those over `hysteria` would then claim a config nothing can write.
  *
@@ -163,7 +171,17 @@ public data class StoredProfile(
  * it; keep the two in step.
  */
 private val CONNECTABLE_NETWORKS =
-    setOf("tcp", "raw", "ws", "websocket", "grpc", "xhttp", "splithttp")
+    setOf("tcp", "raw", "ws", "websocket", "grpc", "xhttp", "splithttp", "kcp", "mkcp", "httpupgrade")
+
+private val KCP_NETWORKS = setOf("kcp", "mkcp")
+
+/** [CONNECTABLE_NETWORKS] plus the two conditions a network name cannot carry (M9-D2 spec §2). */
+private fun StreamSettings.connectable(): Boolean {
+    val n = network.lowercase()
+    val udpOrUpgrade = n in KCP_NETWORKS || n == "httpupgrade"
+    val kcpRefused = transport.let { it is TransportOptions.Kcp && KcpRules.notConnectableReason(it) != null }
+    return n in CONNECTABLE_NETWORKS && !(udpOrUpgrade && security is Security.Reality) && !kcpRefused
+}
 
 /** A folder of profiles, in display order. */
 public data class ProfileGroup(val id: Long, val name: String, val profiles: List<StoredProfile>)
@@ -597,30 +615,39 @@ public fun StoredProfile.toProfile(): Profile? =
  * `internal`, not `private`: shared with `SubscriptionSyncer` for the same reason as
  * [protocolName].
  */
-internal fun Outbound.transportSummary(): String {
-    val stream =
-        when (this) {
-            is VlessOutbound -> stream
-            is VmessOutbound -> stream
-            is TrojanOutbound -> stream
-            is ShadowsocksOutbound, is SocksOutbound, is Hysteria2Outbound -> null
-            is WireGuardOutbound, is HttpOutbound -> null
-        }
-    // Hysteria2 always runs over QUIC and has no StreamSettings; show the hop ranges when it hops.
-    if (this is Hysteria2Outbound) {
-        val ports =
-            hopping?.ports?.joinToString(", ") { if (it.first == it.last) "${it.first}" else "${it.first}–${it.last}" }
-        return listOf("QUIC", ports ?: port.toString()).joinToString(" · ")
+internal fun Outbound.transportSummary(): String =
+    when (this) {
+        // Hysteria2 always runs over QUIC and has no StreamSettings; show the hop ranges when it hops.
+        is Hysteria2Outbound -> listOf("QUIC", hopSummary() ?: port.toString()).joinToString(" · ")
+        is WireGuardOutbound -> listOf("UDP", port.toString()).joinToString(" · ")
+        is HttpOutbound ->
+            listOfNotNull("TCP", port.toString(), "TLS".takeIf { security is Security.Tls }).joinToString(" · ")
+        is VlessOutbound -> stream.summary(port)
+        is VmessOutbound -> stream.summary(port)
+        is TrojanOutbound -> stream.summary(port)
+        is ShadowsocksOutbound, is SocksOutbound -> listOf("tcp", port.toString()).joinToString(" · ")
     }
-    val parts = mutableListOf(stream?.network ?: "tcp")
-    when (stream?.security) {
+
+private fun Hysteria2Outbound.hopSummary(): String? =
+    hopping?.ports?.joinToString(", ") { if (it.first == it.last) "${it.first}" else "${it.first}–${it.last}" }
+
+private fun StreamSettings.summary(port: Int): String {
+    val parts = mutableListOf(network.displayNetwork())
+    when (security) {
         is Security.Reality -> parts += "reality"
         is Security.Tls -> parts += "tls"
-        is Security.None, null -> Unit
+        is Security.None -> Unit
     }
     parts += port.toString()
     return parts.joinToString(" · ")
 }
+
+private fun String.displayNetwork(): String =
+    when (lowercase()) {
+        "kcp", "mkcp" -> "mKCP"
+        "httpupgrade" -> "HTTPUpgrade"
+        else -> this
+    }
 
 private fun Hysteria2Outbound.hasUnknownBbrProfile(): Boolean =
     (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true

@@ -75,7 +75,7 @@ class HomeViewModelTest {
         )
 
     /** A transport `:core:xray` has no emission for, so `StoredProfile.connectable` is false. */
-    private val kcpOutbound = defaultOutbound.copy(stream = StreamSettings("kcp", Security.None))
+    private val unsupportedOutbound = defaultOutbound.copy(stream = StreamSettings("hysteria", Security.None))
 
     private fun storedProfile(
         id: Long,
@@ -306,7 +306,7 @@ class HomeViewModelTest {
             // fail immediately.
             val settings = FakeSettings()
             val supported = storedProfile(id = 5L, name = "was-fine")
-            val unsupported = supported.copy(outbound = kcpOutbound)
+            val unsupported = supported.copy(outbound = unsupportedOutbound)
             val tunnel = FakeTunnelConnection()
             val profileSource = MutableActiveProfileSource(supported)
             val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())

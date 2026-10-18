@@ -29,7 +29,7 @@ import space.getsub.core.model.failure
  * That gate delegates to `connectable` and is still right; what `connectable` *means* has
  * since changed. `ws`/`grpc`/`xhttp` are now emitted by `XrayConfigGenerator`, so they are
  * connectable, and the "unsupported" fixture here is a transport that genuinely has no
- * emission (`kcp`). This file asserts the delegation, not a hardcoded list of transports —
+ * emission (`hysteria`). This file asserts the delegation, not a hardcoded list of transports —
  * `StoredProfileTest` in `:core:data` owns which networks qualify.
  */
 class HomeStateTest {
@@ -72,7 +72,7 @@ class HomeStateTest {
 
     @Test
     fun `canConnect is false for a transport the generator cannot emit`() {
-        val state = HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("kcp"))
+        val state = HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("hysteria"))
         state.canConnect shouldBe false
     }
 
@@ -95,7 +95,7 @@ class HomeStateTest {
     fun `canConnect is false after a failure when the profile is unsupported`() {
         // A retry that cannot succeed must stay refused: the failure state does
         // not widen which profiles are connectable, only when a connect is allowed.
-        HomeState(connection = failed, activeProfile = profile("kcp")).canConnect shouldBe false
+        HomeState(connection = failed, activeProfile = profile("hysteria")).canConnect shouldBe false
     }
 
     @Test
@@ -153,7 +153,7 @@ class HomeStateTest {
 
     @Test
     fun `activeProfileUnsupported is true for a decoded but unconnectable profile`() {
-        HomeState(activeProfile = profile("kcp")).activeProfileUnsupported shouldBe true
+        HomeState(activeProfile = profile("hysteria")).activeProfileUnsupported shouldBe true
     }
 
     // ── Disconnecting out of a reconnect (M8 spec §7.3, ruling R23) ────────────

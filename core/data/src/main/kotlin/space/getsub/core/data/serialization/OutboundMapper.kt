@@ -102,8 +102,8 @@ private fun Outbound.toDto(): OutboundDto =
             )
 
         is Hysteria2Outbound -> toHysteria2Dto()
-        // M9-D2 Task 2 stubs: storage arrives with the storage task. Nothing constructs these yet.
-        is WireGuardOutbound, is HttpOutbound -> throw IllegalArgumentException("not storable yet")
+        is WireGuardOutbound -> toWireGuardDto()
+        is HttpOutbound -> toHttpDto()
     }
 
 private fun OutboundDto.toDomain(): Outbound =
@@ -152,6 +152,8 @@ private fun OutboundDto.toDomain(): Outbound =
             )
 
         is OutboundDto.Hysteria2 -> toHysteria2Domain()
+        is OutboundDto.WireGuard -> toWireGuardDomain()
+        is OutboundDto.Http -> toHttpDomain()
     }
 
 private fun StreamSettings.toDto(): StreamDto =
@@ -168,7 +170,7 @@ private fun StreamDto.toDomain(): StreamSettings =
         transport = transport.toDomain(),
     )
 
-private fun Security.toDto(): SecurityDto =
+internal fun Security.toDto(): SecurityDto =
     when (this) {
         is Security.None -> SecurityDto.None
         is Security.Reality ->
@@ -188,7 +190,7 @@ private fun Security.toDto(): SecurityDto =
             )
     }
 
-private fun SecurityDto.toDomain(): Security =
+internal fun SecurityDto.toDomain(): Security =
     when (this) {
         is SecurityDto.None -> Security.None
         is SecurityDto.Reality ->
@@ -221,7 +223,8 @@ private fun TransportOptions.toDto(): TransportDto =
         is TransportOptions.WebSocket -> TransportDto.WebSocket(path = path, headers = headers.toSortedMap())
         is TransportOptions.Grpc -> TransportDto.Grpc(serviceName = serviceName)
         is TransportOptions.Xhttp -> TransportDto.Xhttp(path = path, host = host, mode = mode)
-        is TransportOptions.Kcp, is TransportOptions.HttpUpgrade -> throw IllegalArgumentException("not storable yet")
+        is TransportOptions.Kcp -> toKcpDto()
+        is TransportOptions.HttpUpgrade -> TransportDto.HttpUpgrade(host = host, path = path)
     }
 
 private fun TransportDto.toDomain(): TransportOptions =
@@ -230,4 +233,6 @@ private fun TransportDto.toDomain(): TransportOptions =
         is TransportDto.WebSocket -> TransportOptions.WebSocket(path = path, headers = headers)
         is TransportDto.Grpc -> TransportOptions.Grpc(serviceName = serviceName)
         is TransportDto.Xhttp -> TransportOptions.Xhttp(path = path, host = host, mode = mode)
+        is TransportDto.Kcp -> toKcpDomain()
+        is TransportDto.HttpUpgrade -> TransportOptions.HttpUpgrade(host = host, path = path)
     }
