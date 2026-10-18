@@ -320,6 +320,7 @@
     <string name="editor_kcp_header_none">None</string>
     <string name="editor_kcp_legacy_label">Legacy obfuscation (pre-2026 servers)</string>
     <string name="editor_kcp_legacy_forced_hint">A header without a seed always uses the legacy obfuscation.</string>
+    <string name="editor_kcp_legacy_seed_hint">A seed replaces it.</string>
     <string name="editor_kcp_http_header">This server\'s source uses the HTTP header, which Subspace can\'t run, so it can\'t connect.</string>
     <string name="editor_kcp_unknown_mask">This server\'s source uses an mKCP obfuscation Subspace can\'t run, so it can\'t connect.</string>
     <string name="editor_kcp_dns_domain">This server\'s DNS header names a domain, which Subspace can\'t write, so it can\'t connect.</string>

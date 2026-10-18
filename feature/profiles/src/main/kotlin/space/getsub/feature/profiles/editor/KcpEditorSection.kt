@@ -101,13 +101,19 @@ private fun LegacySwitch(
             Switch(
                 checked = draft.legacySwitchOn,
                 onCheckedChange = { onChanged(draft.copy(legacyOriginal = it)) },
-                enabled = !draft.legacyForced,
+                enabled = draft.legacySwitchEnabled,
                 modifier = Modifier.testTag(EDITOR_KCP_LEGACY_SWITCH_TEST_TAG),
             )
         }
-        if (draft.legacyForced) {
+        val hint =
+            when {
+                draft.legacySeedReplaces -> R.string.editor_kcp_legacy_seed_hint
+                draft.legacyForced -> R.string.editor_kcp_legacy_forced_hint
+                else -> null
+            }
+        if (hint != null) {
             Text(
-                text = stringResource(R.string.editor_kcp_legacy_forced_hint),
+                text = stringResource(hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

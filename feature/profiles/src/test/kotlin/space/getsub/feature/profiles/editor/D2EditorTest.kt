@@ -547,9 +547,62 @@ class D2EditorTest {
             KcpRules.masks(saved.obfuscation) shouldBe
                 listOf(space.getsub.core.model.KcpMask.Original, space.getsub.core.model.KcpMask.Header(KcpHeader.UTP))
 
-            // A seed gives the first mask again, so the switch is free.
+            // A seed gives the first mask again, so nothing forces the switch; the seed replaces it (M5).
             viewModel.editKcp { it.copy(seed = "s") }
             viewModel.state.value.kcp.legacyForced shouldBe false
+            viewModel.state.value.kcp.legacySeedReplaces shouldBe true
+            viewModel.state.value.kcp.legacySwitchEnabled shouldBe false
+        }
+
+    // Final review M5: with a seed the first mask is the seed, so the flag cannot change the wire.
+    @Test
+    fun `the legacy switch is disabled while a seed is set, and free with neither seed nor header`() {
+        KcpDraft(seed = "s").legacySwitchEnabled shouldBe false
+        KcpDraft(seed = "s").legacySeedReplaces shouldBe true
+        KcpDraft(seed = "s", header = KcpHeader.DNS).legacySwitchEnabled shouldBe false
+        KcpDraft(header = KcpHeader.DNS).legacySwitchEnabled shouldBe false
+        KcpDraft(header = KcpHeader.DNS).legacySeedReplaces shouldBe false
+        KcpDraft().legacySwitchEnabled shouldBe true
+        KcpDraft().legacySeedReplaces shouldBe false
+    }
+
+    // Final review M4: like WireGuard's bad-value reasons, a source reason holds only while the fields it is
+    // about are as loaded. Once the user picks a header, seed or legacy flag, the draft is fully writable.
+    @Test
+    fun `an mKCP reason clears once the header, seed or legacy flag changes from the loaded values`() =
+        runTest {
+            val reasons =
+                listOf(
+                    KcpUnsupported.HttpHeader,
+                    KcpUnsupported.UnknownHeader,
+                    KcpUnsupported.DnsHeaderDomain,
+                    KcpUnsupported.UnknownMask,
+                )
+            val edits: List<(KcpDraft) -> KcpDraft> =
+                listOf(
+                    { it.copy(header = KcpHeader.SRTP) },
+                    { it.copy(seed = "new seed") },
+                    { it.copy(seed = "") },
+                    { it.copy(legacyOriginal = !it.legacyOriginal) },
+                )
+            for (reason in reasons) {
+                for (edit in edits) {
+                    val kcp = TransportOptions.Kcp(1350, null, KcpObfuscation("s", null, false, unsupported = reason))
+                    val (viewModel, source) = loaded(vless(kcp, "kcp"))
+                    advanceUntilIdle()
+                    viewModel.editKcp { it.copy(mtu = "1400") }
+                    viewModel.save()
+                    advanceUntilIdle()
+                    val untouched = (source.lastUpdate as VlessOutbound).stream.transport as TransportOptions.Kcp
+                    untouched.obfuscation.unsupported shouldBe reason
+
+                    viewModel.editKcp(edit)
+                    viewModel.save()
+                    advanceUntilIdle()
+                    val saved = (source.lastUpdate as VlessOutbound).stream.transport as TransportOptions.Kcp
+                    saved.obfuscation.unsupported shouldBe null
+                }
+            }
         }
 
     @Test
