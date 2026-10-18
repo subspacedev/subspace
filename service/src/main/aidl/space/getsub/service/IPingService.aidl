@@ -21,5 +21,8 @@ import space.getsub.service.PingBatchParcel;
  * binder's 1 MB transaction ceiling.
  */
 interface IPingService {
+    /** This process's id, so :bg can end a wedged :ping. Read once per bind. */
+    int pid();
+
     oneway void pingBatch(in PingBatchParcel request, IPingCallback callback);
 }

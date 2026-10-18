@@ -131,6 +131,10 @@ process. Never route a call to a process that holds the wrong state.
   in flight, so the process (and its Go heap) is gone shortly after the work.
   The grace lives in `:bg` because a `BIND_AUTO_CREATE` binding held by `:bg`
   would make Android recreate the service after `:ping` exits itself.
+- A reply watchdog expiry ends the `:ping` process. The batch's servers fail,
+  the session is dropped, and `PingClient` kills `:ping` by the pid it read once
+  at bind (`IPingService.pid()`, never a call into the wedged process); a pid
+  equal to the caller's own is never killed. The next `measure` binds a fresh one.
 - Only `PROXY_HEAD` moves. `PingMode.TCP` (`TcpProbe`) needs no libXray and
   depends on `VpnService.protect` in `:bg`, so it stays there.
 - `pingBatch` holds `coreServerMu` for the whole batch, so batches in `:ping`

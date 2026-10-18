@@ -44,7 +44,13 @@ internal interface PingConnector {
  * [RemoteException] (a `DeadObjectException`) if `:ping` is already gone. The
  * answer — null if `:ping` sent none — arrives later on [onResult].
  */
-internal fun interface PingRemote {
+internal interface PingRemote {
+    /**
+     * `:ping`'s own process id, read once per bind so the watchdog can end a wedged
+     * process without calling into it. Synchronous; throws [RemoteException] if gone.
+     */
+    fun pid(): Int
+
     fun pingBatch(
         request: PingBatchParcel,
         onResult: (PingBatchResultParcel?) -> Unit,
@@ -87,6 +93,10 @@ internal class PingClient(
     private val scope: CoroutineScope,
     graceMillis: Long = IdleTimer.IDLE_GRACE_MILLIS,
     private val bindTimeoutMillis: Long = BIND_TIMEOUT_MILLIS,
+    /** Ends a wedged `:ping` by pid. */
+    private val killProcess: (Int) -> Unit = android.os.Process::killProcess,
+    /** Our own pid, which [killProcess] must never be given. */
+    private val ownPid: () -> Int = android.os.Process::myPid,
 ) {
     private val calls = Mutex()
     private val lock = Any()
@@ -104,6 +114,9 @@ internal class PingClient(
         // All guarded by `lock`.
         var binding: PingConnector.Binding? = null
         var dropped = false
+
+        /** `:ping`'s pid, read once at bind; null until then. */
+        var pid: Int? = null
         val inFlight = mutableSetOf<CompletableDeferred<PingBatchResultParcel?>>()
 
         override fun onConnected(remote: PingRemote) {
@@ -150,11 +163,32 @@ internal class PingClient(
         val s = sessionOrBind() ?: return null
         val remote = withTimeoutOrNull(bindTimeoutMillis) { s.remote.await() }
         if (remote == null) drop(s)
+        val usable = remote != null && capturePid(s, remote)
         val reply = CompletableDeferred<PingBatchResultParcel?>()
-        val tracked = remote != null && synchronized(lock) { !s.dropped && s.inFlight.add(reply) }
+        val tracked = usable && synchronized(lock) { !s.dropped && s.inFlight.add(reply) }
         val sent = remote != null && tracked && send(s, remote, request, reply)
         if (tracked && !sent) synchronized(lock) { s.inFlight.remove(reply) }
         return if (sent) settle(s, reply, timeoutSeconds) else null
+    }
+
+    /**
+     * Reads `:ping`'s pid once per session. False if the call failed: `:ping` is
+     * gone, so the session is dropped and the batch fails like a refused send.
+     */
+    @Suppress("SwallowedException")
+    private fun capturePid(
+        s: Session,
+        remote: PingRemote,
+    ): Boolean {
+        if (synchronized(lock) { s.pid != null }) return true
+        return try {
+            val pid = remote.pid()
+            synchronized(lock) { s.pid = pid }
+            true
+        } catch (e: RemoteException) {
+            drop(s)
+            false
+        }
     }
 
     /**
@@ -173,8 +207,15 @@ internal class PingClient(
                     val outcome = withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { Settled(reply.await()) }
                     // The watchdog fired: `:ping` is wedged. Drop the session rather than keep sending
                     // to it — every later batch would otherwise sit behind the wedged one for a full
-                    // watchdog each. The next measure binds again.
-                    if (outcome == null) drop(s)
+                    // watchdog each. The next measure binds again. Dropping only unbinds, and a
+                    // wedged process may ignore that, so it is ended by the pid read at bind.
+                    if (outcome == null) {
+                        val pid = synchronized(lock) { s.pid }
+                        drop(s)
+                        // Only the pid captured for this session, so a session bound since is
+                        // untouched; never our own process.
+                        if (pid != null && pid != ownPid()) killProcess(pid)
+                    }
                     outcome?.reply
                 } finally {
                     synchronized(lock) { s.inFlight.remove(reply) }
@@ -289,14 +330,21 @@ internal class AndroidPingConnector(
                         listener.onDisconnected()
                         return
                     }
-                    listener.onConnected { request, onResult ->
-                        api.pingBatch(
-                            request,
-                            object : IPingCallback.Stub() {
-                                override fun onResult(result: PingBatchResultParcel?) = onResult(result)
-                            },
-                        )
-                    }
+                    listener.onConnected(
+                        object : PingRemote {
+                            override fun pid(): Int = api.pid()
+
+                            override fun pingBatch(
+                                request: PingBatchParcel,
+                                onResult: (PingBatchResultParcel?) -> Unit,
+                            ) = api.pingBatch(
+                                request,
+                                object : IPingCallback.Stub() {
+                                    override fun onResult(result: PingBatchResultParcel?) = onResult(result)
+                                },
+                            )
+                        },
+                    )
                 }
 
                 override fun onServiceDisconnected(name: ComponentName?) = listener.onDisconnected()
