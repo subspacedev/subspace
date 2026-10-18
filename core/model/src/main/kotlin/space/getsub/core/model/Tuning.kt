@@ -132,6 +132,23 @@ public object TunMtu {
     }
 }
 
+/**
+ * The TUN interface's own addresses, the one source `:service` builds the interface from.
+ *
+ * ARCHITECTURE.md §5.2: without the IPv6 address and route, every AAAA-answered lookup and every
+ * IPv6-capable socket leaves outside the tunnel on a dual-stack network. That passes a leak test on an
+ * IPv4-only Wi-Fi and fails on carrier IPv6.
+ *
+ * Here beside [ExcludedRoutes] and [TunMtu] because they describe the same interface. An excluded range
+ * may contain these addresses (controller ruling, see [ExcludedRoutes.validate]); only `/0` is refused.
+ */
+public object TunAddresses {
+    public const val V4: String = "10.7.0.1"
+    public const val V4_PREFIX: Int = 30
+    public const val V6: String = "fd00:1:2:3::1"
+    public const val V6_PREFIX: Int = 126
+}
+
 public object ProxyCredentialsFactory {
     private const val USER_LENGTH = 16
     private const val PASS_LENGTH = 32

@@ -83,6 +83,19 @@ public object ExcludedRoutes {
         return out
     }
 
+    /** Whether [inner] lies wholly inside [outer]. Ranges of different families never cover each other. */
+    public fun covers(
+        outer: CidrRange,
+        inner: CidrRange,
+    ): Boolean {
+        val outerStart = parseAddress(outer.address)?.value
+        val innerStart = parseAddress(inner.address)?.value
+        if (outerStart == null || innerStart == null || outer.isV6 != inner.isV6) return false
+        val bits = if (outer.isV6) V6_BITS else V4_BITS
+        return outerStart <= innerStart &&
+            endOf(Block(innerStart, inner.prefixLength), bits) <= endOf(Block(outerStart, outer.prefixLength), bits)
+    }
+
     private class Block(
         val start: BigInteger,
         val length: Int,

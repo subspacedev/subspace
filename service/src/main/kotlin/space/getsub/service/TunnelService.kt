@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.IpPrefix
 import android.net.Network
 import android.net.VpnService
 import android.os.IBinder
@@ -50,6 +51,7 @@ import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.TuningResolver
 import space.getsub.core.data.preresolve.ServerPreResolution
 import space.getsub.core.data.toProfile
+import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Hysteria2Outbound
@@ -64,6 +66,7 @@ import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.TunAddresses
 import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
@@ -97,21 +100,13 @@ import space.getsub.service.log.LogRing
 import space.getsub.service.log.TeardownStep
 import space.getsub.service.log.teardownOrder
 import java.io.File
+import java.net.InetAddress
 import javax.inject.Inject
 
 private const val TAG = "TunnelService"
 
-private const val TUN_ADDRESS = "10.7.0.1"
-private const val TUN_PREFIX = 30
-
-// ARCHITECTURE.md §5.2: without an IPv6 address and route, every AAAA-answered lookup and every
-// IPv6-capable socket leaves outside the tunnel on a dual-stack network. That is
-// the same partial-leak shape ARCHITECTURE.md §5.2 warns about — it passes a leak test on an
-// IPv4-only Wi-Fi and fails on carrier IPv6.
-private const val TUN_ADDRESS_V6 = "fd00:1:2:3::1"
-private const val TUN_PREFIX_V6 = 126
-
-private const val TUN_MTU = 8500
+// The TUN's own addresses are TunAddresses in :core:model, and its MTU is the session's TunShape
+// (M9-E spec §7.1; TunMtu.DEFAULT is the old 8500 when nothing else is set).
 
 // No longer "the" resolver: since M6.5, a session's DnsPlan chooses what the app
 // actually queries and what it advertises on the TUN (DnsPlan.tunAdvertisedAddress).
@@ -990,30 +985,32 @@ class TunnelService : VpnService() {
     private var tunInterface: ParcelFileDescriptor? = null
 
     /**
-     * The **planned** DNS address recorded for [tunInterface] (spec §5.2, lever
-     * 1), or null when there is no interface.
+     * The **planned** [TunShape] recorded for [tunInterface] — advertised DNS
+     * address (spec §5.2, lever 1), MTU and excluded routes (M9-E spec §4, §7.1)
+     * — or null when there is no interface.
      *
-     * Planned, not accepted, and the difference is real: this is
+     * Planned, not accepted, and the difference is real: its resolver is
      * [advertisedTunDnsAddress]'s answer for the plan the interface was built
      * from, and if `Builder.addDnsServer` rejected that literal then
      * `addDnsServerOrFallback` advertised [DNS_SERVER] while this field went on
-     * naming the rejected one. So this is not a record of what the interface is
-     * doing, and a future reader must not compare it against one.
+     * naming the rejected one; likewise an exclusion the builder refused is
+     * still listed. So this is not a record of what the interface is doing,
+     * and a future reader must not compare it against one.
      *
      * The asymmetry is deliberate and safe in exactly one direction — see
      * [advertisedTunDnsAddress], which argues it: rejection is a function of the
-     * address, so two plans resolving to the same planned address resolve to the
-     * same advertised one. [retainedTunKeepsAdvertisedDns] can therefore rebuild
-     * an interface it did not need to, and can never keep one it should have
-     * rebuilt, which is the only direction that leaks.
+     * planned value, so two equal plans build the same interface.
+     * [retainedTunKeepsShape] can therefore rebuild an interface it did not need
+     * to, and can never keep one it should have rebuilt, which is the only
+     * direction that leaks.
      *
      * One piece of state with [tunInterface], under the same [lock] and with the
      * same lifetime: written where the fd is adopted, cleared everywhere the fd
-     * is. A restart that keeps the interface cannot change what it advertises,
-     * so this is what [restartCoreRetainingTun] compares the newly resolved plan
-     * against before deciding whether keeping it is still safe.
+     * is. A restart that keeps the interface cannot change its shape, so this is
+     * what [restartCoreRetainingTun] compares the newly resolved shape against
+     * before deciding whether keeping it is still safe.
      */
-    private var tunAdvertisedDns: String? = null
+    private var tunShape: TunShape? = null
 
     /**
      * The loopback port [trafficLoop]'s `readTags` reads from, or null while
@@ -1909,7 +1906,7 @@ class TunnelService : VpnService() {
                         }
                     }
                     val started = resolveAndStartCore(gen, profile, rowId) ?: return@launch
-                    when (val outcome = attachTun(gen, started.xray, started.ports, started.dnsPlan, rowId)) {
+                    when (val outcome = attachTun(gen, started.xray, started.ports, started.shape, rowId)) {
                         TunAttachOutcome.Settled -> Unit
                         // §8's refusal is published *here*, not inside
                         // [attachTun], and this is the call site that makes it
@@ -1952,19 +1949,20 @@ class TunnelService : VpnService() {
      * A started core leaves the routing-generation lease but still needs its TUN
      * attached.
      *
-     * [dnsPlan] rides along rather than being recomputed in [attachTun]: it is
-     * already baked into the generated config by [startCore], and a second
-     * `DnsPlanner.plan` call there — even from the same inputs — is one more place
-     * the TUN's advertised resolver and the config's `dns.servers` could disagree
-     * if either input changed between the two reads.
+     * [shape] rides along rather than being recomputed in [attachTun]: its resolver
+     * comes from the DNS plan already baked into the generated config by [startCore],
+     * and a second `DnsPlanner.plan` call there — even from the same inputs — is one
+     * more place the TUN's advertised resolver and the config's `dns.servers` could
+     * disagree if either input changed between the two reads.
      *
      * [tuning] rides along for the same reason: resolved once per core start (M9-E spec §1), so
-     * everything this start configures reads the one decision the config was built from.
+     * everything this start configures, [shape]'s MTU and excluded routes included, reads the one
+     * decision the config was built from.
      */
     private data class StartedCore(
         val xray: XrayController,
         val ports: StartedPorts,
-        val dnsPlan: DnsPlan?,
+        val shape: TunShape,
         val tuning: ResolvedTuning,
     )
 
@@ -2011,9 +2009,12 @@ class TunnelService : VpnService() {
                         // the port-53 hijack, so app lookups reach the dns module and leave over TCP.
                         outboundCarriesUdp = dnsPlanOutboundCarriesUdp(profile.outbound, runsAsWritten),
                     )
-                // M9-E spec §1: sniffing (and later mux, MTU, excluded routes) decided once for this
-                // start, from the row this session connects, and handed to everything it configures.
-                val tuning = tuningResolver.forConfig(rowId)
+                // M9-E spec §1: sniffing, mux, MTU and excluded routes decided once for this start, from
+                // the row this session connects, and handed to everything it configures. forSession drops
+                // any excluded range covering one of this plan's DNS servers (spec §4), so the TUN shape
+                // below and the config read the same one decision.
+                val advertisedDns = advertisedTunDnsAddress(dnsPlan?.tunAdvertisedAddress(), DNS_SERVER)
+                val tuning = tuningResolver.forSession(rowId, sessionDnsAddresses(dnsPlan, advertisedDns))
                 val xray = XrayController()
                 val ownsStart =
                     synchronized(lock) {
@@ -2029,7 +2030,7 @@ class TunnelService : VpnService() {
                 val ports =
                     startCore(gen, xray, profile, rowId, routing, dnsPlan, tuning) ?: return@withResolution null
                 started = xray
-                StartedCore(xray, ports, dnsPlan, tuning)
+                StartedCore(xray, ports, tunShapeFor(tuning, advertisedDns), tuning)
             }
         } catch (e: CancellationException) {
             throw e
@@ -2585,10 +2586,10 @@ class TunnelService : VpnService() {
         gen: Int,
         xray: XrayController,
         plan: BuilderPlan,
-        dnsPlan: DnsPlan?,
+        shape: TunShape,
         rowId: Long,
     ): EstablishOutcome =
-        when (val result = establishTun(plan, dnsPlan)) {
+        when (val result = establishTun(plan, shape)) {
             is TunResult.Established -> EstablishOutcome.Established(result.fd)
             // §10.4: the same reason an empty selection gets, because after the
             // skipping there is genuinely no application left to allow — but
@@ -2631,7 +2632,7 @@ class TunnelService : VpnService() {
     // LongParameterList: [ports] bundles socksPort/httpPort rather than taking
     // them separately, reusing the pairing [startCore] already established —
     // one fewer place to mismatch which index is which, and it keeps this
-    // signature at five rather than six now that [dnsPlan] joined it.
+    // signature at five rather than six now that [shape] joined it.
     @Suppress(
         "ReturnCount",
         "LongMethod", // M8.5 spec §1.5's trafficLoop.start() call pushed this one line past the threshold.
@@ -2640,7 +2641,7 @@ class TunnelService : VpnService() {
         gen: Int,
         xray: XrayController,
         ports: StartedPorts,
-        dnsPlan: DnsPlan?,
+        shape: TunShape,
         rowId: Long,
     ): TunAttachOutcome {
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.EstablishingTun))) {
@@ -2667,7 +2668,7 @@ class TunnelService : VpnService() {
         // could not be lost, which was wrong.
         val underlying = activeNetwork()
         val fd =
-            when (val established = establishOrFail(gen, xray, plan, dnsPlan, rowId)) {
+            when (val established = establishOrFail(gen, xray, plan, shape, rowId)) {
                 is EstablishOutcome.Established -> established.fd
                 EstablishOutcome.Settled -> return TunAttachOutcome.Settled
                 is EstablishOutcome.NoPerAppPlan -> return TunAttachOutcome.NoPerAppPlan(established.detail)
@@ -2689,9 +2690,9 @@ class TunnelService : VpnService() {
             closeRetainedTunLocked()
             tunInterface = fd
             // Recorded with the fd, not derived later: [establishTun] built this
-            // interface from [dnsPlan], and once it exists nothing can change
-            // what it advertises without rebuilding it.
-            tunAdvertisedDns = advertisedTunDnsAddress(dnsPlan?.tunAdvertisedAddress(), DNS_SERVER)
+            // interface from [shape], and once it exists nothing can change its
+            // MTU, routes or advertised resolver without rebuilding it.
+            tunShape = shape
         }
         // Spec §5.2, the case NetworkMonitor's callback cannot cover: a session
         // that starts and never changes network never sees `onChanged`, because
@@ -2711,7 +2712,9 @@ class TunnelService : VpnService() {
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingTunnel))) {
             return TunAttachOutcome.Settled
         }
-        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU, credentials = ports.credentials)
+        // Research R5: hev never sets the interface MTU on an external fd; tunnel.mtu is its per-packet
+        // read buffer, so it must match what the builder gave this interface.
+        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = shape.mtu, credentials = ports.credentials)
         // The shim refuses a bad fd rather than aborting the process; false here
         // is a real start failure, never something to ignore.
         if (!Tun2Socks.start(config, fd.fd)) {
@@ -2757,7 +2760,7 @@ class TunnelService : VpnService() {
         }
 
         // Ruling R42 (extends R38): this is the *other* branch [restartCoreRetainingTun] can
-        // take — when `retainedTunKeepsAdvertisedDns(...)` is false it rebuilds through
+        // take — when `retainedTunKeepsShape(...)` is false it rebuilds through
         // [attachTun] instead of [attachRetainedTun], stopping and restarting both tun2socks
         // and xray exactly as that branch does. Without this call, [trafficLoop] never learns
         // the counters reset: [trafficLoop.start] below is a no-op on that path (its job is
@@ -3129,7 +3132,7 @@ class TunnelService : VpnService() {
             Log.e(TAG, "closing retained tun fd failed: ${e.javaClass.simpleName}")
         }
         tunInterface = null
-        tunAdvertisedDns = null
+        tunShape = null
     }
 
     /**
@@ -3194,10 +3197,12 @@ class TunnelService : VpnService() {
      *
      * @param plan §8's per-app decision, already made — see [builderPlan] for why
      *   the decision is a type rather than a pair of booleans checked here.
-     * @param dnsPlan the same plan already baked into the generated config's
-     *   `dns` block, so the TUN advertises the resolver the session actually
-     *   uses. [DNS_SERVER] is the fallback for a null plan, or one with no
-     *   address literal to advertise — see [DnsPlan.tunAdvertisedAddress].
+     * @param shape the session's planned interface ([TunShape]): its MTU, its
+     *   excluded routes, and the resolver to advertise — the same plan already
+     *   baked into the generated config's `dns` block, so the TUN advertises the
+     *   resolver the session actually uses. [DNS_SERVER] is the fallback for a
+     *   null plan, or one with no address literal to advertise — see
+     *   [DnsPlan.tunAdvertisedAddress] and [advertisedTunDnsAddress].
      */
     // Each return is a distinct outcome: the fatal own-package failure reached
     // from two arms of the plan, the emptied allow list, and success. Folding
@@ -3206,16 +3211,10 @@ class TunnelService : VpnService() {
     @Suppress("ReturnCount")
     private fun establishTun(
         plan: BuilderPlan,
-        dnsPlan: DnsPlan?,
+        shape: TunShape,
     ): TunResult {
-        val builder =
-            Builder()
-                .setSession(getString(R.string.tunnel_session_name))
-                .setMtu(TUN_MTU)
-                .addAddress(TUN_ADDRESS, TUN_PREFIX)
-                .addRoute("0.0.0.0", 0)
-                .addAddress(TUN_ADDRESS_V6, TUN_PREFIX_V6)
-                .addRoute("::", 0)
+        val builder = Builder().setSession(getString(R.string.tunnel_session_name))
+        if (!builder.applyShape(shape)) return TunResult.Failed
         // Spec §5.2. Without this a VpnService network is **always** metered:
         // that is the platform default, and it is applied on top of the
         // underlying networks rather than derived from them, so declaring the
@@ -3237,7 +3236,7 @@ class TunnelService : VpnService() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             builder.setMetered(false)
         }
-        builder.addDnsServerOrFallback(dnsPlan)
+        builder.addDnsServerOrFallback(shape.advertisedDns)
 
         when (plan) {
             BuilderPlan.DisallowOwnOnly -> if (!excludeSelf(builder)) return TunResult.Failed
@@ -3285,10 +3284,58 @@ class TunnelService : VpnService() {
      * nobody is tracking. Degrading to [DNS_SERVER] here, rather than tightening
      * the validator, keeps the containment at this one call site.
      */
-    private fun Builder.addDnsServerOrFallback(dnsPlan: DnsPlan?) {
-        if (addDnsServerOrFallback(dnsPlan?.tunAdvertisedAddress(), DNS_SERVER, ::addDnsServer)) {
+    private fun Builder.addDnsServerOrFallback(advertisedDns: String) {
+        if (addDnsServerOrFallback(advertisedDns, DNS_SERVER, ::addDnsServer)) {
             // ARCHITECTURE.md §5.6: no address in this line — only that one was rejected.
             Log.w(TAG, "addDnsServer rejected the plan's address; falling back to the app default")
+        }
+    }
+
+    /**
+     * [shape]'s MTU, the TUN's addresses, and its route plan (M9-E spec §4, §7.1): both default routes
+     * with an `excludeRoute` per range on API 33+, the complement of the ranges below it.
+     *
+     * False when the builder refused a route. Every route of an [RoutePlan.Add] plan carries traffic
+     * into the tunnel, so building the interface without one would leak that block; failing the
+     * establish is the fail-closed answer, and [routePlanFor] already keeps out the addresses Android
+     * is known to refuse. A refused *exclusion* is the opposite direction: skipping it keeps that range
+     * tunnelled, so [excludeRouteOrSkip] skips and this counts it.
+     *
+     * ARCHITECTURE.md §5.6: counts only. The ranges are the user's network layout.
+     */
+    private fun Builder.applyShape(shape: TunShape): Boolean {
+        setMtu(shape.mtu)
+        addAddress(TunAddresses.V4, TunAddresses.V4_PREFIX)
+        addAddress(TunAddresses.V6, TunAddresses.V6_PREFIX)
+        var skipped = 0
+        try {
+            applyRoutePlan(
+                routePlanFor(shape.excluded, android.os.Build.VERSION.SDK_INT),
+                addRoute = { address, prefixLength -> addRoute(address, prefixLength) },
+                excludeRoute = { range -> if (!excludeRouteOrSkip(range)) skipped++ },
+            )
+        } catch (_: IllegalArgumentException) {
+            Log.e(TAG, "the builder refused a route; not establishing")
+            return false
+        }
+        if (shape.excluded.isNotEmpty()) {
+            Log.i(TAG, "excluded ranges: ${shape.excluded.size}, skipped: $skipped")
+        }
+        return true
+    }
+
+    /**
+     * One API 33+ exclusion, or false when it could not be applied. Never reached below 33, where
+     * [routePlanFor] plans an [RoutePlan.Add] instead; if it were, skipping keeps the range tunnelled.
+     */
+    private fun Builder.excludeRouteOrSkip(range: CidrRange): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return false
+        return try {
+            // A numeric literal ([CidrRange.address] is normalised): getByName performs no lookup.
+            excludeRoute(IpPrefix(InetAddress.getByName(range.address), range.prefixLength))
+            true
+        } catch (_: IllegalArgumentException) {
+            false
         }
     }
 
@@ -3474,7 +3521,7 @@ class TunnelService : VpnService() {
             fd = tunInterface
             controller = null
             tunInterface = null
-            tunAdvertisedDns = null
+            tunShape = null
             metricsPort = null
             liveSession = null
             // Every stopTunnel caller (explicit disconnect, onRevoke, a
@@ -3748,6 +3795,12 @@ class TunnelService : VpnService() {
             }
 
             override fun reapplyPerApp() {
+                commandIngress.reapplyPerApp()
+            }
+
+            // M9-E spec §4/§7.1: the same rebuild as reapplyPerApp, through the same serial
+            // command, since MTU and routes apply at establish() time exactly as the selection does.
+            override fun reapplyTuning() {
                 commandIngress.reapplyPerApp()
             }
 
@@ -4197,7 +4250,12 @@ class TunnelService : VpnService() {
 
         // ARCHITECTURE.md §5.2, lever 1. The core has just been rebuilt from current
         // settings; the retained interface still advertises what it was built
-        // with. Keeping it is only safe while those agree.
+        // with. Keeping it is only safe while those agree. Since M9-E (spec §4,
+        // §7.1) the comparison is the whole planned shape — advertised resolver,
+        // MTU and excluded routes — so a server switch or network change whose
+        // next shape differs rebuilds too. A rebuild keeps [LiveSession.credentials]:
+        // the session is the same one, [liveSession] was only `copy`'d above, and
+        // the new core was already configured from that same account.
         //
         // When they do not, the interface is rebuilt through [attachTun] rather
         // than documented as pinned. The case that forces this: the user turns
@@ -4235,11 +4293,11 @@ class TunnelService : VpnService() {
         // branch degrades to exactly what the retained path would have done: keep
         // the interface, stale advertised resolver and all. A stale resolver is a
         // real cost; no tunnel and no kill switch is a larger one.
-        val nextAdvertisedDns = advertisedTunDnsAddress(started.dnsPlan?.tunAdvertisedAddress(), DNS_SERVER)
-        if (retainedTunKeepsAdvertisedDns(synchronized(lock) { tunAdvertisedDns }, nextAdvertisedDns)) {
-            attachRetainedTun(handoff.gen, started.xray, started.ports, handoff.fd, rowId)
+        val live = synchronized(lock) { tunShape }
+        if (retainedTunKeepsShape(live, started.shape)) {
+            attachRetainedTun(handoff, started, started.shape.mtu, rowId)
         } else {
-            when (attachTun(handoff.gen, started.xray, started.ports, started.dnsPlan, rowId)) {
+            when (attachTun(handoff.gen, started.xray, started.ports, started.shape, rowId)) {
                 TunAttachOutcome.Settled -> Unit
                 is TunAttachOutcome.NoPerAppPlan -> {
                     // ARCHITECTURE.md §5.6: the reason only. No package names, no counts that
@@ -4249,8 +4307,12 @@ class TunnelService : VpnService() {
                     // this outcome before establishing anything and before
                     // [closeRetainedTunLocked] — so this reattaches the interface
                     // that never went away. §5.4: no fd was opened, so none leaks,
-                    // and none is closed twice.
-                    attachRetainedTun(handoff.gen, started.xray, started.ports, handoff.fd, rowId)
+                    // and none is closed twice. hev gets that interface's own MTU,
+                    // not the shape that was never built (research R5: its read
+                    // buffer must not be smaller than the interface's MTU). [live]
+                    // is null only if the invariant pairing it with the fd broke;
+                    // then the planned MTU is the best guess there is.
+                    attachRetainedTun(handoff, started, live?.mtu ?: started.shape.mtu, rowId)
                 }
             }
         }
@@ -4279,21 +4341,27 @@ class TunnelService : VpnService() {
      * The interface advertises the resolver it was built with (§5.2, lever 1)
      * while the core is rebuilt from current settings, so this path is taken
      * only when [restartCoreRetainingTun] has confirmed the two still name the
-     * same address — see [retainedTunKeepsAdvertisedDns] for what goes wrong
+     * same address — see [retainedTunKeepsShape] for what goes wrong
      * when they do not. Otherwise the caller rebuilds through [attachTun].
+     *
+     * [mtu] is the retained interface's own (M9-E spec §7.1), handed to hev as
+     * its read buffer size.
      */
     // Each return is a distinct outcome — a superseded generation, a tun2socks restart
     // failure, and a lifecycle-rejected settlement — same reasoning as attachTun's own.
     @Suppress("ReturnCount")
     private suspend fun attachRetainedTun(
-        gen: Int,
-        xray: XrayController,
-        ports: StartedPorts,
-        fd: ParcelFileDescriptor,
+        handoff: RetainedRestart,
+        started: StartedCore,
+        mtu: Int,
         rowId: Long,
     ) {
+        val gen = handoff.gen
+        val xray = started.xray
+        val ports = started.ports
+        val fd = handoff.fd
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingTunnel))) return
-        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU, credentials = ports.credentials)
+        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = mtu, credentials = ports.credentials)
         if (!Tun2Socks.start(config, fd.fd)) {
             xray.stop()
             // [fd] is not closed here. It is still [tunInterface], and whether

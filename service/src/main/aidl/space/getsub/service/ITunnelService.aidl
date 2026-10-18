@@ -38,6 +38,15 @@ interface ITunnelService {
     oneway void reapplyPerApp();
 
     /**
+     * Rebuilds the tunnel so changed tunnel tuning (M9-E: sniffing, mux, TUN MTU,
+     * excluded routes) takes effect. The TUN's MTU and routes apply at establish()
+     * time only, like the per-app selection, so this runs exactly what
+     * reapplyPerApp() runs: a restart of the current session with the profile :bg
+     * already holds. A no-op when nothing is connected; `oneway` for the same reason.
+     */
+    oneway void reapplyTuning();
+
+    /**
      * ARCHITECTURE.md §5.5: after process death the UI must rebind and re-read actual state.
      * This is that call. The UI never infers connection state locally — an app
      * showing "Disconnected" while the tunnel is up is worse than one that

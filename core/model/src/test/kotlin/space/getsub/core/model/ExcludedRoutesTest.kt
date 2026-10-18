@@ -121,4 +121,18 @@ class ExcludedRoutesTest {
         ExcludedRoutes.complement(ranges("2001:db8::/32"), v6 = false) shouldBe listOf(CidrRange("0.0.0.0", 0, false))
         ExcludedRoutes.complement(ranges("2001:db8::/32"), v6 = true).size shouldBe 32
     }
+
+    @Test
+    fun coversIsContainmentWithinOneFamily() {
+        ExcludedRoutes.covers(v4("10.0.0.0/8"), v4("10.1.0.0/16")) shouldBe true
+        ExcludedRoutes.covers(v4("10.0.0.0/8"), v4("10.0.0.0/8")) shouldBe true
+        ExcludedRoutes.covers(v4("10.1.0.0/16"), v4("10.0.0.0/8")) shouldBe false
+        ExcludedRoutes.covers(v4("10.0.0.0/8"), v4("11.0.0.0/8")) shouldBe false
+        ExcludedRoutes.covers(v4("127.0.0.0/8"), v4("127.255.255.255")) shouldBe true
+        ExcludedRoutes.covers(v4("::ffff:0:0/96"), v4("::ffff:10.0.0.0/104")) shouldBe true
+        ExcludedRoutes.covers(v4("::ffff:0:0/96"), v4("::fffe:0:0/96")) shouldBe false
+        // Families never cover each other, even where the numbers line up.
+        ExcludedRoutes.covers(v4("::/96"), v4("0.0.0.1")) shouldBe false
+        ExcludedRoutes.covers(v4("0.0.0.0/8"), v4("::1")) shouldBe false
+    }
 }

@@ -254,6 +254,18 @@ public class TunnelClient private constructor(
     }
 
     /**
+     * M9-E: rebuild the tunnel so changed tuning (MTU, excluded routes, sniffing, mux) takes effect.
+     * The same restart as [reapplyPerApp]. No-op when disconnected.
+     */
+    public fun reapplyTuning() {
+        try {
+            service?.reapplyTuning()
+        } catch (e: android.os.RemoteException) {
+            Log.e(TAG, "reapplyTuning failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
      * Held so the binder callback is not collected mid-run.
      *
      * `ILatencyCallback.Stub` is a strong reference only from here; a local would

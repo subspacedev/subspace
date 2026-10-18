@@ -289,7 +289,7 @@ port-53 hijack rule — are whatever that config's author wrote, not ours: a
 config that sends its resolver's traffic to a `freedom` outbound will leak,
 and nothing here stops it. **Lever 1 still fires, unconditionally, regardless
 of passthrough**: `TunnelService.establishTun` calls
-`builder.addDnsServerOrFallback(dnsPlan)` on every connect, and in the pure
+`builder.addDnsServerOrFallback(shape.advertisedDns)` on every connect, and in the pure
 passthrough branch (no rule set, no custom resolver) `dnsPlan` is null, which
 falls back to advertising `DNS_SERVER` (`1.1.1.1`) on the TUN interface to
 every app on the device — while the config's own `dns` block governs only
@@ -323,19 +323,27 @@ proxied sites included, while a freshly connected session would have advertised
 `DNS_SERVER` and routed it to the proxy. Since `576b2fa` the retained path is
 taken only while the *planned* address recorded for the live interface still
 matches what the new plan would advertise; otherwise the interface is rebuilt.
-That comparison is planned-against-planned and never consults what the interface
+Since M9-E the comparison is the whole **planned TUN shape** (`TunShape`): the
+advertised resolver, the MTU and the excluded routes, recorded with the fd and
+compared by `retainedTunKeepsShape`, because the MTU and the routes are just as
+fixed at `establish()` time. A network change or server switch whose next shape
+differs in any of the three rebuilds the interface; the session's inbound
+credentials survive the rebuild, since it is still the same session. That
+comparison is planned-against-planned and never consults what the interface
 is actually advertising — which is safe in the one direction that matters,
-because rejection of an address literal is a function of the address, so equal
-planned addresses imply equal advertised ones. The rule can therefore rebuild
-needlessly, and cannot keep an interface it should have replaced.
+because rejection of an address literal (or of an excluded route) is a function
+of the planned value, so equal planned shapes imply equal interfaces. The rule
+can therefore rebuild needlessly, and cannot keep an interface it should have
+replaced.
 
 **One exception, added once that rebuild turned out to be able to end the
 session.** If the rebuild's per-app gate yields no plan at all — allow-list mode
 with nothing selected, or an allow list whose packages have all been uninstalled
 — the old interface is kept instead. `PerAppAllowListEmpty` is terminal, and
 publishing it here would close the retained TUN and release the kill switch
-on an ordinary Wi-Fi↔cellular change. A stale advertised resolver is the
-smaller harm, and it is the harm the retained path always carried.
+on an ordinary Wi-Fi↔cellular change. A stale advertised resolver (or, since
+M9-E, a stale MTU or excluded-route set) is the smaller harm, and it is the harm
+the retained path always carried. hev is then given the kept interface's own MTU.
 
 So lever 1 is coherent across a restart on the same terms as on a connect —
 **except on the per-app fallback path directly above**, which is the one case
