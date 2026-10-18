@@ -6,10 +6,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import space.getsub.core.model.isKcpNetwork
 
 /** Whether one outbound already does a mask itself, and how (M9-A spec §3.3 rule 3). */
 public data class OwnMask(
@@ -231,39 +228,3 @@ private fun editable(outbound: JsonObject): Boolean {
         (finalmask == null || finalmask is JsonObject) &&
         halves.all { it == null || it is JsonArray }
 }
-
-private fun JsonObject.present(key: String): JsonElement? = this[key]?.takeUnless { it is JsonNull }
-
-private fun JsonObject.stream(): JsonObject? = this["streamSettings"] as? JsonObject
-
-private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? JsonObject)?.string("dialerProxy")
-
-private fun JsonObject.protocol(): String? = string("protocol")
-
-/** Which socket kinds an outbound dials, for mask applicability (mirrors `ObfuscationApplicability`). */
-private enum class Dials { UdpOnly, Both }
-
-private fun JsonObject.dials(): Dials {
-    val network = stream()?.string("network").orEmpty()
-    val protocol = protocol()
-    return when {
-        protocol == "hysteria" || network.equals("hysteria", ignoreCase = true) -> Dials.UdpOnly
-        protocol == "wireguard" || isKcpNetwork(network) -> Dials.UdpOnly
-        else -> Dials.Both
-    }
-}
-
-/**
- * Whether the user's noise runs on this outbound: the raw-config twin of
- * `ObfuscationApplicability.noiseApplies`, kept equal to it by `ObfuscationDetectionTest`'s parity test.
- */
-private fun JsonObject.carriesNoise(): Boolean {
-    val network = stream()?.string("network").orEmpty()
-    return when (protocol()) {
-        "hysteria", "wireguard" -> true
-        "vless", "vmess", "trojan" -> isKcpNetwork(network)
-        else -> network.equals("hysteria", ignoreCase = true)
-    }
-}
-
-private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
