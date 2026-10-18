@@ -74,8 +74,11 @@ import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.add.labelRes
 
+/** Identifies the "REALITY needs RAW, XHTTP or gRPC" error. */
+internal const val EDITOR_REALITY_TRANSPORT_ERROR_TEST_TAG = "editor-reality-transport-error"
+
 private val CONTENT_PADDING = 16.dp
-private val FIELD_GAP = 12.dp
+internal val FIELD_GAP = 12.dp
 
 /**
  * Identifies the loading spinner to instrumented tests — same pattern as
@@ -109,7 +112,7 @@ private val VMESS_SECURITY_OPTIONS = listOf("auto", "aes-128-gcm", "chacha20-pol
  * Offering a network the generator cannot emit would let the editor turn a working profile
  * into an unconnectable one, which is the mirror image of the xhttp regression.
  */
-private val NETWORK_OPTIONS = listOf("tcp", "ws", "grpc", "xhttp")
+private val NETWORK_OPTIONS = listOf("tcp", "ws", "grpc", "xhttp", "kcp", "httpupgrade")
 
 /**
  * XHTTP modes, exactly as Xray-core v26.7.11 accepts them (`SplitHTTPConfig.Build`), plus a
@@ -182,6 +185,10 @@ fun EditorScreen(
             onXhttpHostChanged = viewModel::onXhttpHostChanged,
             onXhttpModeChanged = viewModel::onXhttpModeChanged,
             onHysteria2Changed = viewModel::onHysteria2Changed,
+            onWireGuardChanged = viewModel::onWireGuardChanged,
+            onKcpChanged = viewModel::onKcpChanged,
+            onHttpUpgradeHostChanged = viewModel::onHttpUpgradeHostChanged,
+            onHttpUpgradePathChanged = viewModel::onHttpUpgradePathChanged,
             onSave = viewModel::save,
             // Task 15: stores the conversion in the M6-style in-memory holder
             // ([space.getsub.core.data.PendingRoutingConversion]) first,
@@ -241,6 +248,10 @@ internal data class EditorActions(
     val onXhttpHostChanged: (String) -> Unit,
     val onXhttpModeChanged: (String) -> Unit,
     val onHysteria2Changed: (Hysteria2Draft) -> Unit,
+    val onWireGuardChanged: (WireGuardDraft) -> Unit,
+    val onKcpChanged: (KcpDraft) -> Unit,
+    val onHttpUpgradeHostChanged: (String) -> Unit,
+    val onHttpUpgradePathChanged: (String) -> Unit,
     val onSave: () -> Unit,
     /** The "Use this file's routing rules" action — see [EditorScreen]'s own KDoc. */
     val onConvertRouting: () -> Unit,
@@ -444,12 +455,22 @@ private fun TypedSections(
         )
     }
 
-    SectionCard(title = stringResource(R.string.editor_section_credentials)) {
-        CredentialFields(state = state, actions = actions)
+    // WireGuard has no shared credential: its keys have a card of their own below.
+    if (state.protocol != "wireguard") {
+        SectionCard(title = stringResource(R.string.editor_section_credentials)) {
+            CredentialFields(state = state, actions = actions)
+        }
     }
 
-    if (state.protocol == "hysteria2") {
-        Hysteria2Sections(state = state, onChanged = actions.onHysteria2Changed)
+    when (state.protocol) {
+        "hysteria2" -> Hysteria2Sections(state = state, onChanged = actions.onHysteria2Changed)
+        "wireguard" -> WireGuardSections(state = state, onChanged = actions.onWireGuardChanged)
+        "http" ->
+            HttpSections(
+                state = state,
+                onSecurityKindChanged = actions.onSecurityKindChanged,
+                tlsFields = { TlsFields(state = state, actions = actions) },
+            )
     }
 
     if (state.protocol in STREAM_PROTOCOLS) {
@@ -533,6 +554,19 @@ private fun CredentialFields(
                 )
                 ShadowsocksRefusedBanner(state)
             }
+            "http" -> {
+                EditorField(
+                    label = stringResource(R.string.editor_username_label),
+                    value = state.primaryCredential,
+                    onValueChange = actions.onPrimaryCredentialChanged,
+                )
+                EditorTextField(
+                    label = stringResource(R.string.editor_socks_password_label),
+                    value = state.secondaryCredential,
+                    onValueChange = actions.onSecondaryCredentialChanged,
+                    secret = true,
+                )
+            }
             else -> {
                 EditorField(
                     label = stringResource(R.string.editor_username_label),
@@ -596,7 +630,7 @@ private fun TransportSection(
             options = NETWORK_OPTIONS,
             onSelected = actions.onNetworkChanged,
         )
-        when (state.network) {
+        when (state.network.lowercase()) {
             "ws" ->
                 EditorField(
                     label = stringResource(R.string.editor_ws_path_label),
@@ -615,6 +649,13 @@ private fun TransportSection(
             // Both spellings: a profile imported from a config written against the
             // older name keeps it, and its fields must still be editable.
             "xhttp", "splithttp" -> XhttpFields(state, actions)
+            "kcp", "mkcp" -> KcpFields(state = state, onChanged = actions.onKcpChanged)
+            "httpupgrade" ->
+                HttpUpgradeFields(
+                    state = state,
+                    onHostChanged = actions.onHttpUpgradeHostChanged,
+                    onPathChanged = actions.onHttpUpgradePathChanged,
+                )
         }
     }
 }
@@ -674,6 +715,14 @@ private fun SecuritySection(
                 text = stringResource(R.string.editor_security_refused_without_tls),
                 tone = BannerTone.Warning,
                 modifier = Modifier.testTag(EDITOR_SECURITY_REFUSED_TEST_TAG),
+            )
+        }
+        if (state.realityConflict == RealityConflict.Transport) {
+            Text(
+                text = stringResource(R.string.editor_reality_transport_error),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag(EDITOR_REALITY_TRANSPORT_ERROR_TEST_TAG),
             )
         }
         when (state.securityKind) {
