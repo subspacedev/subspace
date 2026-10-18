@@ -6,6 +6,7 @@ package space.getsub.core.parser
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import space.getsub.core.model.KcpHeader
 import space.getsub.core.model.KcpHeaderResult
 import space.getsub.core.model.KcpObfuscation
 import space.getsub.core.model.KcpRules
@@ -59,11 +60,19 @@ private fun kcpFromQuery(query: Map<String, String>): Step<TransportOptions> {
 internal fun classicObfuscation(
     seed: String?,
     headerType: String?,
+    dnsDomain: String? = null,
 ): KcpObfuscation {
     val s = seed?.takeIf { it.isNotEmpty() }
     return when (val h = KcpRules.headerFromLinkName(headerType)) {
         KcpHeaderResult.None -> KcpObfuscation(s, null, false)
-        is KcpHeaderResult.Ok -> KcpObfuscation(s, h.header, legacyOriginal = s == null)
+        // Ruling D2-R11: a raw legacy `header {type: dns, domain}` (Xray's pre-finalmask DNSAuthenticator, which
+        // defaulted the domain to www.baidu.com) has no field here; written without it the core would put the
+        // default domain on the wire, so the row is not connectable rather than silently different.
+        is KcpHeaderResult.Ok -> {
+            val domainLost = h.header == KcpHeader.DNS && !dnsDomain.isNullOrEmpty()
+            val reason = KcpUnsupported.DnsHeaderDomain.takeIf { domainLost }
+            KcpObfuscation(s, h.header, legacyOriginal = s == null, unsupported = reason)
+        }
         KcpHeaderResult.Unsupported ->
             KcpObfuscation(
                 s,

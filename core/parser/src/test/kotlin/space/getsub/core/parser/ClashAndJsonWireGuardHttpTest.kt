@@ -532,4 +532,39 @@ class ClashAndJsonWireGuardHttpTest {
         view.transport shouldBe TransportOptions.HttpUpgrade("front.example", "/up")
         rawVless("""{"network":"httpupgrade"}""").transport shouldBe TransportOptions.HttpUpgrade("", "/")
     }
+
+    // Ruling D2-R11: a legacy DNS header's domain has no field in the model; rewriting it to
+    // `{header:"dns"}` would make the core default to www.baidu.com and change the header length.
+    @Test
+    fun `raw legacy kcp dns header with a domain is not connectable`() {
+        val withDomain =
+            rawVless("""{"network":"kcp","kcpSettings":{"header":{"type":"dns","domain":"example.org"},"seed":"s"}}""")
+        withDomain.transport
+            .shouldBeInstanceOf<TransportOptions.Kcp>()
+            .obfuscation.unsupported shouldBe
+            space.getsub.core.model.KcpUnsupported.DnsHeaderDomain
+        for (header in listOf("""{"type":"dns"}""", """{"type":"dns","domain":""}""")) {
+            val plain = rawVless("""{"network":"kcp","kcpSettings":{"header":$header}}""")
+            val o = plain.transport.shouldBeInstanceOf<TransportOptions.Kcp>().obfuscation
+            o.unsupported shouldBe null
+            o.header shouldBe KcpHeader.DNS
+        }
+    }
+
+    // Ruling D2-R12: noise is client-only junk, so a raw config's own trailing noise does not change the
+    // mKCP wire the server sees.
+    @Test
+    fun `raw kcp with its own trailing noise stays connectable`() {
+        val view =
+            rawVless(
+                """{"network":"kcp","finalmask":{"udp":[
+                {"type":"mkcp-legacy","settings":{"value":"sd"}},
+                {"type":"mkcp-legacy","settings":{"header":"srtp"}},
+                {"type":"noise","settings":{"noise":[{"rand":"10-20","delay":"10-16"}]}}]}}""",
+            )
+        val o = view.transport.shouldBeInstanceOf<TransportOptions.Kcp>().obfuscation
+        o.unsupported shouldBe null
+        o.seed shouldBe "sd"
+        o.header shouldBe KcpHeader.SRTP
+    }
 }

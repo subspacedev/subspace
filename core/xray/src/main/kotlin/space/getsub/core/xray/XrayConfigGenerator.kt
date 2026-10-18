@@ -891,7 +891,10 @@ private fun endpoint(
 ): String = if (IPV6_LITERAL.matches(host)) "[$host]:$port" else "$host:$port"
 
 // Hex groups and colons, optionally an embedded IPv4 tail and a zone; anything else (a domain, a bracketed
-// literal) is written as given.
+// literal) is written as given. Deliberately permissive: it does not validate an address (`::::` matches),
+// it only decides whether brackets are needed. A host with a colon is never a valid domain, so bracketing a
+// malformed literal costs nothing the core would not have refused anyway, while a stricter pattern could
+// leave a real literal unbracketed and turn its last group into the port.
 private val IPV6_LITERAL = Regex("""[0-9A-Fa-f:]*:[0-9A-Fa-f:.]*(%[0-9A-Za-z._-]+)?""")
 
 private fun jsonList(values: List<String>): String = values.joinToString(", ", "[", "]", transform = ::jsonString)

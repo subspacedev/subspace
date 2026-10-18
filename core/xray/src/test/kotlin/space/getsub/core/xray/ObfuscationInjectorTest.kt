@@ -227,4 +227,18 @@ class ObfuscationInjectorTest {
             out.at(i).masks("udp") shouldBe emptyList()
         }
     }
+
+    // Since WireGuard is eligible, it is the outermost hop of a vless-through-wireguard chain: only it is
+    // offered masks, and as a UDP dial only noise.
+    @Test fun `a vless dialling through wireguard leaves the wireguard hop with noise only`() {
+        val array =
+            parse(
+                """[{"tag":"inner","protocol":"vless","streamSettings":{"network":"tcp","sockopt":{"dialerProxy":"wg"}}},
+                    {"tag":"wg","protocol":"wireguard","settings":{"secretKey":"k","peers":[]}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, true), Applied(noise, true)))
+        out.at(0) shouldBe array.at(0)
+        out.at(1).masks("udp") shouldBe listOf("noise")
+        out.at(1).masks("tcp") shouldBe emptyList()
+    }
 }

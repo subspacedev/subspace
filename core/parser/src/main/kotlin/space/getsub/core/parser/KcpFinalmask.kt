@@ -50,9 +50,21 @@ private fun failed(reason: KcpUnsupported) = KcpFinalmaskResult(KcpObfuscation(n
  * in the orders [KcpRules.masks] writes: `[original]`, `[seed]`, `[original|seed, header]`. Anything else
  * (a header with no leading original or seed, `noise`, another mask type, a `dns` header carrying a domain,
  * a header with a seed value, a non-object entry) is not reproducible and names its reason.
+ *
+ * [trailingNoiseAllowed] (ruling D2-R12, raw JSON only): `noise` masks after every `mkcp-legacy` mask are
+ * client-only junk the server never sees (research "Verified for D2" (c): `[S,H,N]` client ↔ `[S,H]` server),
+ * so they are dropped before reading and the row stays connectable; the raw config keeps or replaces them as
+ * the injector does. Noise alone is then bare KCP, not "no masks": the legacy `kcpSettings` fields are not
+ * read, as the core does not read them. A link's `fm=` keeps M9-D1's rule (any noise is UnknownMask), so
+ * link callers leave this false.
  */
-internal fun readKcpFinalmask(finalmask: JsonObject): KcpFinalmaskResult {
-    val list = (finalmask["udp"] as? JsonArray)?.takeIf { it.isNotEmpty() } ?: return KcpFinalmaskResult(null)
+internal fun readKcpFinalmask(
+    finalmask: JsonObject,
+    trailingNoiseAllowed: Boolean = false,
+): KcpFinalmaskResult {
+    val all = (finalmask["udp"] as? JsonArray)?.takeIf { it.isNotEmpty() } ?: return KcpFinalmaskResult(null)
+    val list = if (trailingNoiseAllowed) all.dropLastWhile { it.isNoiseMask() } else all
+    if (list.isEmpty()) return KcpFinalmaskResult(KcpObfuscation(null, null, false))
     val parsed =
         list.map { entry ->
             (entry as? JsonObject)?.let(::parseMask) ?: Parsed.Bad(KcpUnsupported.UnknownMask)
@@ -108,3 +120,6 @@ private fun parseHeader(
                 else -> Parsed.Bad(KcpUnsupported.UnknownMask)
             }
     }
+
+private fun kotlinx.serialization.json.JsonElement.isNoiseMask(): Boolean =
+    (this as? JsonObject)?.stringValue("type")?.lowercase() == "noise"

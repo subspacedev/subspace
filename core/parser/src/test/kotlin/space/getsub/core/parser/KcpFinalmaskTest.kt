@@ -101,4 +101,38 @@ class KcpFinalmaskTest {
         read(udp(legacy("{}"), legacy("""{"header":"none"}"""))).obfuscation!!.unsupported shouldBe
             KcpUnsupported.UnknownMask
     }
+
+    // ── Ruling D2-R12: raw JSON tolerates trailing noise; links do not ──────
+
+    private fun readRaw(json: String): KcpFinalmaskResult {
+        val finalmask = Json.parseToJsonElement(json) as JsonObject
+        return readKcpFinalmask(finalmask, trailingNoiseAllowed = true)
+    }
+
+    private val noise = """{"type":"noise","settings":{"noise":[{"rand":"10-20","delay":"10-16"}]}}"""
+
+    @Test
+    fun `raw trailing noise after the mkcp masks is harmless`() {
+        val o = readRaw(udp(legacy("""{"value":"s"}"""), legacy("""{"header":"wechat"}"""), noise, noise)).obfuscation!!
+        o.unsupported shouldBe null
+        KcpRules.masks(o) shouldBe listOf(KcpMask.Seed("s"), KcpMask.Header(KcpHeader.WECHAT))
+    }
+
+    @Test
+    fun `raw noise alone is bare KCP, not a reason to read the legacy fields`() {
+        val o = readRaw(udp(noise)).obfuscation!!
+        o.unsupported shouldBe null
+        KcpRules.masks(o) shouldBe emptyList()
+    }
+
+    @Test
+    fun `raw noise before an mkcp mask is still not reproducible`() {
+        readRaw(udp(noise, legacy("""{"value":"s"}"""))).obfuscation!!.unsupported shouldBe KcpUnsupported.UnknownMask
+    }
+
+    @Test
+    fun `the link reading keeps trailing noise unknown`() {
+        read(udp(legacy("{}"), noise)).obfuscation!!.unsupported shouldBe KcpUnsupported.UnknownMask
+        read(udp(noise)).obfuscation!!.unsupported shouldBe KcpUnsupported.UnknownMask
+    }
 }

@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.KcpHeader
 import space.getsub.core.model.KcpHeaderResult
 import space.getsub.core.model.KcpMask
 import space.getsub.core.model.KcpObfuscation
@@ -29,7 +30,8 @@ import space.getsub.core.model.KcpRules
  * Touched only when all hold: `streamSettings.network` is `kcp`/`mkcp` (any case); `kcpSettings` is an
  * object carrying `header` or `seed`; `finalmask` is absent or an object whose `udp` is absent, null or an
  * empty array. A config that already has masks is the v26.10 shape and wins. A header with no mask
- * (`http`, an unknown name) is left exactly as written: the projection marks that row not connectable.
+ * (`http`, an unknown name), or a `dns` header carrying a non-empty `domain` (ruling D2-R11), is left exactly
+ * as written: the projection marks that row not connectable.
  * Idempotent (the rewritten outbound no longer has the keys). Pure; never throws.
  */
 internal object LegacyKcp {
@@ -79,17 +81,24 @@ internal object LegacyKcp {
         }
     }
 
-    /** The masks the classic fields mean, or null when the header has no mask this build can write. */
+    /**
+     * The masks the classic fields mean, or null when they cannot be written: a header with no mask, or (ruling
+     * D2-R11) a `dns` header carrying a non-empty `domain`. The legacy DNS header had its own domain (Xray's
+     * DNSAuthenticator, default www.baidu.com, commit 336b2da), and `{header:"dns"}` alone would put the default
+     * on the wire; the projection marks that row DnsHeaderDomain (not connectable).
+     */
     private fun masksFor(kcp: JsonObject): List<KcpMask>? {
         val seed = kcp.string("seed")?.takeIf { it.isNotEmpty() }
-        val headerName = (kcp["header"] as? JsonObject)?.string("type") ?: kcp.string("header")
-        val header =
-            when (val h = KcpRules.headerFromLinkName(headerName)) {
-                KcpHeaderResult.None -> null
-                is KcpHeaderResult.Ok -> h.header
-                KcpHeaderResult.Unsupported -> return null
-            }
-        return KcpRules.masks(KcpObfuscation(seed, header, legacyOriginal = seed == null && header != null))
+        val headerObject = kcp["header"] as? JsonObject
+        val headerName = headerObject?.string("type") ?: kcp.string("header")
+        val parsed = KcpRules.headerFromLinkName(headerName)
+        val header = (parsed as? KcpHeaderResult.Ok)?.header
+        val domainLost = header == KcpHeader.DNS && !headerObject?.string("domain").isNullOrEmpty()
+        return if (parsed == KcpHeaderResult.Unsupported || domainLost) {
+            null
+        } else {
+            KcpRules.masks(KcpObfuscation(seed, header, legacyOriginal = seed == null && header != null))
+        }
     }
 
     private fun JsonObject.string(key: String): String? =

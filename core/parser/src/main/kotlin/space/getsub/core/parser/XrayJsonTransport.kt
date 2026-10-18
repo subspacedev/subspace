@@ -126,12 +126,15 @@ private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
     val mtu = kcp?.intValue("mtu")
     val tti = kcp?.intValue("tti")
     val settingBad = (mtu != null && mtu < MIN_KCP_MTU) || (tti != null && tti !in MIN_KCP_TTI..MAX_KCP_TTI)
-    val masks = streamSettings?.objectValue("finalmask")?.let(::readKcpFinalmask)?.obfuscation
+    val masks =
+        streamSettings?.objectValue("finalmask")?.let { readKcpFinalmask(it, trailingNoiseAllowed = true) }?.obfuscation
+    val header = kcp?.objectValue("header")
     val obfuscation =
         masks
             ?: classicObfuscation(
                 kcp?.stringValue("seed"),
-                kcp?.objectValue("header")?.stringValue("type") ?: kcp?.stringValue("header"),
+                header?.stringValue("type") ?: kcp?.stringValue("header"),
+                dnsDomain = header?.stringValue("domain"),
             )
     val flagged =
         if (settingBad && obfuscation.unsupported == null) {

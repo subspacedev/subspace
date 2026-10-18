@@ -154,4 +154,25 @@ class LegacyKcpTest {
         val udp = Json.parseToJsonElement(result.json).jsonObject["outbounds"]!!.jsonArray.stream(0).udp()!!.jsonArray
         udp.map { it.jsonObject["type"]!!.jsonPrimitive.content } shouldBe listOf("mkcp-legacy", "mkcp-legacy", "noise")
     }
+
+    @Test fun `a header object without a type and a seed is the seed mask only`() {
+        val stream = LegacyKcp.apply(parse(kcp("""{"header":{},"seed":"abc"}"""))).stream(0)
+        stream.udp() shouldBe masks("[${seed("abc")}]")
+        stream["kcpSettings"] shouldBe Json.parseToJsonElement("{}")
+    }
+
+    // Ruling D2-R11: `{header:"dns"}` without the domain makes the core use www.baidu.com, which changes the
+    // header bytes and length on the wire, a silent timeout. The projection marks the row DnsHeaderDomain.
+    @Test fun `a legacy dns header with a domain is left exactly as written`() {
+        for (kcpSettings in listOf(
+            """{"header":{"type":"dns","domain":"example.org"}}""",
+            """{"header":{"type":"DNS","domain":"example.org"},"seed":"abc"}""",
+        )) {
+            val array = parse(kcp(kcpSettings))
+            withClue(kcpSettings) { LegacyKcp.apply(array) shouldBe array }
+        }
+        // Without a domain (or with an empty one) the legacy default and the mask's default agree.
+        val plain = LegacyKcp.apply(parse(kcp("""{"header":{"type":"dns","domain":""}}"""))).stream(0)
+        plain.udp() shouldBe masks("[$original,${header("dns")}]")
+    }
 }
