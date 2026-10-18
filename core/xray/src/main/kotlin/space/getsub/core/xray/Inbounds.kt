@@ -6,6 +6,8 @@ package space.getsub.core.xray
 
 import kotlinx.serialization.json.JsonObject
 import space.getsub.core.model.ProxyCredentials
+import space.getsub.core.parser.DEFAULT_SNIFFING_OVERRIDES
+import space.getsub.core.parser.generatedSniffingOverrides
 
 /**
  * A SOCKS inbound's `sniffing` block.
@@ -19,28 +21,16 @@ import space.getsub.core.model.ProxyCredentials
 internal data class SniffingSettings(val destOverride: List<String>)
 
 /** What the typed path has always emitted. `fakedns` is appended when a DNS plan asks for it. */
-internal val DEFAULT_SNIFFING = SniffingSettings(listOf("http", "tls", "quic"))
+internal val DEFAULT_SNIFFING = SniffingSettings(DEFAULT_SNIFFING_OVERRIDES)
 
 /**
- * The `sniffing` block for a resolved sniffing value (M9-E spec §2), or null for no block.
- *
- * Off still keeps `fakedns` alone while the DNS plan uses FakeDNS: that override is what maps a
- * fake address (198.18.0.0/15) back to its domain, and without it nearly every connection fails.
- * Only `http`/`tls`/`quic` are dropped. `"fakedns"` is a destOverride value Xray-core v26.10.10
- * accepts on its own (`infra/conf/xray.go:69-84`).
+ * The `sniffing` block for a resolved sniffing value (M9-E spec §2), or null for no block. The rule
+ * itself is [generatedSniffingOverrides], shared with the passthrough advisory.
  */
 internal fun sniffingFor(
     enabled: Boolean,
     fakeDns: Boolean,
-): SniffingSettings? =
-    when {
-        enabled && fakeDns -> SniffingSettings(DEFAULT_SNIFFING.destOverride + FAKEDNS)
-        enabled -> DEFAULT_SNIFFING
-        fakeDns -> SniffingSettings(listOf(FAKEDNS))
-        else -> null
-    }
-
-private const val FAKEDNS = "fakedns"
+): SniffingSettings? = generatedSniffingOverrides(enabled, fakeDns)?.let(::SniffingSettings)
 
 /**
  * The loopback SOCKS inbound, emitted identically by both config paths.

@@ -23,6 +23,7 @@ import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.SubscriptionRepository
+import space.getsub.core.data.TuningResolver
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SubscriptionSyncer
@@ -31,7 +32,9 @@ import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.TuningOrigin
 import space.getsub.core.parser.PassthroughRejection
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.service.PassthroughValidator
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
@@ -263,6 +266,13 @@ internal interface ProfileSource {
     suspend fun obfuscationReport(id: Long): ObfuscationReport?
 
     /**
+     * [id]'s resolved sniffing as the tunnel applies it ([TuningResolver.forConfig]; M9-E spec §2),
+     * so the passthrough advisory judges the block actually emitted. A missing row resolves to your
+     * setting and the default.
+     */
+    suspend fun sniffingDecision(id: Long): SniffingDecision
+
+    /**
      * What [subscriptionId]'s fragmentation and noise directives resolve to right now, so the
      * detail screen can say why one was ignored — see [ObfuscationResolver.directiveIssues].
      */
@@ -358,6 +368,7 @@ constructor(
     private val passthroughValidator: PassthroughValidator,
     private val tunnel: TunnelClient,
     private val obfuscationResolver: ObfuscationResolver,
+    private val tuningResolver: TuningResolver,
 ) : ProfileSource {
     override fun observeGroups(
         query: String,
@@ -524,6 +535,9 @@ constructor(
     ) = subscriptionRepository.setUserAgentOverride(id, userAgent)
 
     override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationResolver.report(id)
+
+    override suspend fun sniffingDecision(id: Long): SniffingDecision =
+        tuningResolver.forConfig(id).sniffing.let { SniffingDecision(it.value, it.origin == TuningOrigin.Yours) }
 
     override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
         obfuscationResolver.directiveIssues(subscriptionId)

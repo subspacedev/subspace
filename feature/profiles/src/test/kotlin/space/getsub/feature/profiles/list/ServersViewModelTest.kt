@@ -49,6 +49,7 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.RouteExclusionRequest
@@ -395,6 +396,9 @@ class ServersViewModelTest {
         }
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)

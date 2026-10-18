@@ -31,6 +31,7 @@ import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
 
@@ -269,6 +270,9 @@ class ImportViewModelTest {
         ) = Unit
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)

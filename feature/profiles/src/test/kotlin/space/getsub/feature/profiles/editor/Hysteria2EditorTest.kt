@@ -37,6 +37,7 @@ import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 
 /** Hysteria2 in the server editor: load, edit, validate, save (M9-D1 Task 7). */
@@ -179,6 +180,9 @@ class Hysteria2EditorTest {
         ) = Unit
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)

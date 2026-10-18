@@ -40,6 +40,7 @@ import space.getsub.core.model.VlessOutbound
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
 
@@ -321,6 +322,11 @@ class EditorViewModelTest {
         val obfuscationReports = mutableMapOf<Long, ObfuscationReport>()
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationReports[id]
+
+        val sniffingDecisions = mutableMapOf<Long, SniffingDecision>()
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            sniffingDecisions[id] ?: SniffingDecision(enabled = true, replacesOwn = false)
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
@@ -608,6 +614,37 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.advisories shouldBe listOf(PassthroughAdvisory.DanglingRoutingReference)
+        }
+
+    // M9-E spec §2: the advisory judges the block the tunnel actually emits for this row.
+    @Test
+    fun `the sniffing advisory follows the row's resolved sniffing`() =
+        runTest {
+            val ownBlock =
+                rawJsonProfile.copy(
+                    id = 11L,
+                    rawJson =
+                    """
+                    {
+                      "routing": { "rules": [ { "domain": ["geosite:ru"], "outboundTag": "proxy" } ] },
+                      "inbounds": [ { "protocol": "socks", "sniffing": { "enabled": true, "destOverride": ["tls"] } } ],
+                      "outbounds": [ { "tag": "proxy", "protocol": "vless" } ]
+                    }
+                    """.trimIndent(),
+                )
+            val noBlock = ownBlock.copy(id = 12L, rawJson = ownBlock.rawJson?.replace(", \"sniffing\"", ", \"x\""))
+            val source = FakeProfileSource(listOf(ownBlock, noBlock))
+            source.sniffingDecisions[11L] = SniffingDecision(enabled = false, replacesOwn = true)
+            source.sniffingDecisions[12L] = SniffingDecision(enabled = true, replacesOwn = true)
+            val viewModel = editorViewModel(source)
+
+            viewModel.load(11L)
+            advanceUntilIdle()
+            viewModel.state.value.advisories shouldBe listOf(PassthroughAdvisory.SniffingCannotServeOwnRules)
+
+            viewModel.load(12L)
+            advanceUntilIdle()
+            viewModel.state.value.advisories shouldBe emptyList()
         }
 
     @Test

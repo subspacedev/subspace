@@ -11,6 +11,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import space.getsub.core.parser.EmittedSniffing
+import space.getsub.core.parser.SniffingDecision
+import space.getsub.core.parser.emittedSniffing
+import space.getsub.core.parser.ownSocksSniffing
 
 /** Why a stored config could not be composed into something runnable. */
 public enum class ComposeFailure {
@@ -177,14 +181,14 @@ public object RawConfigComposer {
         // the resolved value, fakedns included when its plan asks. The pure branch keeps the
         // config's own block as written (M7 spec §4.2, research §5b.5) unless the value is the
         // user's own override; a config with no block of its own takes the resolved value.
-        val preservedSniffing = sniffingOf(root).takeIf { override == null && !settings.sniffingReplacesOwn }
-        val generatedSniffing =
-            if (preservedSniffing == null) {
-                sniffingFor(settings.enableSniffing, fakeDns = settings.dns?.fakeDns == true)
-            } else {
-                null
-            }
-        val inbounds = inboundsJson(settings, generatedSniffing, preservedSniffing, inboundTagsOf(root))
+        // The decision is [emittedSniffing], shared with the editor's passthrough advisory.
+        val sniffing =
+            emittedSniffing(
+                ownBlock = if (override == null) ownSocksSniffing(root) else null,
+                decision = SniffingDecision(settings.enableSniffing, settings.sniffingReplacesOwn),
+                fakeDns = settings.dns?.fakeDns == true,
+            )
+        val inbounds = inboundsJson(settings, sniffing, inboundTagsOf(root))
         return ComposeResult.Ok(render(kept, inbounds))
     }
 
@@ -247,42 +251,29 @@ public object RawConfigComposer {
         val extraOutbounds: List<JsonElement>,
     )
 
-    /**
-     * The config's own sniffing block, when its SOCKS inbound has one.
-     *
-     * Not our default unconditionally: the target panel sniffs `["http","tls"]`
-     * with `domainStrategy: "AsIs"`, so adding `quic` would start matching its
-     * RU domain rule against HTTP/3 traffic that is proxied today — a change to
-     * the user's routing, made by us, with no error and no log line
-     * (research §5b.5).
-     */
-    private fun sniffingOf(root: JsonObject): JsonObject? =
-        (root["inbounds"] as? JsonArray)
-            ?.filterIsInstance<JsonObject>()
-            ?.firstOrNull { (it["protocol"] as? JsonPrimitive)?.content == "socks" }
-            ?.get("sniffing") as? JsonObject
-
     private fun inboundsJson(
         settings: TunnelSettings,
-        generatedSniffing: SniffingSettings?,
-        preservedSniffing: JsonObject?,
+        sniffing: EmittedSniffing,
         tags: InboundTags,
     ): String {
         val socks =
-            if (preservedSniffing != null) {
-                socksInboundJsonPreservingSniffing(
-                    settings.socksPort,
-                    preservedSniffing,
-                    settings.proxyCredentials,
-                    tags.socks,
-                )
-            } else {
-                socksInboundJson(
-                    settings.socksPort,
-                    generatedSniffing,
-                    settings.proxyCredentials,
-                    tags.socks,
-                )
+            when (sniffing) {
+                is EmittedSniffing.Own ->
+                    socksInboundJsonPreservingSniffing(
+                        settings.socksPort,
+                        sniffing.block,
+                        settings.proxyCredentials,
+                        tags.socks,
+                    )
+                is EmittedSniffing.Generated ->
+                    socksInboundJson(
+                        settings.socksPort,
+                        SniffingSettings(sniffing.destOverride),
+                        settings.proxyCredentials,
+                        tags.socks,
+                    )
+                EmittedSniffing.None ->
+                    socksInboundJson(settings.socksPort, null, settings.proxyCredentials, tags.socks)
             }
         val http = settings.httpPort?.let { httpInboundJson(it, settings.proxyCredentials, tags.http) }
         return listOfNotNull(socks, http).joinToString(",\n")

@@ -350,14 +350,17 @@ private val LENIENT = Json { isLenient = true }
  * is a separate question answered by `testXray` at import; the two together are
  * the eligibility gate (design §6).
  */
-public fun analysePassthrough(json: String): PassthroughAnalysis {
+public fun analysePassthrough(
+    json: String,
+    sniffing: SniffingDecision? = null,
+): PassthroughAnalysis {
     val root = parseObject(json)
     val outbounds = root?.get("outbounds") as? JsonArray
 
     return when {
         root == null -> rejectedAs(PassthroughRejection.NotJson)
         outbounds.isNullOrEmpty() -> rejectedAs(PassthroughRejection.NoOutbounds)
-        else -> analyseOutbounds(root, outbounds)
+        else -> analyseOutbounds(root, outbounds, sniffing)
     }
 }
 
@@ -375,6 +378,7 @@ private fun parseObject(json: String): JsonObject? =
 private fun analyseOutbounds(
     root: JsonObject,
     outbounds: JsonArray,
+    sniffing: SniffingDecision?,
 ): PassthroughAnalysis {
     val objects = outbounds.filterIsInstance<JsonObject>()
     val tags = objects.map { it["tag"].stringOrNull().orEmpty() }
@@ -395,7 +399,7 @@ private fun analyseOutbounds(
 
     return PassthroughAnalysis(
         rejection = rejection,
-        advisories = advisoriesFor(root, routing, tags),
+        advisories = advisoriesFor(root, routing, tags, sniffing),
         isBalancer = isBalancer,
         serverOutboundCount = serverCount,
         outboundTags = tags,
@@ -427,13 +431,21 @@ private fun rejectedAs(reason: PassthroughRejection): PassthroughAnalysis =
 /**
  * Research §5b.5: whether the config's own sniffing settings can serve its own
  * routing and DNS. Advisory, never a rejection — it is the config's own choice.
+ *
+ * With [sniffing] given (M9-E spec §2), the rules are judged against the block the pure
+ * passthrough branch actually emits for that decision ([emittedSniffing]; that branch has no DNS
+ * plan, so no app `fakedns`). Without it, against the config's own inbounds as written.
  */
 private fun advisoriesFor(
     root: JsonObject,
     routing: JsonObject?,
     outboundTags: List<String>,
+    sniffing: SniffingDecision?,
 ): List<PassthroughAdvisory> {
-    val sniffedDestOverrides = sniffedDestOverrides(root)
+    val sniffedDestOverrides =
+        sniffing
+            ?.let { emittedSniffing(ownSocksSniffing(root), it, fakeDns = false).sniffedOverrides() }
+            ?: sniffedDestOverrides(root)
     val hasDomainRules = routing.arrayOf("rules").filterIsInstance<JsonObject>().any { it["domain"] != null }
     val wantsFakeDns = (root["dns"] as? JsonObject).arrayOf("servers").any { it.stringOrNull() == "fakedns" }
 
@@ -487,12 +499,7 @@ private fun hasDanglingReference(
 /** `destOverride` values from every inbound whose `sniffing.enabled` is true. */
 private fun sniffedDestOverrides(root: JsonObject): List<String> =
     root.arrayOf("inbounds").filterIsInstance<JsonObject>().flatMap { inbound ->
-        val sniffing = inbound["sniffing"] as? JsonObject
-        if (sniffing?.get("enabled").stringOrNull() != "true") {
-            emptyList()
-        } else {
-            sniffing.arrayOf("destOverride").mapNotNull { it.stringOrNull() }
-        }
+        (inbound["sniffing"] as? JsonObject)?.sniffedOverrides().orEmpty()
     }
 
 /** The array named [key] on this object, or empty if it is absent or a different shape. */

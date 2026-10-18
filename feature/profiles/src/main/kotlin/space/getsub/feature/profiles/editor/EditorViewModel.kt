@@ -348,6 +348,8 @@ constructor(
             // another tab, and every other settings-derived value here is read the same way.
             val routingOverridesThisConfig = profileSource.routingOverridesPassthrough.first()
             val profile = profileSource.profile(profileId)
+            // M9-E spec §2: the advisory judges the sniffing block the tunnel emits for this row.
+            val sniffing = profile?.rawJson?.let { profileSource.sniffingDecision(profileId) }
             _state.value =
                 if (profile == null) {
                     EditorState(loading = false, exists = false, id = profileId, availableGroups = groups)
@@ -367,7 +369,7 @@ constructor(
                     val (canConvertRouting, passthrough) =
                         withContext(conversionDispatcher) {
                             val canConvert = loaded.convertibleRouting() != null
-                            val analysis = loaded.rawJson?.let { analysePassthrough(it) }
+                            val analysis = loaded.rawJson?.let { analysePassthrough(it, sniffing) }
                             canConvert to analysis
                         }
                     loaded.copy(

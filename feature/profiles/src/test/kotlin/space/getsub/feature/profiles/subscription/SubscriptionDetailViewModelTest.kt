@@ -38,6 +38,7 @@ import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.RouteExclusionRequest
 
@@ -162,6 +163,9 @@ class SubscriptionDetailViewModelTest {
 
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         /** When set, the issues follow the pins the way the real resolver follows `effective`. */
         var issuesFromPins: ((Map<String, String>) -> ResolvedObfuscation)? = null
