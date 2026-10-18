@@ -140,6 +140,32 @@ class ServersSnapshotTest {
     fun twoGroupsWithEveryRowState() = shoot("servers-groups", populated(), expanded = setOf(1L, 2L))
 
     @Test
+    fun untrustedCertificatePillKeepsTheName() =
+        shoot(
+            "servers-cert-untrusted",
+            populated().let { s ->
+                s.copy(
+                    groups =
+                    listOf(
+                        s.groups[1].copy(
+                            profiles =
+                            listOf(
+                                row(
+                                    9,
+                                    "🇩🇪 Frankfurt Hysteria",
+                                    transport = "QUIC · 443",
+                                    protocol = "Hysteria2",
+                                    latency = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED),
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            },
+            expanded = setOf(2L),
+        )
+
+    @Test
     fun empty() = shoot("servers-empty", ServersState())
 
     @Test

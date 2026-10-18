@@ -4,6 +4,9 @@ package space.getsub.service
 
 import android.os.Parcel
 import android.os.Parcelable
+import space.getsub.core.data.serialization.decodeOutboundJson
+import space.getsub.core.data.serialization.encodeOutboundJson
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
@@ -38,6 +41,10 @@ import space.getsub.core.model.VmessOutbound
  * `data class` would generate one that prints every secret, and `toString`
  * reaches crash output without anyone choosing to log it.
  *
+ * [hysteria2Json] is the one extra field Hysteria2 needs: the whole outbound in `:core:data`'s stored
+ * JSON form (R3), appended last so the flat order of every other field is unchanged. [from] fills it
+ * and [toProfile] reads the outbound back from it, ignoring the flat address/port/uuid slots.
+ *
  * [rowId] is the Room primary key of the profile being connected (spec D4) —
  * not [id], which is the domain [Profile.id] the parser assigned and carries no
  * relationship to a table row. `:bg` needs [rowId] to write [ConnectionState]
@@ -67,6 +74,10 @@ public class ProfileParcel(
     val fingerprint: String,
     val spiderX: String,
     val allowInsecure: Boolean,
+    // Last in the read/write order. Hysteria2's nested fields (TLS pins, hopping, obfuscation,
+    // congestion) travel as the outbound encoded with :core:data's DTO serializer; empty for every
+    // other protocol. A secret: never logged, and toString below does not print it.
+    val hysteria2Json: String = "",
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         protocol = parcel.readInt(),
@@ -87,6 +98,7 @@ public class ProfileParcel(
         fingerprint = parcel.readString().orEmpty(),
         spiderX = parcel.readString().orEmpty(),
         allowInsecure = parcel.readInt() != 0,
+        hysteria2Json = parcel.readString().orEmpty(),
     )
 
     override fun writeToParcel(
@@ -111,6 +123,7 @@ public class ProfileParcel(
         dest.writeString(fingerprint)
         dest.writeString(spiderX)
         dest.writeInt(if (allowInsecure) 1 else 0)
+        dest.writeString(hysteria2Json)
     }
 
     override fun describeContents(): Int = 0
@@ -180,6 +193,8 @@ public class ProfileParcel(
                     password = uuid,
                 )
 
+            PROTOCOL_HYSTERIA2 -> decodeOutboundJson(hysteria2Json) as? Hysteria2Outbound
+
             PROTOCOL_SOCKS ->
                 SocksOutbound(
                     address = address,
@@ -221,6 +236,7 @@ public class ProfileParcel(
         const val PROTOCOL_TROJAN = 2
         const val PROTOCOL_SHADOWSOCKS = 3
         const val PROTOCOL_SOCKS = 4
+        const val PROTOCOL_HYSTERIA2 = 5
 
         const val SECURITY_NONE = 0
         const val SECURITY_REALITY = 1
@@ -280,6 +296,7 @@ public class ProfileParcel(
                 fingerprint = reality?.fingerprint ?: tls?.fingerprint.orEmpty(),
                 spiderX = reality?.spiderX.orEmpty(),
                 allowInsecure = tls?.allowInsecure ?: false,
+                hysteria2Json = (out as? Hysteria2Outbound)?.let(::encodeOutboundJson).orEmpty(),
             )
         }
 
@@ -304,6 +321,9 @@ public class ProfileParcel(
 
                 is SocksOutbound ->
                     OutboundFields(PROTOCOL_SOCKS, out.username.orEmpty(), out.password.orEmpty(), 0, null, null)
+
+                // Everything else Hysteria2 needs rides in [hysteria2Json]; the password is the credential.
+                is Hysteria2Outbound -> OutboundFields(PROTOCOL_HYSTERIA2, out.password, "", 0, null, null)
             }
     }
 

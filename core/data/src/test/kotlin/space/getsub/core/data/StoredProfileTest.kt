@@ -198,4 +198,24 @@ class StoredProfileTest {
     fun `a row whose outbound failed to decode is not connectable`() {
         profile(protocol = "vless", outboundOverride = null).copy(outbound = null).connectable shouldBe false
     }
+
+    @Test
+    fun `a hysteria2 row with a bbr profile the core does not know is not connectable`() {
+        fun bbr(profileName: String) =
+            profile(
+                protocol = "hysteria2",
+                outboundOverride =
+                space.getsub.core.model.Hysteria2Outbound(
+                    address = "198.51.100.1",
+                    port = 443,
+                    password = "pw",
+                    tls = space.getsub.core.model.Hysteria2Tls("h.example"),
+                    congestion = space.getsub.core.model.Hysteria2Congestion.Bbr(profileName),
+                ),
+            )
+        for (known in listOf("", "standard", "Aggressive", "conservative")) bbr(known).connectable shouldBe true
+        // Mirrors XrayConfigGenerator's refusal: the core fails Build with `unknown bbr profile`.
+        bbr("turbo").connectable shouldBe false
+        bbr(" standard").connectable shouldBe false
+    }
 }

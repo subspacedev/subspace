@@ -7,6 +7,7 @@ import app.cash.paparazzi.Paparazzi
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
@@ -49,6 +50,7 @@ class EditorSnapshotTest {
             onXhttpPathChanged = {},
             onXhttpHostChanged = {},
             onXhttpModeChanged = {},
+            onHysteria2Changed = {},
             onSave = {},
             onConvertRouting = {},
         )
@@ -74,6 +76,36 @@ class EditorSnapshotTest {
             realityShortId = "6ba85179e30d4fc2",
             realityFingerprint = "chrome",
             realitySpiderX = "/",
+        )
+
+    private val hysteria2Full =
+        EditorState(
+            loading = false,
+            exists = true,
+            id = 3L,
+            kind = ProfileKind.TYPED,
+            protocol = "hysteria2",
+            name = "Hy",
+            groupId = 10L,
+            availableGroups = listOf(EditorGroupOption(10L, "Local configs")),
+            address = "198.51.100.9",
+            port = "443",
+            primaryCredential = "hunter2-password",
+            hysteria2 =
+            Hysteria2Draft(
+                serverName = "hy.example",
+                skipChecksRequested = true,
+                hopPorts = "20000-30000,40000",
+                hopInterval = "30",
+                obfsKind = Hysteria2ObfsKind.Gecko,
+                obfsPassword = "secret",
+                minPacket = "100",
+                maxPacket = "1200",
+                congestionKind = Hysteria2CongestionKind.Brutal,
+                brutalUp = "100 mbps",
+                brutalDown = "1 gbps",
+                notConnectableReason = Hysteria2Unsupported.UnknownMask,
+            ),
         )
 
     private val rawWithAdvisory =
@@ -113,6 +145,9 @@ class EditorSnapshotTest {
 
     @Test
     fun typedVlessReality() = shoot("editor-typed-reality", vlessReality)
+
+    @Test
+    fun typedHysteria2() = shoot("editor-typed-hysteria2", hysteria2Full)
 
     @Test
     fun rawJsonWithAdvisory() = shoot("editor-raw-advisory", rawWithAdvisory)

@@ -113,7 +113,10 @@ public object ObfuscationDetection {
     ): List<OutboundPlan> {
         val byTag = tagIndex(outbounds)
         return outermostEligible(outbounds).sorted().map { i ->
-            plan(i, outbounds[i] as JsonObject, byTag, fragment, noise)
+            val outbound = outbounds[i] as JsonObject
+            // Fragment is a TCP mask; a QUIC-only Hysteria outbound never dials TCP (M9-D1 spec §4),
+            // so it is not offered there rather than written in and reported as applied.
+            plan(i, outbound, byTag, fragment.takeUnless { outbound.quicOnly() }, noise)
         }
     }
 
@@ -221,5 +224,10 @@ private fun JsonObject.stream(): JsonObject? = this["streamSettings"] as? JsonOb
 private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? JsonObject)?.string("dialerProxy")
 
 private fun JsonObject.protocol(): String? = string("protocol")
+
+private fun JsonObject.quicOnly(): Boolean {
+    val network = stream()?.string("network")?.lowercase()
+    return protocol() == "hysteria" || network == "hysteria"
+}
 
 private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content

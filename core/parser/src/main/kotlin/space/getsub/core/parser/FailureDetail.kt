@@ -66,4 +66,8 @@ public enum class DetailField {
     YamlBody,
     Credential,
     AlterId,
+    Pin,
+    Obfuscation,
+    Bandwidth,
+    HopInterval,
 }

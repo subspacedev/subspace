@@ -24,6 +24,7 @@ internal fun parseShareLink(
         "vmess" -> parseVmessLink(text, index)
         "trojan" -> parseTrojanLink(text, index)
         "ss" -> parseShadowsocksLink(text, index)
+        "hysteria2", "hy2" -> parseHysteria2Link(text, index)
         "socks", "socks5" -> parseSocksLink(text, index)
         else ->
             LinkResult.Bad(

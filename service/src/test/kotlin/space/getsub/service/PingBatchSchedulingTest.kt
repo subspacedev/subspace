@@ -14,6 +14,8 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Test
+import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
@@ -316,6 +318,37 @@ class PingBatchSchedulingTest {
             planLatency(fiveSeconds, { false }, null, plaintext) { error("never generated") } shouldBe
                 LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
             planLatency(tcp, { false }, null, plaintext) { error("never generated") } shouldBe LatencyPlan.InPlace
+        }
+
+    private val hysteria2: Outbound = Hysteria2Outbound("hy.example.com", 443, "pw", Hysteria2Tls("hy.example.com"))
+
+    @Test
+    fun hysteria2InTcpModeIsUnsupported() =
+        runTest {
+            // Not InPlace: a TCP connect to a QUIC server's port would time something that is not the server.
+            planLatency(tcp, { false }, null, hysteria2) { error("never generated") } shouldBe
+                LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+            // A raw hysteria row arrives as its typed projection, with the raw bytes alongside.
+            planLatency(tcp, { false }, """{"outbounds":[{"protocol":"hysteria"}]}""", hysteria2) {
+                error("never generated")
+            } shouldBe LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+        }
+
+    @Test
+    fun onlyHysteria2IsAUdpServer() {
+        isUdpServer(hysteria2) shouldBe true
+        isUdpServer(vless) shouldBe false
+        isUdpServer(null) shouldBe false
+    }
+
+    @Test
+    fun hysteria2ProxyHeadIsBatched() =
+        runTest {
+            val plan = planLatency(fiveSeconds, { false }, null, hysteria2) { "hy-config" }
+
+            plan.shouldBeInstanceOf<LatencyPlan.Batched>()
+            plan.xrayJson shouldBe "hy-config"
+            plan.group shouldBe PingGroup(5, "https://a.invalid")
         }
 
     @Test

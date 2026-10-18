@@ -4,6 +4,7 @@ package space.getsub.core.data.serialization
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -97,6 +98,8 @@ private fun Outbound.toDto(): OutboundDto =
                 username = username,
                 password = password,
             )
+
+        is Hysteria2Outbound -> toHysteria2Dto()
     }
 
 private fun OutboundDto.toDomain(): Outbound =
@@ -143,6 +146,8 @@ private fun OutboundDto.toDomain(): Outbound =
                 username = username,
                 password = password,
             )
+
+        is OutboundDto.Hysteria2 -> toHysteria2Domain()
     }
 
 private fun StreamSettings.toDto(): StreamDto =

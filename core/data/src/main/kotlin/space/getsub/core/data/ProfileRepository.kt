@@ -15,6 +15,8 @@ import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
 import space.getsub.core.data.serialization.toOutbound
+import space.getsub.core.model.Hysteria2Congestion
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
@@ -23,6 +25,7 @@ import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.PassthroughAnalysis
 import space.getsub.core.parser.PassthroughRejection
@@ -119,6 +122,10 @@ public data class StoredProfile(
                 is TrojanOutbound -> o.stream.network.lowercase() in CONNECTABLE_NETWORKS
                 is ShadowsocksOutbound -> shadowsocksCoreRefusal(o.method, o.password) == null
                 is SocksOutbound -> true
+                // Plan ruling R2: its own branch, never `hysteria` in CONNECTABLE_NETWORKS. A reason
+                // means the source carried something the generator cannot write. A BBR profile outside
+                // BBR_PROFILES mirrors the generator's refusal (the core fails `unknown bbr profile`).
+                is Hysteria2Outbound -> o.notConnectableReason == null && !o.hasUnknownBbrProfile()
                 null -> false
             }
 
@@ -141,8 +148,8 @@ public data class StoredProfile(
  * its source wrote.
  *
  * `kcp`/`mkcp`, `httpupgrade` and `hysteria` are real transports Xray supports and this
- * generator does not, so they are absent on purpose. Hysteria2 generation is M8's, and ARCHITECTURE.md §6
- * warns its config shape is unlike every other protocol's. Hysteria2 must be gated by its own
+ * generator does not, so they are absent on purpose. The generator writes Hysteria2 (M9-D1 spec §4) as
+ * its own protocol with its own stream block, unlike every other protocol's. Hysteria2 is gated by its own
  * Outbound branch in `connectable`, not by adding `hysteria` here: this set is shared by VLESS, VMess
  * and Trojan, and a row of those over `hysteria` would then claim a config nothing can write.
  *
@@ -558,6 +565,7 @@ internal fun Outbound.protocolName(): String =
         is TrojanOutbound -> "trojan"
         is ShadowsocksOutbound -> "shadowsocks"
         is SocksOutbound -> "socks"
+        is Hysteria2Outbound -> "hysteria2"
     }
 
 /**
@@ -591,7 +599,14 @@ internal fun Outbound.transportSummary(): String {
             is TrojanOutbound -> stream
             is ShadowsocksOutbound -> null
             is SocksOutbound -> null
+            is Hysteria2Outbound -> null
         }
+    // Hysteria2 always runs over QUIC and has no StreamSettings; show the hop ranges when it hops.
+    if (this is Hysteria2Outbound) {
+        val ports =
+            hopping?.ports?.joinToString(", ") { if (it.first == it.last) "${it.first}" else "${it.first}–${it.last}" }
+        return listOf("QUIC", ports ?: port.toString()).joinToString(" · ")
+    }
     val parts = mutableListOf(stream?.network ?: "tcp")
     when (stream?.security) {
         is Security.Reality -> parts += "reality"
@@ -601,3 +616,6 @@ internal fun Outbound.transportSummary(): String {
     parts += port.toString()
     return parts.joinToString(" · ")
 }
+
+private fun Hysteria2Outbound.hasUnknownBbrProfile(): Boolean =
+    (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true

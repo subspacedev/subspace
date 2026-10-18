@@ -127,10 +127,11 @@ public object RawConfigComposer {
         if (outbounds.isNullOrEmpty()) return ComposeResult.Failed(ComposeFailure.NoOutbounds)
 
         // M9-A spec §3.3: both branches. Applied to the config's own outbounds only; the
-        // override's direct/block/dns-out extras are never eligible.
+        // override's direct/block/dns-out extras are never eligible. The legacy udpHop rewrite runs
+        // first so injected noise lands before the `udphop` mask it produces, never after it.
         val ownOutbounds =
             AddressPinInjector.apply(
-                ObfuscationInjector.apply(outbounds, settings.obfuscation),
+                ObfuscationInjector.apply(LegacyUdpHop.apply(outbounds), settings.obfuscation),
                 settings.addressPin,
             )
 

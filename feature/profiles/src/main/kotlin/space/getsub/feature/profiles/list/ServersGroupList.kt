@@ -218,6 +218,13 @@ private fun ServerRows(
             name = row.displayName(),
             detail = "${row.protocolDisplay} · ${row.transport}",
             latencyText = pillText(row.pill()),
+            // The pill's text is shortened to fit; a screen reader gets the full sentence.
+            latencyDescription =
+            if (row.pill() == PillText.CertUntrusted) {
+                stringResource(R.string.servers_latency_cert_untrusted_description)
+            } else {
+                null
+            },
             selected = row.isActive,
             // Dims the row and disables its latency pill only; core's ServerRow keeps an
             // unsupported row selectable (M8.6 Part 3 review focus 4).
@@ -243,6 +250,7 @@ private fun pillText(pill: PillText): String =
         PillText.Failed -> stringResource(R.string.servers_latency_failed)
         PillText.Unsupported -> stringResource(R.string.servers_latency_unsupported)
         PillText.ForeignVpn -> stringResource(R.string.servers_latency_foreign_vpn)
+        PillText.CertUntrusted -> stringResource(R.string.servers_latency_cert_untrusted)
     }
 
 @Composable

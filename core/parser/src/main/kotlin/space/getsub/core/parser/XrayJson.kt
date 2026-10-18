@@ -134,6 +134,12 @@ private fun parseXrayJsonDocument(
                             }
                         }
 
+                    "hysteria" ->
+                        when (val result = parseHysteriaOutbound(outbound, index, remarks, elementText)) {
+                            is LinkResult.Ok -> profiles += result.profile
+                            is LinkResult.Bad -> failures += result.failure
+                        }
+
                     else ->
                         failures +=
                             parseFailure(

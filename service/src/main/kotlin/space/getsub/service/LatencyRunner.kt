@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withPermit
 import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.xray.CertificateProbe
 import space.getsub.core.xray.PingBatch
 import space.getsub.core.xray.PingTarget
 
@@ -33,13 +34,18 @@ internal sealed interface LatencyPlan {
         val result: LatencyResult,
     ) : LatencyPlan
 
-    /** Sent to `:ping` in a `pingBatch` with every other server in [group]. */
+    /**
+     * Sent to `:ping` in a `pingBatch` with every other server in [group]. [certProbe]: if it
+     * fails, `:ping` may run the certificate probe on it (M9-D1 spec §2) — `:bg` decides who,
+     * `:ping` never inspects a config to decide.
+     */
     class Batched(
         val xrayJson: String,
         val group: PingGroup,
+        val certProbe: Boolean = false,
     ) : LatencyPlan {
         // ARCHITECTURE.md §5.6: the config carries the address, UUID and keys.
-        override fun toString(): String = "Batched(group=$group, xrayJson=<redacted>)"
+        override fun toString(): String = "Batched(group=$group, xrayJson=<redacted>, certProbe=$certProbe)"
     }
 }
 
@@ -136,8 +142,8 @@ internal class LatencyRunner<T>(
      * Starts [runId], superseding whatever ran before.
      *
      * Every server is planned first — profile load and guards, no network — so
-     * proxy-head servers can be grouped by [PingGroup] and chunked into batches of
-     * [PingBatch.MAX_CONFIGS]. Then every in-place measurement and every batch is
+     * proxy-head servers can be grouped by [PingGroup] and chunked into batches (see
+     * [scheduleBatches] for the sizes). Then every in-place measurement and every batch is
      * scheduled under the one [gate].
      */
     fun start(
@@ -212,8 +218,17 @@ internal class LatencyRunner<T>(
 
     /**
      * Groups [items]' batched servers by [PingGroup] — libXray takes one timeout
-     * and one URL per call — and schedules each chunk of [PingBatch.MAX_CONFIGS]
-     * under the [gate].
+     * and one URL per call — and by [LatencyPlan.Batched.certProbe], and schedules
+     * each chunk under the [gate], unmarked chunks first. An unmarked chunk holds up to
+     * [PingBatch.MAX_CONFIGS]; a marked one up to [CertificateProbe.MAX_PER_BATCH], because
+     * `:ping` probes no more than that per batch and a bigger chunk would leave its tail unnamed.
+     *
+     * Marked servers may each cost `:ping` a certificate probe before their batch
+     * answers (M9-D1 spec §2). Kept in their own chunks and sent last, they never
+     * hold up an ordinary server's result: batches run one at a time in `:ping`, and
+     * [gate] and [PingClient]'s lock are both FIFO, so batches are sent in launch order
+     * as a best effort. The scope runs on `Dispatchers.IO`, so asynchronous launches can
+     * still reorder; nothing depends on the order for correctness, only for latency.
      */
     private fun CoroutineScope.scheduleBatches(
         items: List<Item<T>>,
@@ -221,12 +236,18 @@ internal class LatencyRunner<T>(
     ): List<Deferred<Unit>> =
         items
             .filter { it.plan is LatencyPlan.Batched }
-            .groupBy { (it.plan as LatencyPlan.Batched).group }
-            .flatMap { (group, members) -> members.chunked(PingBatch.MAX_CONFIGS).map { group to it } }
+            .groupBy { (it.plan as LatencyPlan.Batched).let { plan -> plan.group to plan.certProbe } }
+            .entries
+            .sortedBy { (key, _) -> key.second } // stable: false (unmarked) first, otherwise first-seen order
+            .flatMap { (key, members) -> members.chunked(chunkSize(certProbe = key.second)).map { key.first to it } }
             .map { (group, chunk) ->
                 async {
                     gate.withPermit {
-                        val targets = chunk.map { PingTarget(it.key, (it.plan as LatencyPlan.Batched).xrayJson) }
+                        val targets =
+                            chunk.map {
+                                val batched = it.plan as LatencyPlan.Batched
+                                PingTarget(it.key, batched.xrayJson, batched.certProbe)
+                            }
                         val results = guardedOr(emptyMap()) { measureBatch(group, targets) }
                         chunk.forEach { deliver(it.profileId, results[it.key] ?: FAILED) }
                     }
@@ -326,3 +347,7 @@ internal class LatencyRunner<T>(
         const val NO_RUN = Long.MIN_VALUE
     }
 }
+
+/** How many servers one batch carries: probe-marked batches are capped by what `:ping` will probe. */
+internal fun chunkSize(certProbe: Boolean): Int =
+    if (certProbe) CertificateProbe.MAX_PER_BATCH else PingBatch.MAX_CONFIGS

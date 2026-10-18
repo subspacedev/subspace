@@ -110,8 +110,17 @@ The last hop is where the classic fatal bug lives. See §5.1.
 **`:ping` exists because of a libXray rule, not for tidiness.** `pingBatch`
 refuses to run in a process that holds a managed Xray instance
 (`runXray`), and `:bg` holds one for the whole session. So `PingMode.PROXY_HEAD`
-latency runs in `PingService` (`android:process=":ping"`), a process that never
-calls `runXray`. This is the **one-Go-runtime-per-process rule**: each process
+latency runs in `PingService` (`android:process=":ping"`), a process that runs
+`pingBatch` only while it holds no managed instance. The one exception is the
+**certificate probe** (M9-D1 spec §2): only it calls `runXray` here, for a
+short-lived instance, strictly between batches, inside `:ping`'s single worker,
+and it always stops that instance (`finally`) before the worker takes the next
+batch. If a stop ever fails, `:ping` is poisoned: it answers that batch, refuses
+every later one without calling `pingBatch`, and ends itself about a second
+after the reply.
+Neither the probe nor anything else in `:ping` calls `registerDialerController`
+(the app's UID is excluded from the VPN, so its sockets go direct). This is the
+**one-Go-runtime-per-process rule**: each process
 that loads `libXray` has its own Go runtime and its own `coreServer` singleton,
 and `testXray`, `runXray` and `pingBatch` each assume the state of *their*
 process. Never route a call to a process that holds the wrong state.
@@ -130,6 +139,22 @@ process. Never route a call to a process that holds the wrong state.
   in a ping config are ignored). A failed entry is `success:false` and is never
   rendered as a number (the core's `10000`/`11000` sentinels are discarded).
   Source: `docs/agent/research/libxray-api.md`.
+- **Certificate probe.** A failed `pingBatch` item reads the same
+  `io: read/write on closed pipe` for an untrusted certificate, wrong auth and a
+  down server, and the core names a certificate failure only in an `Info` log
+  line, which would also log destinations. So for a failed server that `:bg`
+  marked (`isUdpServer`, i.e. Hysteria2, typed or raw), `:ping` runs one probe
+  before answering: that server's own proxy outbound behind a loopback HTTP
+  inbound, `log {loglevel: info, error: <private file in :ping's cacheDir>,
+  access: none}`, one raw `CONNECT` to the check URL's host (a raw socket, so an
+  `http://` check URL is not refused by Android's cleartext policy), stop,
+  classify the lines (`classifyCertificateFailure`), delete the file. At most 3
+  per batch, each bounded to about 8 s, inside the single in-flight slot; marked
+  servers travel in their own batches of at most 3, sent after the unmarked ones
+  as a best effort (launch order, not a guarantee; nothing depends on it). The verdict
+  alone leaves the probe — `LatencyOutcome.CERT_UNTRUSTED` — never the log text,
+  and the file never reaches logcat. The file is §5.6's one sanctioned
+  exception to "nothing unredacted reaches disk".
 
 **Consequence agents routinely get wrong:** the processes do **not**
 share memory. Hilt singletons, `object` declarations, static fields, and
@@ -435,7 +460,9 @@ lives, and `BlobVisualTest` checks it. Source:
 ### 5.6 Do not log config contents
 
 Server addresses, UUIDs, REALITY keys, and subscription URLs are secrets.
-Redact them in every log path, including crash output.
+Redact them in every log path, including crash output. Hysteria2 adds the auth
+password, the obfuscation (Salamander/Gecko) password and the certificate pins:
+none appears in a `toString`, a log line or UI error text.
 
 The on-disk session log ring (M8.5) is stronger than "the viewer redacts":
 **nothing unredacted ever reaches disk.** `redact()` (`:core:model`) is
@@ -446,6 +473,33 @@ session and survives into a device backup, readable by anyone with the
 device unlocked; redacting at capture means the secret this section warns
 about was never written there at all. Source:
 `docs/agent/specs/2026-09-17-m8.5-observability-design.md` §3.2.
+
+**The one sanctioned exception: the certificate probe's file (M9-D1 spec §2).**
+To name an untrusted certificate, `:ping` runs a short-lived core with
+`loglevel: info` writing to a file, because the core reports the certificate
+failure nowhere else. That file holds raw Info lines — the server's IP and port,
+the check URL's host — unredacted. The owner accepted this for the probe, and
+only within these bounds:
+
+- It lives only in `:ping`'s `cacheDir/cert-probe` (app-private; the core creates
+  it mode 0600, `common/log/logger.go`), never in `filesDir`, never in logcat.
+  `access: none`, so no access log exists at all.
+- It is meant to hold the probe's own traffic: one `CONNECT` to the check host
+  through the row's own outbound. It is not guaranteed to: the loopback inbound is
+  unauthenticated, so another app on the device that connects to it during the
+  probe's few-second window would have its `CONNECT` logged there too. The file
+  stays private (0600, `:ping`'s cache dir) and is deleted as below.
+- Its text is read into local variables, classified to a Boolean, and never
+  returned, stored or logged.
+- It is deleted on every path, and the directory is swept (a) when `:ping`
+  starts, off the main thread; (b) before every batch and before every probe;
+  (c) after every probe, and again about 200 ms later — Xray's logger goroutine
+  opens its file lazily with `O_CREATE` and can re-create it after `stopXray`
+  returns (`common/log/logger.go:104-113,173-174`); and (d) before `:ping` exits,
+  on every exit path including the poison exit.
+
+Anything else that would put unredacted text on disk needs its own decision; this
+exception does not generalise.
 
 **Necessary-condition gates and the IPv6 candidate scanner (M8.5 Part 3,
 Tasks 13/21).** `redactEveryPattern` (`core/model/Redaction.kt`) checks a
@@ -940,24 +994,81 @@ Rules:
 
 **Hysteria2 is native to Xray-core** as of v26.3.27 — no second core needed.
 But its config does not follow the shape of the other protocols, and this is
-a place agents reliably get it wrong:
+a place agents reliably get it wrong. The layout below is what Subspace writes,
+verified against Xray-core v26.10.10 (`infra/conf/hysteria.go`,
+`transport_method.go`, `transport_finalmask.go`, `transport_security.go`) and
+against the real core (`Hysteria2XrayTest`); research:
+`docs/agent/research/2026-10-17-m9d-hysteria2.md` ("v26.10.10 changes", "Verified for D1").
 
-- The config is **split across two blocks**: protocol-level settings
-  (`version`, address/port, users) and transport-level
-  `streamSettings.hysteriaSettings`. Every other protocol in Xray keeps its
-  settings in one place. Do not "normalize" this.
+```
+outbounds[]: {
+  protocol: "hysteria",
+  settings:       { version: 2, address, port },
+  streamSettings: {
+    network: "hysteria",
+    hysteriaSettings: { version: 2, auth },          // only these two keys
+    security: "tls",
+    tlsSettings: { serverName, alpn: ["h3"], pinnedPeerCertSha256 },
+    finalmask: {                                      // omitted when empty
+      udp: [ salamander|gecko, noise, udphop ],       // that order, any subset
+      quicParams: { congestion, bbrProfile, brutalUp, brutalDown }   // only when set
+    }
+  }
+}
+```
+
+- The config is **split across blocks**: protocol-level settings (`version`,
+  address/port), transport-level `hysteriaSettings` (`version`, `auth`), and
+  Finalmask. Every other protocol keeps its settings in one place. Do not
+  "normalize" this.
 - `version` must be `2`. Hysteria v1 is fully removed from Xray-core and any
   other value is a hard startup failure, not a fallback.
-- `congestion`, `brutalUp`/`brutalDown` (formerly `up`/`down`), and `udpHop`
-  have **moved into Finalmask's `quicParams`**. The legacy location still
-  parses but emits a deprecation warning and is scheduled for removal. Target
-  the new location; treat the old one as import-compatibility only.
-- `udpIdleTimeout` outside the 2–600 range is a startup error.
-- Port hopping: the inbound should listen on a single port with other ports
-  forwarded via iptables. Client-side hopping is configured in `quicParams`.
-- Note that Xray's Hysteria2 layout differs from both sing-box (single flat
-  block, bandwidth as plain int Mbps) and mihomo (single block, `ports` range
-  + `hop-interval`). The subscription parser must translate, not copy.
+- **`hysteriaSettings` carries nothing else.** `congestion`, `up`, `down` and
+  `udphop` there are still parsed but the core logs that they moved; Subspace
+  never writes them. `udpIdleTimeout` outside 2–600 is a startup error.
+- **Port hopping is a UDP mask, not `quicParams`.** `finalmask.udp` gets
+  `{"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote","interval":N,"remotePorts":"20000-30000,40000"}}`
+  (interval at least 5, default 30). `quicParams.udpHop` no longer exists in
+  v26.10.10 — Remnawave 3.3.2's `fm=` still uses it, so the parser translates
+  it. Never emit `udpHop`.
+- **Obfuscation.** Salamander is `{"type":"salamander","settings":{"password"}}`
+  (at least 4 characters). Gecko is the same mask type with `packetSize` as the
+  **string `"min-max"`** (`0 < min`, `max <= 2048`); an object fails Build.
+- **Mask order in `finalmask.udp` is `[salamander|gecko, noise, udphop]`.** Any
+  mask with `HandleDial()` (`udphop`, `xicmp`) must be last or the dial fails
+  with `incorrect index`. The user's noise (M9-A) is applied to Hysteria2 and
+  sits between the obfuscation and the hop; fragment is a TCP mask and never
+  applies. `ObfuscationInjector` keeps the same order for a raw config.
+- **`quicParams` only when congestion or bandwidth is set:** `congestion` is
+  `""`, `"bbr"` (with `bbrProfile` in `""`/conservative/standard/aggressive) or
+  `"brutal"` (with `brutalUp`/`brutalDown`, each at least 65536 B/s when set).
+  An unknown congestion or BBR profile makes the row not connectable with the
+  reason named; it is never dropped.
+- **TLS is required, and only some of it is honoured.** `serverName` and
+  `pinnedPeerCertSha256` (comma-joined lowercase hex, each 32 bytes) apply.
+  `fingerprint` is validated and then ignored (the QUIC ClientHello is a fixed
+  Chrome parrot), so the model has no fingerprint field. `alpn` is overwritten
+  with `h3` whatever is configured; it is kept for import fidelity and not
+  shown. **`allowInsecure` does not exist** (§14.10): a link's `insecure=1` is
+  recorded and surfaced as ignored, never emitted. An empty `serverName` falls
+  back to the dial address for both SNI and verification, so an address-pinned
+  row (M9-C) fills a blank `serverName` with the original hostname.
+- **UDP changes three neighbours.** Pre-resolution takes the first DoH answer,
+  IPv4 first, and does not run the TCP race (the race proves nothing for QUIC);
+  TCP-mode latency is `UNSUPPORTED`; and a failed `PROXY_HEAD` probe is followed
+  by the certificate probe (§3, §5.6) because the core's batch result cannot tell
+  a bad certificate from a wrong password or a dead server.
+- Hysteria2's secrets — the auth password, the obfuscation password and the
+  certificate pins — are redacted in `toString` and never reach logs or UI error
+  text (§5.6).
+- Xray's server side does **not** hop: a `hysteria` inbound given a port range
+  opens independent QUIC listeners, so a client that hops lands on one that does not
+  know its connection. Real deployments redirect the range to one port with
+  iptables. `scripts/hy2-test-server/` does that in user space for the device checks.
+- Xray's layout differs from both sing-box (single flat block, bandwidth as plain
+  int Mbps) and mihomo (single block, `ports` range + `hop-interval`). The
+  subscription parser must translate, not copy.
+- libXray's own link export drops Brutal and noise; do not build export on it.
 
 Hysteria2 support in Xray is **newer and less battle-tested** than VLESS or
 Trojan. There are open upstream issues around inbound responsiveness and
@@ -971,14 +1082,15 @@ assuming a bug in this codebase, and check the Xray-core issue tracker.
 `:core:parser` handles four container shapes:
 
 - Base64-encoded newline-separated lists
-- `vless://`, `vmess://` (base64 JSON body), `trojan://`, `ss://`, `socks://`
+- `vless://`, `vmess://` (base64 JSON body), `trojan://`, `ss://`, `socks://`,
+  `hysteria2://` / `hy2://`
 - Clash / Clash.Meta YAML
 - Raw Xray JSON
 
 ### What actually parses, per container
 
-Five protocols across four containers reads as twenty combinations. It is
-sixteen. The gaps are not bugs — nobody has written those branches — but they
+Six protocols across four containers reads as twenty-four combinations. It is
+twenty. The gaps are not bugs — nobody has written those branches — but they
 are load-bearing enough that guessing from the list above will mislead you:
 
 | | share link | base64 list | Clash YAML | raw Xray JSON |
@@ -988,6 +1100,7 @@ are load-bearing enough that guessing from the list above will mislead you:
 | trojan | ✓ | ✓ | ✓ | ✗ |
 | ss | ✓ | ✓ | ✓ | ✗ |
 | socks | ✓ | ✓ | ✓ | ✗ |
+| hysteria2 | ✓ | ✓ | ✓ | ✓ |
 
 The base64 column can never differ from the share-link column: a blob is
 decoded and re-fed through detection, which lands on the link-list path.
@@ -1003,12 +1116,18 @@ does.
 **Since M9-D2a, every typed row in the table is connectable.**
 `XrayConfigGenerator` emits VMess, Trojan, Shadowsocks and SOCKS outbounds as
 well as VLESS (M9-D2a spec §1), so a share link, base64 list or Clash entry of
-any of the five protocols becomes a profile that connects. The exceptions are
+any of the six protocols (Hysteria2 included, since M9-D1) becomes a profile that
+connects. The exceptions are
 rows the core itself would refuse. A Shadowsocks row with a cipher v26.10.10
 no longer has, or a 2022 key the core would reject, stays marked "Can't
 connect with this build" in the Servers list (only the profile editor names
 the reason). Plaintext Trojan to a public
-address is refused at connect time (§14.10 of this document).
+address is refused at connect time (§14.10 of this document). Hysteria2 (M9-D1)
+is the one protocol whose raw Xray JSON cell is also filled: a raw `hysteria`
+outbound runs as written and gets a typed projection for latency, address pinning
+and details. A Hysteria2 row whose source carried a mask or congestion this
+build cannot write, or a BBR profile the core does not know, imports but is not
+connectable, with the reason named in the editor.
 Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
 traffic and measures latency (Proxy mode HEADs through the server; TCP mode
 ran, but over the adb-reverse loopback it measured that loopback, not a server
@@ -1641,7 +1760,9 @@ things a user can see, both from Xray-core and not from Subspace:
   the editor that it was ignored; the generator never emits the key, so certificate checks
   always stay on, and the editor no longer offers the switch. A raw config that sets it is
   `PassthroughRejection.SkipsCertificateChecks` and runs through its typed projection.
-  Certificate pinning (`pinnedPeerCertSha256`) arrives with Hysteria2 (M9-D1).
+  Certificate pinning (`pinnedPeerCertSha256`) arrives with Hysteria2 (M9-D1) and is
+  **Hysteria2-only**: it is what lets a self-signed Hysteria2 server work (§6). Pins for
+  VLESS, Trojan and the other TLS protocols are a follow-up; their `Security.Tls` is unchanged.
 
 Everything else in the review is in
 `docs/agent/research/2026-10-17-xray-core-v26.7.11-to-v26.10.10.md`.
@@ -1792,7 +1913,11 @@ Mandatory rules:
 - [ ] Protocols: VLESS (REALITY, XTLS Vision), VMess, Trojan, Shadowsocks,
       SOCKS5, Hysteria2 — all native to Xray-core now (see §6). VLESS, VMess,
       Trojan, Shadowsocks and SOCKS5 typed rows connect (M9-D2a, verified on
-      the Pixel 8 on 2026-10-17); left unchecked until Hysteria2 (M9-D1) lands.
+      the Pixel 8 on 2026-10-17); Hysteria2 (M9-D1: Salamander/Gecko, port
+      hopping, Brutal, certificate pins) is implemented on `feat/m9d1-hysteria2`,
+      device rows pending (`docs/agent/research/2026-10-17-m9d1-device-verification.md`);
+      left unchecked until they pass. Not yet typed: WireGuard, HTTP, mKCP and
+      HTTPUpgrade (M9-D2).
 - [ ] Import: manual entry, clipboard, QR camera scan, file, URL
 - [ ] Subscription import with auto-update on an interval, plus update on
       app launch
@@ -2062,9 +2187,8 @@ above cosmetic parity:
       `proxy-head` latency probes.
 - [ ] **Noises**: `noises-packet-type` (array/str/hex/base64), `-packet`,
       `-delay`, `-rand`, `-rand-range` — **M9-A implemented, not verified.**
-      Noise is a UDP mask, and this build runs no UDP transport (raw JSON
-      imports VLESS only; mKCP is gated). Verified when sub-project D adds
-      Hysteria2.
+      Noise is a UDP mask; it now applies to Hysteria2 (M9-D1, after Salamander and
+      before port hopping, §6). Verified when the D1 device rows pass.
 - [x] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
       — M9-B, with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation

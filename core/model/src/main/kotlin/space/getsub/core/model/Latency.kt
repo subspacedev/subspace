@@ -67,6 +67,16 @@ public enum class LatencyOutcome {
      * ordinals cross the AIDL boundary, so inserting one would renumber the rest.
      */
     FOREIGN_VPN,
+
+    /**
+     * The server answered, but with a certificate Subspace does not trust: self-signed with no
+     * pin, a pin that does not match, or a name the certificate does not cover. Named by `:ping`'s
+     * certificate probe (M9-D1 spec §2), which only Hysteria2 rows get today; the fix is the
+     * user's (add the server's pin), so it is told apart from "No response".
+     *
+     * Appended last, like [FOREIGN_VPN], so no existing ordinal moves across the AIDL boundary.
+     */
+    CERT_UNTRUSTED,
 }
 
 /**

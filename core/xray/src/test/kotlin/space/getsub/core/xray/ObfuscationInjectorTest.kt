@@ -85,6 +85,43 @@ class ObfuscationInjectorTest {
         out.at(0).masks("udp") shouldBe listOf("salamander", "noise")
     }
 
+    // Xray v26.10.10 transport/internet/finalmask/finalmask.go:147-154: a HandleDial() mask (udphop,
+    // xicmp) must be last in JSON, else "incorrect index: N *udphop.Config" at dial time.
+    @Test fun `noise lands before a hysteria outbound's own udphop`() {
+        val array =
+            parse(
+                """[{"tag":"h","protocol":"hysteria","streamSettings":{"network":"hysteria","finalmask":{"udp":[
+                    {"type":"salamander","settings":{"password":"pwpw"}},
+                    {"type":"udphop","settings":{"mode":"intervalLocal,intervalRemote",
+                     "remotePorts":"2000-3000"}}]}}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(null, Applied(noise, replaceOwn = false)))
+        out.at(0).masks("udp") shouldBe listOf("salamander", "noise", "udphop")
+    }
+
+    @Test fun `user noise replacing an own noise also lands before udphop and xicmp`() {
+        val array =
+            parse(
+                """[{"tag":"h","protocol":"hysteria","streamSettings":{"finalmask":{"udp":[
+                    {"type":"udphop","settings":{}},{"type":"noise","settings":{}}]}}},
+                   {"tag":"v","protocol":"vless",
+                    "streamSettings":{"finalmask":{"udp":[{"type":"xicmp","settings":{}}]}}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(null, Applied(noise, replaceOwn = true)))
+        out.at(0).masks("udp") shouldBe listOf("noise", "udphop")
+        out.at(1).masks("udp") shouldBe listOf("noise", "xicmp")
+    }
+
+    @Test fun `fragment is not injected into a hysteria outbound`() {
+        val array =
+            parse(
+                """[{"tag":"h","protocol":"hysteria","streamSettings":{"network":"hysteria"}},
+                   {"tag":"q","protocol":"vless","streamSettings":{"network":"hysteria"}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, replaceOwn = true), null))
+        out shouldBe array
+    }
+
     @Test fun `an outbound without streamSettings gains one`() {
         val array = parse("""[{"tag":"p","protocol":"trojan"}]""")
         val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, replaceOwn = false), null))

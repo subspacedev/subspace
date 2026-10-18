@@ -17,6 +17,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.ProfileKind
+import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.PassthroughAdvisory
@@ -107,6 +108,7 @@ class EditorScreenTest {
             onXhttpPathChanged = {},
             onXhttpHostChanged = {},
             onXhttpModeChanged = {},
+            onHysteria2Changed = {},
             onSave = onSave,
             onConvertRouting = onConvertRouting,
         )
@@ -532,5 +534,50 @@ class EditorScreenTest {
         composeRule.onNodeWithText(
             context.getString(R.string.editor_raw_json_advisory_dangling_reference),
         ).assertExists()
+    }
+
+    private val hysteria2State =
+        typedState.copy(
+            protocol = "hysteria2",
+            primaryCredential = "hunter2-password",
+            hysteria2 = Hysteria2Draft(skipChecksRequested = true),
+        )
+
+    @Test
+    fun aHysteria2ServerThatAskedToSkipChecksWithoutAPinSaysTheyStayOn() {
+        setContent(state = hysteria2State)
+
+        composeRule.onNodeWithTag(EDITOR_HYSTERIA2_CHECKS_STAY_ON_TEST_TAG).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aPinRemovesTheChecksStayOnNote() {
+        val pin = "ab".repeat(32)
+        setContent(state = hysteria2State.copy(hysteria2 = hysteria2State.hysteria2.copy(pinsText = pin)))
+
+        composeRule.onNodeWithTag(EDITOR_HYSTERIA2_CHECKS_STAY_ON_TEST_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aHysteria2ServerTheBuildCannotRunNamesWhy() {
+        setContent(
+            state =
+            hysteria2State.copy(
+                hysteria2 =
+                hysteria2State.hysteria2.copy(notConnectableReason = Hysteria2Unsupported.UnknownMask),
+            ),
+        )
+
+        composeRule.onNodeWithTag(EDITOR_HYSTERIA2_NOT_CONNECTABLE_TEST_TAG).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun editingTheSniHandsBackTheWholeDraft() {
+        var picked: Hysteria2Draft? = null
+        setContent(state = hysteria2State, actions = noOpActions().copy(onHysteria2Changed = { picked = it }))
+
+        composeRule.onNodeWithText("Server name (SNI)").performScrollTo().performTextInput("hy.example")
+
+        picked?.serverName shouldBe "hy.example"
     }
 }

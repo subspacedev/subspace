@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.xray.CertificateProbe
 import space.getsub.core.xray.PingTarget
 
 /**
@@ -169,7 +170,12 @@ internal class PingClient(
         val settled =
             scope.async {
                 try {
-                    withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { reply.await() }
+                    val outcome = withTimeoutOrNull(replyWatchdogMillis(timeoutSeconds)) { Settled(reply.await()) }
+                    // The watchdog fired: `:ping` is wedged. Drop the session rather than keep sending
+                    // to it — every later batch would otherwise sit behind the wedged one for a full
+                    // watchdog each. The next measure binds again.
+                    if (outcome == null) drop(s)
+                    outcome?.reply
                 } finally {
                     synchronized(lock) { s.inFlight.remove(reply) }
                 }
@@ -236,6 +242,11 @@ internal class PingClient(
         binding?.unbind()
     }
 
+    /** A reply that arrived, possibly null ([PingRemote] sent none), told apart from the watchdog's null. */
+    private class Settled(
+        val reply: PingBatchResultParcel?,
+    )
+
     companion object {
         /** `onServiceConnected` normally lands within a process start; past this, `:ping` is not coming. */
         const val BIND_TIMEOUT_MILLIS = 10_000L
@@ -243,11 +254,15 @@ internal class PingClient(
         /**
          * How long one batch may take before its servers are failed. A batch can
          * wait in `:ping` behind one abandoned batch (a superseded run's, which
-         * cancellation cannot stop) and then run its own: twice the timeout, plus
-         * room for two instance starts. Only a wedged `:ping` reaches it.
+         * cancellation cannot stop) and then run its own: twice the timeout and
+         * twice the certificate probes a batch may run before answering (M9-D1
+         * spec §2), plus room for two instance starts. Only a wedged `:ping`
+         * reaches it.
          */
         fun replyWatchdogMillis(timeoutSeconds: Int): Long =
-            2L * timeoutSeconds * MILLIS_PER_SECOND + WATCHDOG_SLACK_MILLIS
+            2L * (timeoutSeconds * MILLIS_PER_SECOND + PROBES_PER_BATCH_MILLIS) + WATCHDOG_SLACK_MILLIS
+
+        private const val PROBES_PER_BATCH_MILLIS = CertificateProbe.MAX_PER_BATCH * CertificateProbe.BOUND_MILLIS
 
         private const val MILLIS_PER_SECOND = 1_000L
         private const val WATCHDOG_SLACK_MILLIS = 15_000L

@@ -86,6 +86,40 @@ class ServerAddressResolverTest {
         r.shouldBeInstanceOf<PreResolution.Resolved>().ip shouldBe "203.0.113.2"
     }
 
+    @Test fun aUdpServerTakesTheFirstAnswerWithoutRacing() = runTest {
+        val r = testResolver({ listOf(ip("2001:db8::1"), ip("203.0.113.1"), ip("203.0.113.2")) }, winner = { it[1] })
+            .resolve("srv.example", 443, config, race = false)
+        val resolved = r.shouldBeInstanceOf<PreResolution.Resolved>()
+        resolved.ip shouldBe "203.0.113.1"
+        resolved.raced shouldBe false
+        raced shouldBe null
+    }
+
+    @Test fun aUdpServerWithOnlyIpv6AnswersTakesTheFirst() = runTest {
+        testResolver({ listOf(ip("2001:db8::2"), ip("2001:db8::3")) })
+            .resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().ip shouldBe ip("2001:db8::2").hostAddress
+        raced shouldBe null
+    }
+
+    @Test fun aUdpServerWithOnlyIpv4AnswersTakesTheFirst() = runTest {
+        testResolver({ listOf(ip("203.0.113.9"), ip("203.0.113.8")) })
+            .resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().ip shouldBe "203.0.113.9"
+        raced shouldBe null
+    }
+
+    @Test fun aUdpServerCapsItsCandidatesLikeTheRacedPath() = runTest {
+        val many = (1..12).map { ip("203.0.113.$it") }
+        testResolver({ many }).resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Resolved>().candidates shouldBe 8
+    }
+
+    @Test fun aUdpServerWithNoAnswerStillFails() = runTest {
+        testResolver({ emptyList() }).resolve("srv.example", 443, config, race = false)
+            .shouldBeInstanceOf<PreResolution.Failed>().reason shouldBe PreResolveReason.NoAddresses
+    }
+
     @Test fun nobodyAnswersIsNoneReachable() = runTest {
         val r = testResolver({ listOf(ip("203.0.113.1"), ip("2001:db8::1")) }, winner = { null })
             .resolve("srv.example", 443, config)

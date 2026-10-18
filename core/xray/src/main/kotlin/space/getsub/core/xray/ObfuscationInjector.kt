@@ -92,11 +92,19 @@ internal object ObfuscationInjector {
         spec: FragmentSpec,
     ): JsonArray = JsonArray(listOf(parse(FinalmaskJson.fragmentMask(spec))) + tcp.withoutType("fragment"))
 
-    // Last, nearest the wire.
+    // Last, nearest the wire, except before a mask that dials the socket itself. Xray-core v26.10.10
+    // `transport/internet/finalmask/finalmask.go:147-154`: a `HandleDial()` mask (`udphop`, `xicmp`)
+    // anywhere but last in JSON fails every dial with `incorrect index: N *udphop.Config`, so noise
+    // appended after a raw Hysteria2 outbound's own `udphop` would be a config the core refuses.
     private fun withNoise(
         udp: JsonArray,
         spec: NoiseSpec,
-    ): JsonArray = JsonArray(udp.withoutType("noise") + parse(FinalmaskJson.noiseMask(spec)))
+    ): JsonArray {
+        val others = udp.withoutType("noise")
+        val dialing = others.indexOfFirst { it.maskType() in DIALING_MASKS }.takeIf { it >= 0 } ?: others.size
+        val ours = parse(FinalmaskJson.noiseMask(spec))
+        return JsonArray(others.subList(0, dialing) + ours + others.subList(dialing, others.size))
+    }
 
     private fun MutableMap<String, JsonElement>.putOrRemove(
         key: String,
@@ -111,3 +119,8 @@ internal object ObfuscationInjector {
 
     private fun parse(json: String): JsonElement = Json.parseToJsonElement(json)
 }
+
+/** Masks that dial the socket themselves (`HandleDial()`); the core requires them last in `udp`. */
+private val DIALING_MASKS = setOf("udphop", "xicmp")
+
+private fun JsonElement.maskType(): String? = ((this as? JsonObject)?.get("type") as? JsonPrimitive)?.content

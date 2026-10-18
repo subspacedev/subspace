@@ -29,8 +29,8 @@ import space.getsub.core.model.VmessOutbound
  * content arrives over the network and is attacker-controlled, and the classic
  * YAML RCE (CVE-2022-1471) is exactly a type-instantiation gadget.
  *
- * Only `vmess`, `trojan`, `ss`, `vless` and `socks5` entries become profiles.
- * Everything else — `hysteria`, `wireguard`, proxy providers — is reported as
+ * Only `vmess`, `trojan`, `ss`, `vless`, `hysteria2` and `socks5` entries become profiles.
+ * Everything else — `hysteria` (v1), `wireguard`, proxy providers — is reported as
  * an unsupported type rather than skipped, so a subscription that yields
  * nothing says why. `ws-opts` and `grpc-opts` feed `TransportOptions` (see
  * `ClashTransport.kt`) for `vless`, `vmess`, and `trojan`. SOCKS has no
@@ -125,7 +125,7 @@ private fun parseYamlMap(text: String): YamlMap? =
         null
     }
 
-@Suppress("ReturnCount")
+@Suppress("ReturnCount", "CyclomaticComplexMethod")
 private fun proxyToProfile(
     proxy: YamlMap,
     index: Int,
@@ -149,6 +149,7 @@ private fun proxyToProfile(
         "trojan" -> trojan(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         "ss" -> shadowsocks(proxy, index, server, port, name)
         "vless" -> vless(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
+        "hysteria2" -> hysteria2FromClash(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         "socks5" -> socks5(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         else -> bad(index, ParseFailureReason.UnknownScheme, FailureDetail.Unsupported(DetailField.Scheme))
     }
@@ -161,7 +162,7 @@ private fun proxyToProfile(
  * LongParameterList is a real signal here, and a suppression on each of the
  * three would hide it everywhere.
  */
-private data class ClashCommon(
+internal data class ClashCommon(
     val index: Int,
     val server: String,
     val port: Int,

@@ -33,7 +33,10 @@ public object AddressPinInjector {
         )
     }
 
-    /** True when any outbound's `vnext`/`servers` entry names [domain]. False on any parse error. */
+    /**
+     * True when any outbound's `vnext`/`servers` entry, or a Hysteria `settings.address`, names
+     * [domain]. False on any parse error.
+     */
     @Suppress("SwallowedException", "ReturnCount")
     public fun matches(
         rawJson: String,
@@ -49,14 +52,15 @@ public object AddressPinInjector {
             } ?: return false
         val outbounds = root["outbounds"] as? JsonArray ?: return false
         return outbounds.any { o ->
-            val settings = (o as? JsonObject)?.get("settings") as? JsonObject
-            settings != null && ADDRESS_ARRAYS.any { key ->
-                (settings[key] as? JsonArray)?.any { it.names(domain) } == true
-            }
+            val outbound = o as? JsonObject
+            val settings = outbound?.get("settings") as? JsonObject
+            settings != null &&
+                (
+                    ADDRESS_ARRAYS.any { key -> (settings[key] as? JsonArray)?.any { it.names(domain) } == true } ||
+                        (outbound.hasFlatAddress() && settings.names(domain))
+                    )
         }
     }
-
-    private fun norm(s: String) = s.lowercase().removeSuffix(".")
 
     private fun JsonElement.names(domain: String): Boolean {
         val address = (this as? JsonObject)?.get("address") as? JsonPrimitive ?: return false
@@ -70,6 +74,22 @@ public object AddressPinInjector {
         pin: ServerAddressPin,
     ): JsonObject? {
         val settings = outbound["settings"] as? JsonObject ?: return null
+        val newSettings = pinnedSettings(outbound, settings, pin) ?: return null
+        val result = outbound.toMutableMap().apply { put("settings", newSettings) }
+        val stream = outbound["streamSettings"]
+        if (stream == null || stream is JsonNull || stream is JsonObject) {
+            val filled = fill((stream as? JsonObject) ?: JsonObject(emptyMap()), pin.domain)
+            if (filled != null) result["streamSettings"] = filled
+        }
+        return JsonObject(result)
+    }
+
+    /** [settings] with every address naming the pin's domain swapped for its IP, or null when none does. */
+    private fun pinnedSettings(
+        outbound: JsonObject,
+        settings: JsonObject,
+        pin: ServerAddressPin,
+    ): JsonObject? {
         var matched = false
         val newSettings = settings.toMutableMap()
         for (key in ADDRESS_ARRAYS) {
@@ -86,14 +106,11 @@ public object AddressPinInjector {
                     },
                 )
         }
-        if (!matched) return null
-        val result = outbound.toMutableMap().apply { put("settings", JsonObject(newSettings)) }
-        val stream = outbound["streamSettings"]
-        if (stream == null || stream is JsonNull || stream is JsonObject) {
-            val filled = fill((stream as? JsonObject) ?: JsonObject(emptyMap()), pin.domain)
-            if (filled != null) result["streamSettings"] = filled
+        if (outbound.hasFlatAddress() && settings.names(pin.domain)) {
+            matched = true
+            newSettings["address"] = JsonPrimitive(pin.ip)
         }
-        return JsonObject(result)
+        return if (matched) JsonObject(newSettings) else null
     }
 
     /** The stream with empty address-derived fields set to [domain], or null when nothing changes. */
@@ -158,3 +175,15 @@ public object AddressPinInjector {
         return headers.keys.any { it.equals("host", ignoreCase = true) }
     }
 }
+
+/**
+ * Protocols whose `settings` names the server directly, with no `vnext`/`servers` array:
+ * `HysteriaClientConfig` (`infra/conf/hysteria.go`, Xray-core v26.10.10) is `{version, address, port}`.
+ * Limited by protocol because other outbounds (`dns`) have a `settings.address` that is not a server.
+ */
+private val FLAT_ADDRESS_PROTOCOLS = setOf("hysteria")
+
+private fun JsonObject.hasFlatAddress(): Boolean =
+    ((this["protocol"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.lowercase()) in FLAT_ADDRESS_PROTOCOLS
+
+private fun norm(s: String) = s.lowercase().removeSuffix(".")

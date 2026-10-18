@@ -20,6 +20,7 @@ class PreResolutionRunTest {
         )
     private val logged = mutableListOf<String>()
     private var resolveCalls = 0
+    private val raceFlags = mutableListOf<Boolean>()
 
     // Stands in for :core:xray's AddressPinInjector.matches, which this module must not depend on.
     private val matcherCalls = mutableListOf<Pair<String, String>>()
@@ -36,6 +37,7 @@ class PreResolutionRunTest {
         result: PreResolution,
         host: String = "srv.example",
         raw: String? = null,
+        udpServer: Boolean = false,
     ): String? {
         val outcome =
             runPreResolution(
@@ -45,7 +47,9 @@ class PreResolutionRunTest {
                 rawJsonRunsAsWritten = raw,
                 configNamesHost = namesHost,
                 decide = { decision },
-                resolve = { _, _, _ ->
+                udpServer = udpServer,
+                resolve = { _, _, _, race ->
+                    raceFlags += race
                     resolveCalls++
                     result
                 },
@@ -116,6 +120,31 @@ class PreResolutionRunTest {
                     line shouldNotContain secret
                 }
             }
+        }
+
+    @Test fun hysteria2PreResolvesToTheFirstAnswerWithoutRacing() =
+        runTest {
+            step(run, PreResolution.Resolved("203.0.113.5", 3, 40, raced = false), udpServer = true) shouldBe
+                "203.0.113.5"
+            raceFlags shouldBe listOf(false)
+            logged.single() shouldContain "outcome=Resolved"
+            logged.single() shouldContain "reason=first IPv4 answer, UDP server, not raced"
+            logged.single() shouldNotContain "203.0.113.5"
+        }
+
+    @Test fun aRawHysteria2ConfigStillGoesThroughTheHostMatcherThenSkipsTheRace() =
+        runTest {
+            val resolved = PreResolution.Resolved("203.0.113.5", 1, 20, raced = false)
+            step(run, resolved, raw = matchingRaw, udpServer = true) shouldBe "203.0.113.5"
+            matcherCalls.single() shouldBe (matchingRaw to "srv.example")
+            raceFlags shouldBe listOf(false)
+        }
+
+    @Test fun otherProtocolsStillRace() =
+        runTest {
+            step(run, PreResolution.Resolved("203.0.113.5", 3, 40))
+            raceFlags shouldBe listOf(true)
+            logged.single() shouldNotContain "not raced"
         }
 
     @Test fun outcomeToStringRedactsTheIp() {
