@@ -5,6 +5,8 @@ package space.getsub.core.parser
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import org.junit.Test
 
 /**
@@ -89,5 +91,27 @@ class PassthroughSniffingTest {
             EmittedSniffing.None
         emittedSniffing(null, SniffingDecision(enabled = true, replacesOwn = false), fakeDns = true) shouldBe
             EmittedSniffing.Generated(listOf("http", "tls", "quic", "fakedns"))
+    }
+
+    @Test
+    fun `your override keeps fakedns when the config's own block sniffs it`() {
+        val own =
+            Json.parseToJsonElement(
+                """{ "enabled": true, "destOverride": ["http", "fakedns"] }""",
+            ) as JsonObject
+        emittedSniffing(own, SniffingDecision(enabled = false, replacesOwn = true), fakeDns = false) shouldBe
+            EmittedSniffing.Generated(listOf("fakedns"))
+        emittedSniffing(own, SniffingDecision(enabled = true, replacesOwn = true), fakeDns = false) shouldBe
+            EmittedSniffing.Generated(listOf("http", "tls", "quic", "fakedns"))
+    }
+
+    @Test
+    fun `an own block that is disabled does not keep fakedns`() {
+        val own =
+            Json.parseToJsonElement(
+                """{ "enabled": false, "destOverride": ["fakedns"] }""",
+            ) as JsonObject
+        emittedSniffing(own, SniffingDecision(enabled = false, replacesOwn = true), fakeDns = false) shouldBe
+            EmittedSniffing.None
     }
 }

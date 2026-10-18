@@ -67,6 +67,10 @@ public fun generatedSniffingOverrides(
  * Which `sniffing` the SOCKS inbound gets. [ownBlock] is the config's own block where the branch
  * may keep it ([ownSocksSniffing] on the pure passthrough branch, null otherwise); it is kept
  * unless [decision] is your own override. Otherwise the resolved value applies.
+ *
+ * When your override replaces an own block that sniffs `fakedns`, the replacement keeps `fakedns`
+ * whether it is On or Off, for the reason [generatedSniffingOverrides] gives: the config's own
+ * FakeDNS needs it to map fake addresses back to domains (M9-E spec §2, "FakeDNS keeps its part").
  */
 public fun emittedSniffing(
     ownBlock: JsonObject?,
@@ -76,7 +80,8 @@ public fun emittedSniffing(
     if (ownBlock != null && !decision.replacesOwn) {
         EmittedSniffing.Own(ownBlock)
     } else {
-        generatedSniffingOverrides(decision.enabled, fakeDns)?.let { EmittedSniffing.Generated(it) }
+        val ownFakeDns = ownBlock?.sniffedOverrides()?.contains(FAKEDNS) == true
+        generatedSniffingOverrides(decision.enabled, fakeDns || ownFakeDns)?.let { EmittedSniffing.Generated(it) }
             ?: EmittedSniffing.None
     }
 

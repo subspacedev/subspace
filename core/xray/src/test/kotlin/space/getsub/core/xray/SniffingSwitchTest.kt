@@ -155,4 +155,31 @@ class SniffingSwitchTest {
     fun `raw without its own block keeps today's default when on`() {
         socksSniffing(withoutOwnBlock, settings).destOverride() shouldBe listOf("http", "tls", "quic")
     }
+
+    private val withOwnFakeDnsBlock =
+        """
+        {
+          "inbounds": [
+            { "tag": "socks", "port": 10808, "protocol": "socks",
+              "sniffing": { "enabled": true, "destOverride": ["http", "tls", "fakedns"] } }
+          ],
+          "outbounds": [ { "tag": "proxy", "protocol": "vless" } ]
+        }
+        """.trimIndent()
+
+    @Test
+    fun `raw with its own fakedns block keeps fakedns when the user turns sniffing off`() {
+        // The config's own FakeDNS needs that override to map fake addresses back to domains.
+        val userOff = settings.copy(enableSniffing = false, sniffingReplacesOwn = true)
+
+        socksSniffing(withOwnFakeDnsBlock, userOff) shouldBe
+            Json.parseToJsonElement("""{ "enabled": true, "destOverride": ["fakedns"] }""")
+    }
+
+    @Test
+    fun `raw with its own fakedns block keeps fakedns when the user turns sniffing on`() {
+        val userOn = settings.copy(enableSniffing = true, sniffingReplacesOwn = true)
+
+        socksSniffing(withOwnFakeDnsBlock, userOn).destOverride() shouldBe listOf("http", "tls", "quic", "fakedns")
+    }
 }
