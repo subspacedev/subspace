@@ -59,7 +59,6 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
-import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.UdpCarriage
@@ -67,6 +66,7 @@ import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.failure
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.retryability
 import space.getsub.core.parser.OverrideTarget
@@ -580,13 +580,11 @@ internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
 internal fun isUdpServer(outbound: Outbound?): Boolean =
     when (outbound) {
         is Hysteria2Outbound, is WireGuardOutbound -> true
-        is VlessOutbound -> outbound.stream.isKcp()
-        is VmessOutbound -> outbound.stream.isKcp()
-        is TrojanOutbound -> outbound.stream.isKcp()
+        is VlessOutbound -> isKcpNetwork(outbound.stream.network)
+        is VmessOutbound -> isKcpNetwork(outbound.stream.network)
+        is TrojanOutbound -> isKcpNetwork(outbound.stream.network)
         else -> false
     }
-
-private fun StreamSettings.isKcp(): Boolean = network.equals("kcp", true) || network.equals("mkcp", true)
 
 /** Whether `:ping` may certificate-probe this server. Hysteria2 only: WireGuard and mKCP have no certificate. */
 internal fun certProbeEligible(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound

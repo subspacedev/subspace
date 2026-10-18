@@ -8,8 +8,6 @@ import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.KcpRules
 import space.getsub.core.model.KcpUnsupported
-import space.getsub.core.model.ObfuscationApplicability.isHttpUpgradeNetwork
-import space.getsub.core.model.ObfuscationApplicability.isKcpNetwork
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -23,6 +21,8 @@ import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.WireGuardRules
 import space.getsub.core.model.WireGuardUnsupported
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 

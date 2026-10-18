@@ -33,6 +33,8 @@ import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.DetailField
@@ -710,27 +712,29 @@ private fun EditorState.validateHysteria2(): Set<Hysteria2Field> =
  * name of a working server must not quietly change how it dials.
  */
 private fun EditorState.toTransportOptions(): TransportOptions =
-    when (network.lowercase()) {
-        "ws" -> TransportOptions.WebSocket(path = wsPath, headers = originalWsHeaders)
-        "grpc" -> TransportOptions.Grpc(serviceName = grpcServiceName)
-        // Blank back to null, the inverse of [withStream]'s orEmpty(): "" and null are
-        // different requests on the wire, and only null means "let Xray decide".
-        "xhttp", "splithttp" ->
-            TransportOptions.Xhttp(
-                path = xhttpPath.ifBlank { "/" },
-                host = xhttpHost.ifBlank { null },
-                mode = xhttpMode.ifBlank { null },
-            )
-
+    when {
         // Only the chosen network's fields are read, so what a previous choice left in the draft cannot
         // reach the saved outbound.
         // D2-R10: a pre-D2 row with a kcp network and transport None loads as the default draft, so it saves as
         // Kcp(null, null, no obfuscation): the same bare mKCP the generator already emitted for it.
-        "kcp", "mkcp" -> kcp.toTransport()
-        "httpupgrade" ->
+        isKcpNetwork(network) -> kcp.toTransport()
+        isHttpUpgradeNetwork(network) ->
             TransportOptions.HttpUpgrade(host = httpUpgradeHost.trim(), path = httpUpgradePath.trim().ifEmpty { "/" })
+        else ->
+            when (network.lowercase()) {
+                "ws" -> TransportOptions.WebSocket(path = wsPath, headers = originalWsHeaders)
+                "grpc" -> TransportOptions.Grpc(serviceName = grpcServiceName)
+                // Blank back to null, the inverse of [withStream]'s orEmpty(): "" and null are
+                // different requests on the wire, and only null means "let Xray decide".
+                "xhttp", "splithttp" ->
+                    TransportOptions.Xhttp(
+                        path = xhttpPath.ifBlank { "/" },
+                        host = xhttpHost.ifBlank { null },
+                        mode = xhttpMode.ifBlank { null },
+                    )
 
-        else -> TransportOptions.None
+                else -> TransportOptions.None
+            }
     }
 
 private fun EditorState.toOutbound(): Outbound {

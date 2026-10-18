@@ -12,6 +12,7 @@ import space.getsub.core.model.KcpHeaderResult
 import space.getsub.core.model.KcpMask
 import space.getsub.core.model.KcpObfuscation
 import space.getsub.core.model.KcpRules
+import space.getsub.core.model.isKcpNetwork
 
 /**
  * Rewrites a raw mKCP outbound's pre-v26.10 obfuscation into the masks the pinned core reads.
@@ -49,8 +50,8 @@ internal object LegacyKcp {
     @Suppress("ReturnCount")
     private fun rewrite(outbound: JsonObject): JsonObject? {
         val stream = outbound["streamSettings"] as? JsonObject ?: return null
-        val network = (stream["network"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.lowercase()
-        if (network != "kcp" && network != "mkcp") return null
+        val network = (stream["network"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (network == null || !isKcpNetwork(network)) return null
         val kcp = stream["kcpSettings"] as? JsonObject ?: return null
         if (!kcp.containsKey("header") && !kcp.containsKey("seed")) return null
         val finalmask = maskFreeFinalmask(stream) ?: return null

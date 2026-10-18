@@ -12,14 +12,12 @@ import space.getsub.core.model.KcpObfuscation
 import space.getsub.core.model.KcpRules
 import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 private const val MIN_KCP_MTU = 21
 private const val MIN_KCP_TTI = 10
 private const val MAX_KCP_TTI = 1000
-
-internal fun isKcpNetwork(network: String): Boolean = network.lowercase().let { it == "kcp" || it == "mkcp" }
-
-internal fun isHttpUpgradeNetwork(network: String): Boolean = network.equals("httpupgrade", ignoreCase = true)
 
 /**
  * mKCP and HTTPUpgrade from a vless/trojan link's query, or null when [network] is neither (the caller's

@@ -30,6 +30,8 @@ import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.normaliseBbrProfile
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.PassthroughAnalysis
@@ -173,12 +175,10 @@ public data class StoredProfile(
 private val CONNECTABLE_NETWORKS =
     setOf("tcp", "raw", "ws", "websocket", "grpc", "xhttp", "splithttp", "kcp", "mkcp", "httpupgrade")
 
-private val KCP_NETWORKS = setOf("kcp", "mkcp")
-
 /** [CONNECTABLE_NETWORKS] plus the two conditions a network name cannot carry (M9-D2 spec §2). */
 private fun StreamSettings.connectable(): Boolean {
     val n = network.lowercase()
-    val udpOrUpgrade = n in KCP_NETWORKS || n == "httpupgrade"
+    val udpOrUpgrade = isKcpNetwork(n) || isHttpUpgradeNetwork(n)
     val kcpRefused = transport.let { it is TransportOptions.Kcp && KcpRules.notConnectableReason(it) != null }
     return n in CONNECTABLE_NETWORKS && !(udpOrUpgrade && security is Security.Reality) && !kcpRefused
 }

@@ -8,8 +8,6 @@ import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.KcpRules
 import space.getsub.core.model.Obfuscation
-import space.getsub.core.model.ObfuscationApplicability.isHttpUpgradeNetwork
-import space.getsub.core.model.ObfuscationApplicability.isKcpNetwork
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.RoutingRuleSet
@@ -24,6 +22,8 @@ import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.applicableTo
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.parser.OverrideTarget
 
 /** Runtime settings that shape the config but do not belong to a stored profile. */

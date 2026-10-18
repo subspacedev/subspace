@@ -10,6 +10,8 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /** Parse a `vmess://<base64 of JSON object>` share link. */
 @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")

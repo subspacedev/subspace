@@ -24,11 +24,6 @@ public object ObfuscationApplicability {
             else -> outbound.stream()?.let { !isHttpUpgradeNetwork(it.network) } ?: true
         }
 
-    /** `kcp` and `mkcp` name the same transport in Xray-core (`infra/conf/transport_internet.go:22-23`). */
-    public fun isKcpNetwork(network: String): Boolean = network.lowercase().let { it == "kcp" || it == "mkcp" }
-
-    public fun isHttpUpgradeNetwork(network: String): Boolean = network.equals("httpupgrade", ignoreCase = true)
-
     private fun Outbound.stream(): StreamSettings? =
         when (this) {
             is VlessOutbound -> stream

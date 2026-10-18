@@ -56,9 +56,10 @@ class FinalmaskJsonTest {
             """{"type":"array","packet":[1,2,255],"delay":"0"}]}}"""
     }
 
-    @Test fun `block emits only the halves present, and null when neither is`() {
-        FinalmaskJson.block(Obfuscation(null, null)) shouldBe null
-        FinalmaskJson.block(Obfuscation(Applied(fragment, replaceOwn = true), null)) shouldBe
+    @Test fun `streamBlock emits only the halves present, and null when neither is`() {
+        FinalmaskJson.streamBlock(Obfuscation(null, null), emptyList()) shouldBe null
+        FinalmaskJson.streamBlock(null, emptyList()) shouldBe null
+        FinalmaskJson.streamBlock(Obfuscation(Applied(fragment, replaceOwn = true), null), emptyList()) shouldBe
             """{"tcp":[${FinalmaskJson.fragmentMask(fragment)}]}"""
     }
 }

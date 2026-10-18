@@ -23,11 +23,6 @@ private const val MIN_KCP_MTU = 21
 private const val MIN_KCP_TTI = 10
 private const val MAX_KCP_TTI = 1000
 
-/** Networks (as stored, any case) that are mKCP. */
-internal fun isKcpNetwork(network: String): Boolean = network.lowercase() in setOf("kcp", "mkcp")
-
-internal fun isHttpUpgradeNetwork(network: String): Boolean = network.equals("httpupgrade", ignoreCase = true)
-
 /**
  * The mKCP transport fields, as text so a half-typed value survives.
  *

@@ -66,9 +66,6 @@ internal object FinalmaskJson {
         return """{"type":"mkcp-legacy","settings":{$settings}}"""
     }
 
-    /** The `finalmask` object's value, or null when there is nothing to emit. */
-    fun block(obfuscation: Obfuscation): String? = streamBlock(obfuscation, emptyList())
-
     /**
      * The `finalmask` object's value for a stream that may carry mKCP masks, or null when there is nothing
      * to emit. `udp` is `[kcpMasks…, noise?]`: JSON index 0 is applied to the payload first, so the mKCP

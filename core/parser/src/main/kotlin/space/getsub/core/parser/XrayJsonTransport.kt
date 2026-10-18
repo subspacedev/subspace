@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /**
  * Reads a raw Xray outbound's `streamSettings` transport block into [TransportOptions] —

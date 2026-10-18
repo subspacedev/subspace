@@ -9,7 +9,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import space.getsub.core.model.ObfuscationApplicability
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /** Whether one outbound already does a mask itself, and how (M9-A spec §3.3 rule 3). */
 public data class OwnMask(
@@ -247,8 +248,8 @@ private fun JsonObject.dials(): Dials {
     val protocol = protocol()
     return when {
         protocol == "hysteria" || network.equals("hysteria", ignoreCase = true) -> Dials.UdpOnly
-        protocol == "wireguard" || ObfuscationApplicability.isKcpNetwork(network) -> Dials.UdpOnly
-        protocol == "http" || ObfuscationApplicability.isHttpUpgradeNetwork(network) -> Dials.TcpOnly
+        protocol == "wireguard" || isKcpNetwork(network) -> Dials.UdpOnly
+        protocol == "http" || isHttpUpgradeNetwork(network) -> Dials.TcpOnly
         else -> Dials.Both
     }
 }
