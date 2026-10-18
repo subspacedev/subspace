@@ -4,7 +4,7 @@
     "loglevel": "warning"
   },
   "dns": {
-    "servers": ["1.1.1.1"]
+    "servers": ["tcp://1.1.1.1:53"]
   },
   "inbounds": [
     {

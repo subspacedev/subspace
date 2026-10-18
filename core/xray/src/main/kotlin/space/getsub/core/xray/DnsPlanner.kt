@@ -111,12 +111,18 @@ public object DnsPlanner {
      * checks [ProfileDns.isInvalid], never `==`: [ProfileDns.INVALID] is itself a
      * default-constructed `ProfileDns()`, so structural equality would treat
      * every "asks for nothing" block as equal to the sentinel.
+     *
+     * [outboundCarriesUdp] false ([space.getsub.core.model.UdpCarriage], ruling D2-R16) also always
+     * yields a plan: without one there is no port-53 hijack, so an app's UDP query would be routed
+     * straight to an outbound that drops it. With the plan it reaches the dns module, which the
+     * generator then sends over TCP.
      */
     public fun plan(
         profileDns: ProfileDns?,
         setting: DnsResolver,
         routing: RoutingRuleSet?,
         sniffingEnabled: Boolean,
+        outboundCarriesUdp: Boolean = true,
     ): DnsPlan? {
         val candidate = profileDns?.takeUnless { it.isInvalid }
         val asksForNothing =
@@ -125,7 +131,7 @@ public object DnsPlanner {
                 candidate.hosts.isEmpty() &&
                 candidate.fakeDns != true
         val effective = candidate?.takeUnless { asksForNothing }
-        val nothingToDo = effective == null && setting == DEFAULT_SETTING && routing == null
+        val nothingToDo = effective == null && setting == DEFAULT_SETTING && routing == null && outboundCarriesUdp
         if (nothingToDo) return null
 
         val directSites = routing?.bucket(RouteOutcome.DIRECT)?.sites.orEmpty()

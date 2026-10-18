@@ -62,6 +62,7 @@ import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
@@ -1970,6 +1971,9 @@ class TunnelService : VpnService() {
                         setting = settingsRepository.dnsResolver.first(),
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
                         sniffingEnabled = SNIFFING_ENABLED,
+                        // Ruling D2-R16: an outbound that drops UDP (the HTTP proxy) always gets the
+                        // port-53 hijack, so app lookups reach the dns module and leave over TCP.
+                        outboundCarriesUdp = UdpCarriage.carriesUdp(profile.outbound),
                     )
                 val xray = XrayController()
                 val ownsStart =

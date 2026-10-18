@@ -19,6 +19,7 @@ import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
 import space.getsub.core.model.WireGuardOutbound
@@ -225,7 +226,7 @@ public object XrayConfigGenerator {
             sb.appendLine("""  },""")
         }
 
-        appendDns(sb, settings)
+        appendDns(sb, settings, plainDnsOverTcp = !UdpCarriage.carriesUdp(outbound))
         appendInbounds(sb, settings)
         appendOutbounds(sb, outbound, settings)
 
@@ -243,12 +244,15 @@ public object XrayConfigGenerator {
      *
      * libXray v26.10.10 has `setDNS`, but it replaces Go's process-wide resolver and Subspace
      * does not call it (see `XrayController.start`), so the config is the only lever here.
+     *
+     * [plainDnsOverTcp]: the outbound cannot carry UDP (ruling D2-R16), see [dnsObject].
      */
     private fun appendDns(
         sb: StringBuilder,
         settings: TunnelSettings,
+        plainDnsOverTcp: Boolean,
     ) {
-        sb.appendLine("""  "dns": ${dnsObject(settings)},""")
+        sb.appendLine("""  "dns": ${dnsObject(settings, plainDnsOverTcp)},""")
     }
 
     /**
@@ -960,18 +964,43 @@ private fun resolverRule(
 }
 
 /**
+ * Ruling D2-R16: a plain-DNS (DoU) server, an IP literal, as DNS over TCP on port 53 — `tcp://1.1.1.1:53`,
+ * `tcp://[2606:4700:4700::1111]:53`. Anything else (DoH, a name, `fakedns`) is returned unchanged.
+ *
+ * For an outbound that cannot carry UDP ([UdpCarriage]): Xray's `http` outbound is CONNECT-only (M9-D2
+ * research §2.2), so a UDP query routed to it is dropped and every lookup fails. Xray v26.10.10's `tcp://`
+ * scheme (`app/dns/nameserver.go:67`) builds a `TCPNameServer` that dials through the same routing dispatcher
+ * as the UDP one (`app/dns/nameserver_tcp.go:44`), to `net.TCPDestination` on the same IP
+ * (`nameserver_tcp.go:82`), so the resolver rule that matches the IP by `ip` still claims it.
+ */
+private fun overTcp(address: String): String =
+    when {
+        !DnsValidation.isAddressLiteral(address) -> address
+        ':' in address -> "tcp://[$address]:53"
+        else -> "tcp://$address:53"
+    }
+
+/**
  * The `dns` object's text, without the surrounding key or trailing comma —
  * [XrayConfigGenerator.appendDns] supplies both for the typed path;
  * [XrayConfigGenerator.overrideBlocks] hands the bare object to the
  * passthrough path's override branch. Top-level rather than a member so it
  * does not count against the object's function budget.
+ *
+ * [plainDnsOverTcp] (ruling D2-R16) rewrites every DoU server the proxy carries — all but the one
+ * [DnsPlan.directMatch] sends direct — through [overTcp]. Only the typed path sets it: a passthrough
+ * config brings its own `dns` block, and the override branch writes plain DNS as before.
  */
-private fun dnsObject(settings: TunnelSettings): String {
+private fun dnsObject(
+    settings: TunnelSettings,
+    plainDnsOverTcp: Boolean = false,
+): String {
     val plan = settings.dns
     val sb = StringBuilder()
     sb.append("{\n")
     if (plan == null) {
-        sb.appendLine("""    "servers": [${jsonString(settings.dnsServer)}]""")
+        val server = if (plainDnsOverTcp) overTcp(settings.dnsServer) else settings.dnsServer
+        sb.appendLine("""    "servers": [${jsonString(server)}]""")
         sb.append("""  }""")
         return sb.toString()
     }
@@ -989,7 +1018,10 @@ private fun dnsObject(settings: TunnelSettings): String {
     sb.appendLine("""    "servers": [""")
     val entries = buildList {
         if (plan.fakeDns) add(""""fakedns"""")
-        plan.servers.forEach { add(it.render()) }
+        plan.servers.forEach { server ->
+            val proxied = plainDnsOverTcp && server.address != plan.directMatch
+            add((if (proxied) server.copy(address = overTcp(server.address)) else server).render())
+        }
     }
     entries.forEachIndexed { index, entry ->
         val comma = if (index == entries.size - 1) "" else ","
