@@ -168,7 +168,7 @@ public object CertificateProbe {
                         put("tag", INBOUND_TAG)
                         put("protocol", "http")
                         // ARCHITECTURE.md §6: loopback only, never 0.0.0.0.
-                        put("listen", "127.0.0.1")
+                        put("listen", PROBE_LOOPBACK.hostAddress)
                         put("port", port)
                         putJsonObject("settings") {}
                     },
@@ -248,7 +248,7 @@ public class SocketProbeConnect(
         val deadline = nowMillis() + deadlineMillis
         fun left(): Int = (deadline - nowMillis()).coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         Socket().use { socket ->
-            socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), proxyPort), left())
+            socket.connect(InetSocketAddress(PROBE_LOOPBACK, proxyPort), left())
             val output = socket.getOutputStream()
             output.write("CONNECT $target HTTP/1.1\r\nHost: $target\r\n\r\n".toByteArray(Charsets.US_ASCII))
             output.flush()
@@ -284,7 +284,18 @@ public class SocketProbeConnect(
  * A free loopback port, the way libXray's `getFreePorts` finds one: bind port 0, read it, close.
  * Same small race between close and the core's bind; a lost race only fails the probe's start.
  */
-public fun loopbackFreePort(): Int = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+public fun loopbackFreePort(): Int = ServerSocket(0, 1, PROBE_LOOPBACK).use { it.localPort }
+
+/**
+ * The one loopback address the probe's inbound listens on and its client dials: IPv4
+ * `127.0.0.1`, spelled out. Not `InetAddress.getLoopbackAddress()`: on Android that is `::1`
+ * (measured on the Pixel 8, 2026-10-18), so the client dialled an address the inbound never
+ * listened on, every exchange was refused in milliseconds, and every probe read "not a
+ * certificate failure". The JVM returns `127.0.0.1`, which is why unit tests could not see it.
+ */
+public val PROBE_LOOPBACK: InetAddress = InetAddress.getByName(IPV4_LOOPBACK_LITERAL)
+
+private const val IPV4_LOOPBACK_LITERAL = "127.0.0.1"
 
 /**
  * Deletes every file in [dir] (the probe's private log directory). Never throws. `:ping` calls it

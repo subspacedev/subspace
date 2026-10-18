@@ -75,6 +75,8 @@ class CertificateProbeTest {
         val inbound = probeConfig().getValue("inbounds").jsonArray.single().jsonObject
 
         inbound.getValue("listen").jsonPrimitive.content shouldBe "127.0.0.1"
+        // The client dials the same address the inbound listens on (Android's getLoopbackAddress() is ::1).
+        inbound.getValue("listen").jsonPrimitive.content shouldBe PROBE_LOOPBACK.hostAddress
         inbound.getValue("port").jsonPrimitive.int shouldBe 23456
         inbound.getValue("protocol").jsonPrimitive.content shouldBe "http"
     }
