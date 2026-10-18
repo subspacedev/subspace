@@ -4,6 +4,7 @@ package space.getsub.feature.profiles.list
 
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.LatencyResult
+import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 
 /**
@@ -140,6 +141,11 @@ internal data class ServersGroup(
      * answered and the provider's directives are valid (M9-C spec §1.3). Null otherwise.
      */
     val resolverRequestHost: String? = null,
+    /**
+     * The provider's excluded routes, while the user has not answered for the current list and at
+     * least one range can apply (M9-E spec §4). Null otherwise.
+     */
+    val routeExclusionRequest: RouteExclusionRequest? = null,
 )
 
 /**

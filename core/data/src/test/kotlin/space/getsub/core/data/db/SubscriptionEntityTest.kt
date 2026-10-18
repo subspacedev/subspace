@@ -56,7 +56,8 @@ class SubscriptionEntityTest {
             "lastFetchDetail=null, createdAt=100, " +
             "resolveAddress=none, hostHeader=none, linkFragment=none, " +
             "insecureIgnored=false, redirectTrust=UNASKED, " +
-            "movedFromHost=none, movedAt=null, lastFetchVia=null, resolverTrust=UNASKED, resolverTrustHost=none)"
+            "movedFromHost=none, movedAt=null, lastFetchVia=null, resolverTrust=UNASKED, resolverTrustHost=none, " +
+            "routeExclusionTrust=null, routeExclusionFingerprint=none)"
     }
 
     // M9-B spec §5: the route and the origin a subscription moved from are as secret as the URL.

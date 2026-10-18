@@ -13,6 +13,7 @@ import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.model.ObfuscationProblem
+import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 import java.net.URI
 
@@ -202,6 +203,8 @@ internal data class SubscriptionDetailState(
     val resolverProvider: ProviderResolver = ProviderResolver.Absent,
     val resolverTrust: ResolverTrust = ResolverTrust.Unasked,
     val userPreResolveOn: Boolean = false,
+    // M9-E spec §4: the provider's excluded routes, while unanswered for the current list.
+    val routeExclusionRequest: RouteExclusionRequest? = null,
 ) {
     /** The provider's DoH host, only while its resolver directives are valid (M9-C spec §1.2). */
     val resolverHost: String?
@@ -232,7 +235,8 @@ internal data class SubscriptionDetailState(
             "resolveAddress=${redactedOrNone(resolveAddress)}, hostHeader=${redactedOrNone(hostHeader)}, " +
             "linkFragment=${redactedOrNone(linkFragment)}, movedFromHost=${redactedOrNone(movedFromHost)}, " +
             "movedAt=$movedAt, lastFetchVia=$lastFetchVia, resolverProvider=$resolverProvider, " +
-            "resolverTrust=$resolverTrust, userPreResolveOn=$userPreResolveOn, isRefreshing=$isRefreshing, " +
+            "resolverTrust=$resolverTrust, userPreResolveOn=$userPreResolveOn, " +
+            "routeExclusionRequest=$routeExclusionRequest, isRefreshing=$isRefreshing, " +
             "deleted=$deleted)"
 }
 

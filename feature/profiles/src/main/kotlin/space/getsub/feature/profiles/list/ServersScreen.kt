@@ -144,27 +144,10 @@ fun ServersScreen(
         ServersScreenContent(
             state = state,
             actions =
-            ServersActions(
-                onQueryChanged = viewModel::onQueryChanged,
-                onProtocolFilterChanged = viewModel::onProtocolFilterChanged,
-                onSortChanged = viewModel::onSortChanged,
-                onProfileSelected = viewModel::onProfileSelected,
-                onRenameGroup = viewModel::onRenameGroup,
-                onDeleteGroup = viewModel::onDeleteGroup,
+            viewModel.screenActions(
                 onAddProfile = { showAddSheet = true },
-                onProfileEdit = onEditProfile,
-                onUpdateSubscription = viewModel::onUpdateSubscription,
-                onAllowRedirects = viewModel::onAllowRedirects,
-                onDenyRedirects = viewModel::onDenyRedirects,
-                onAllowResolver = viewModel::onAllowResolver,
-                onDenyResolver = viewModel::onDenyResolver,
-                onDismissUpdateResult = viewModel::onDismissUpdateResult,
+                onEditProfile = onEditProfile,
                 onOpenSubscriptionDetail = onOpenSubscriptionDetail,
-                onTestProfile = viewModel::onTestProfile,
-                onTestGroup = viewModel::onTestGroup,
-                onCancelTests = viewModel::onCancelTests,
-                onGroupSortChanged = viewModel::onGroupSortChanged,
-                onServersShown = viewModel::onServersShown,
             ),
         )
         // Above the floating nav pill, which the group list's own bottom padding also clears.
@@ -204,6 +187,8 @@ internal data class ServersActions(
     val onAllowResolver: (Long, String) -> Unit = { _, _ -> },
     /** Forwarded to [ServersGroupListActions.onDenyResolver]. */
     val onDenyResolver: (Long, String) -> Unit = { _, _ -> },
+    /** Forwarded to [ServersGroupListActions.onRouteExclusionAnswered]. */
+    val onRouteExclusionAnswered: (Long, String, Boolean) -> Unit = { _, _, _ -> },
     /** Dismisses [ServersState.updateResult] once read. */
     val onDismissUpdateResult: () -> Unit,
     /** Task 15: forwarded to [ServersGroupListActions.onOpenSubscriptionDetail]. */
@@ -280,6 +265,7 @@ internal fun ServersScreenContent(
                 onDenyRedirects = actions.onDenyRedirects,
                 onAllowResolver = actions.onAllowResolver,
                 onDenyResolver = actions.onDenyResolver,
+                onRouteExclusionAnswered = actions.onRouteExclusionAnswered,
                 onOpenSubscriptionDetail = actions.onOpenSubscriptionDetail,
                 onTestProfile = actions.onTestProfile,
                 onTestGroup = actions.onTestGroup,

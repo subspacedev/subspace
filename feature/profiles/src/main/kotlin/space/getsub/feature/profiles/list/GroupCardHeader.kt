@@ -18,10 +18,14 @@ import androidx.compose.ui.unit.dp
 import space.getsub.core.ui.component.GroupCardUpdateRow
 import space.getsub.core.ui.component.QuotaBar
 import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.RouteExclusionRequestContent
 
 private val GROUP_HEADER_GAP = 8.dp
 
-/** What a group's card shows above its rows: quota, last update, and pending redirect and resolver requests. */
+/**
+ * What a group's card shows above its rows: quota, last update, and the provider's pending
+ * redirect, resolver and excluded-routes requests.
+ */
 @Composable
 internal fun ColumnScope.GroupCardHeader(
     group: ServersGroup,
@@ -53,6 +57,15 @@ internal fun ColumnScope.GroupCardHeader(
             text = stringResource(R.string.subscription_resolver_request, resolverHost),
             onAllow = { actions.onAllowResolver(group.subscriptionId, resolverHost) },
             onDeny = { actions.onDenyResolver(group.subscriptionId, resolverHost) },
+        )
+    }
+    val routes = group.routeExclusionRequest
+    if (routes != null && group.subscriptionId != null) {
+        RouteExclusionRequestContent(
+            request = routes,
+            onAllow = { actions.onRouteExclusionAnswered(group.subscriptionId, routes.fingerprint, true) },
+            onDeny = { actions.onRouteExclusionAnswered(group.subscriptionId, routes.fingerprint, false) },
+            modifier = Modifier.padding(top = GROUP_HEADER_GAP),
         )
     }
 }

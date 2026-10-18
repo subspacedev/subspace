@@ -77,6 +77,7 @@ import space.getsub.core.ui.textRes
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
 import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.RouteExclusionRequestContent
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.toUserMessage
 import space.getsub.feature.profiles.add.userMessageText
@@ -136,13 +137,15 @@ fun SubscriptionDetailScreen(
             onAllowResolver = viewModel::onAllowResolver,
             onDenyResolver = viewModel::onDenyResolver,
             onResolverAllowedChanged = viewModel::onResolverAllowedChanged,
+            onAllowRouteExclusion = viewModel::onAllowRouteExclusion,
+            onDenyRouteExclusion = viewModel::onDenyRouteExclusion,
         ),
         modifier = modifier,
     )
 }
 
 /**
- * [SubscriptionDetailContent]'s sixteen callbacks, grouped for the same reason
+ * [SubscriptionDetailContent]'s callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.editor.EditorActions] is.
  */
 internal data class SubscriptionDetailActions(
@@ -163,6 +166,9 @@ internal data class SubscriptionDetailActions(
     val onAllowResolver: () -> Unit = {},
     val onDenyResolver: () -> Unit = {},
     val onResolverAllowedChanged: (Boolean) -> Unit = {},
+    // M9-E spec §4. Defaulted for the same reason.
+    val onAllowRouteExclusion: () -> Unit = {},
+    val onDenyRouteExclusion: () -> Unit = {},
 )
 
 /**
@@ -305,7 +311,10 @@ private fun DetailBody(
     }
 }
 
-/** The provider's pending requests, redirects first (M9-B spec §4), then its DoH resolver (M9-C spec §1.3). */
+/**
+ * The provider's pending requests: redirects first (M9-B spec §4), then its DoH resolver (M9-C spec
+ * §1.3), then its excluded routes (M9-E spec §4).
+ */
 @Composable
 private fun TrustRequests(
     state: SubscriptionDetailState,
@@ -325,6 +334,21 @@ private fun TrustRequests(
             onAllow = actions.onAllowResolver,
             onDeny = actions.onDenyResolver,
         )
+    }
+    val routes = state.routeExclusionRequest
+    if (routes != null) {
+        Surface(
+            shape = SubspaceShapeTokens.card,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.fillMaxWidth().padding(top = CONTENT_PADDING),
+        ) {
+            RouteExclusionRequestContent(
+                request = routes,
+                onAllow = actions.onAllowRouteExclusion,
+                onDeny = actions.onDenyRouteExclusion,
+                modifier = Modifier.padding(CONTENT_PADDING),
+            )
+        }
     }
 }
 

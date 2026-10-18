@@ -27,15 +27,19 @@ import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionStatus
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.RouteExclusionRequest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SubscriptionDetailViewModelTest {
@@ -146,6 +150,14 @@ class SubscriptionDetailViewModelTest {
         override val userPreResolveOn: Flow<Boolean> get() = preResolveOn
         override suspend fun setResolverTrust(id: Long, trust: ResolverTrust, host: String) {
             lastResolverTrust = Triple(id, trust, host)
+        }
+
+        val routeStatus = MutableStateFlow(RouteExclusionStatus.NONE)
+        var lastRouteTrust: Triple<Long, RouteExclusionTrust, String>? = null
+
+        override fun observeRouteExclusionStatus(id: Long): Flow<RouteExclusionStatus> = routeStatus
+        override suspend fun setRouteExclusionTrust(id: Long, trust: RouteExclusionTrust, fingerprint: String) {
+            lastRouteTrust = Triple(id, trust, fingerprint)
         }
 
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
@@ -454,6 +466,39 @@ class SubscriptionDetailViewModelTest {
             viewModel.onAllowResolver()
             advanceUntilIdle()
             source.lastResolverTrust shouldBe null
+        }
+
+    @Test
+    fun anUnaskedRouteExclusionShowsTheRequestAndAnswersBindToItsFingerprint() =
+        runTest {
+            val lan = CidrRange("172.16.0.0", 12, isV6 = false)
+            val wide = CidrRange("0.0.0.0", 0, isV6 = false)
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "fp", listOf(wide, lan))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.routeExclusionRequest shouldBe
+                RouteExclusionRequest("fp", applied = listOf("172.16.0.0/12"), refused = listOf("0.0.0.0/0"))
+            viewModel.onDenyRouteExclusion()
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Denied, "fp")
+            viewModel.onAllowRouteExclusion()
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
+        }
+
+    @Test
+    fun anAnsweredRouteExclusionShowsNothingAndWritesNothing() =
+        runTest {
+            source.routeStatus.value =
+                RouteExclusionStatus(RouteExclusionTrust.Allowed, "fp", listOf(CidrRange("172.16.0.0", 12, false)))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.routeExclusionRequest shouldBe null
+            viewModel.onAllowRouteExclusion()
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe null
         }
 
     @Test

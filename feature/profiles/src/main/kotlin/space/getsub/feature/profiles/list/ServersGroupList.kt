@@ -86,6 +86,8 @@ internal data class ServersGroupListActions(
     val onAllowResolver: (Long, String) -> Unit = { _, _ -> },
     /** The resolver request's Don't allow, for the same subscription id and host. */
     val onDenyResolver: (Long, String) -> Unit = { _, _ -> },
+    /** The route-exclusion request's answer: subscription id, the fingerprint the card showed, and allowed. */
+    val onRouteExclusionAnswered: (Long, String, Boolean) -> Unit = { _, _, _ -> },
     /**
      * Task 15: `GroupCard`'s "Subscription details" overflow item — opens
      * `SubscriptionDetail(subscriptionId)`. Same "only ever invoked for a

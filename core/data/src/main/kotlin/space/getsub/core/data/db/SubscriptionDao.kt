@@ -98,6 +98,12 @@ internal interface SubscriptionDao {
     @Query("UPDATE subscriptions SET resolverTrust = :trust, resolverTrustHost = :host WHERE id = :id")
     suspend fun setResolverTrust(id: Long, trust: String, host: String)
 
+    @Query(
+        "UPDATE subscriptions SET routeExclusionTrust = :trust, routeExclusionFingerprint = :fingerprint " +
+            "WHERE id = :id",
+    )
+    suspend fun setRouteExclusionTrust(id: Long, trust: String, fingerprint: String)
+
     @Query("UPDATE subscriptions SET redirectTrust = :trust WHERE id = :id")
     suspend fun setRedirectTrust(id: Long, trust: String)
 

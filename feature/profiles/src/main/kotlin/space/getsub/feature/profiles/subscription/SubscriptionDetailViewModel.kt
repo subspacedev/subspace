@@ -24,6 +24,7 @@ import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.Checked
@@ -35,8 +36,10 @@ import space.getsub.core.parser.directive.canonicalise
 import space.getsub.core.parser.directive.parseUserInfo
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.toUserMessage
+import space.getsub.feature.profiles.request
 import javax.inject.Inject
 
 private const val KEY_INTERVAL = "profile-update-interval"
@@ -185,8 +188,10 @@ constructor(
             profileSource.globalFragmentationOn,
             profileSource.observeResolverStatus(id),
             profileSource.userPreResolveOn,
-            ::Reach,
-        )
+            profileSource.observeRouteExclusionStatus(id),
+        ) { redirect, fragmentationOn, resolver, userPreResolveOn, routes ->
+            Reach(redirect, fragmentationOn, resolver, userPreResolveOn, routes.request())
+        }
 
     private fun observeDirectiveRows(id: Long): Flow<List<DirectiveRow>> =
         combine(
@@ -270,6 +275,7 @@ constructor(
             resolverProvider = inputs.reach.resolver.provider,
             resolverTrust = inputs.reach.resolver.trust,
             userPreResolveOn = inputs.reach.userPreResolveOn,
+            routeExclusionRequest = inputs.reach.routeExclusionRequest,
         )
     }
 
@@ -294,12 +300,13 @@ constructor(
         val reach: Reach,
     )
 
-    /** Everything "Reaching the subscription" shows besides the stored row (M9-B spec §4, M9-C spec §4.2). */
+    /** Everything "Reaching the subscription" shows besides the stored row (M9-B §4, M9-C §4.2, M9-E §4). */
     private data class Reach(
         val redirect: RedirectStatus,
         val fragmentationOn: Boolean,
         val resolver: ResolverStatus,
         val userPreResolveOn: Boolean,
+        val routeExclusionRequest: RouteExclusionRequest?,
     )
 
     /**
@@ -384,6 +391,17 @@ constructor(
         val id = loadedId ?: return
         val host = _state.value.resolverHost ?: return
         viewModelScope.launch { profileSource.setResolverTrust(id, trust, host) }
+    }
+
+    fun onAllowRouteExclusion() = setRouteExclusionTrust(RouteExclusionTrust.Allowed)
+
+    fun onDenyRouteExclusion() = setRouteExclusionTrust(RouteExclusionTrust.Denied)
+
+    /** M9-E spec §4: the answer is bound to the list the user was shown, not one read later. */
+    private fun setRouteExclusionTrust(trust: RouteExclusionTrust) {
+        val id = loadedId ?: return
+        val fingerprint = _state.value.routeExclusionRequest?.fingerprint ?: return
+        viewModelScope.launch { profileSource.setRouteExclusionTrust(id, trust, fingerprint) }
     }
 
     /** Blank values clear the field — see [ProfileSource.setFronting]. */

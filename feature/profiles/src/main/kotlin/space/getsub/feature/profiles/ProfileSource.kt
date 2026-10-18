@@ -17,6 +17,8 @@ import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionStatus
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
@@ -314,6 +316,19 @@ internal interface ProfileSource {
         trust: ResolverTrust,
         host: String,
     ) {}
+
+    /**
+     * The provider's excluded routes and [id]'s answer to them — see
+     * [SubscriptionRepository.routeExclusionStatus]. Defaulted, like [observeResolverStatus].
+     */
+    fun observeRouteExclusionStatus(id: Long): Flow<RouteExclusionStatus> = flowOf(RouteExclusionStatus.NONE)
+
+    /** Records [id]'s answer for the list the user was shown — see [SubscriptionRepository.setRouteExclusionTrust]. */
+    suspend fun setRouteExclusionTrust(
+        id: Long,
+        trust: RouteExclusionTrust,
+        fingerprint: String,
+    ) {}
 }
 
 /**
@@ -544,6 +559,15 @@ constructor(
         trust: ResolverTrust,
         host: String,
     ) = subscriptionRepository.setResolverTrust(id, trust, host)
+
+    override fun observeRouteExclusionStatus(id: Long): Flow<RouteExclusionStatus> =
+        subscriptionRepository.routeExclusionStatus(id)
+
+    override suspend fun setRouteExclusionTrust(
+        id: Long,
+        trust: RouteExclusionTrust,
+        fingerprint: String,
+    ) = subscriptionRepository.setRouteExclusionTrust(id, trust, fingerprint)
 
     /**
      * Task 8: runs every [StoredProfile] in [groupId] for which [isCandidate] is true through
