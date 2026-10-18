@@ -38,6 +38,19 @@ internal fun transportOptions(
     streamSettings: JsonObject?,
     network: String,
 ): TransportOptions =
+    if (isKcpNetwork(network)) {
+        kcpOptions(streamSettings)
+    } else if (isHttpUpgradeNetwork(network)) {
+        val settings = streamSettings?.objectValue("httpupgradeSettings")
+        httpUpgrade(settings?.stringValue("host"), settings?.stringValue("path"))
+    } else {
+        transportOptionsByName(streamSettings, network)
+    }
+
+private fun transportOptionsByName(
+    streamSettings: JsonObject?,
+    network: String,
+): TransportOptions =
     when (network) {
         "ws", "websocket" -> webSocketOptions(streamSettings?.objectValue("wsSettings"))
         "grpc" -> {
@@ -90,3 +103,34 @@ private fun xhttpOptions(xhttp: JsonObject?): TransportOptions.Xhttp =
         host = xhttp?.nonBlankString("host"),
         mode = xhttp?.nonBlankString("mode"),
     )
+
+private const val MIN_KCP_MTU = 21
+private const val MIN_KCP_TTI = 10
+private const val MAX_KCP_TTI = 1000
+
+/**
+ * `kcpSettings` plus the obfuscation, from `streamSettings.finalmask.udp` masks via [readKcpFinalmask]
+ * (the v26.10 shape). Without any udp mask the pre-v26.10 fields `kcpSettings.header.type` and
+ * `kcpSettings.seed` are read instead, through [classicObfuscation]: v26.10.10 parses and ignores them, so
+ * such a config runs as bare KCP, and the projection says what the author meant.
+ *
+ * Legacy marker: none is stored. Like D1's `LegacyUdpHop`, `:core:xray`'s raw composer detects the shape
+ * at compose time by re-reading the raw JSON (a kcp outbound with `kcpSettings.header`/`seed` and no
+ * `finalmask.udp`) and rewrites it into masks, so the projection and the emitted config agree.
+ * `mtu`/`tti` outside the core's accepted range are projected as unset rather than as a value the core rejects.
+ */
+private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
+    val kcp = streamSettings?.objectValue("kcpSettings")
+    val mtu = kcp?.intValue("mtu")?.takeIf { it >= MIN_KCP_MTU }
+    val tti = kcp?.intValue("tti")?.takeIf { it in MIN_KCP_TTI..MAX_KCP_TTI }
+    val masks = streamSettings?.objectValue("finalmask")?.let(::readKcpFinalmask)?.obfuscation
+    val obfuscation =
+        masks
+            ?: classicObfuscation(
+                kcp?.stringValue("seed"),
+                kcp?.objectValue("header")?.stringValue("type") ?: kcp?.stringValue("header"),
+            )
+    return TransportOptions.Kcp(mtu, tti, obfuscation)
+}
+
+internal fun JsonObject.intValue(key: String): Int? = (this[key] as? JsonPrimitive)?.content?.trim()?.toIntOrNull()

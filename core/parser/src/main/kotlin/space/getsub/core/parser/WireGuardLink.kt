@@ -14,9 +14,9 @@ import space.getsub.core.model.WireGuardUnsupported
 
 private const val SCHEME_SEPARATOR = "://"
 private const val MAX_PORT_TEXT = 5
-private const val MIN_WG_MTU = 1
-private const val MAX_WG_MTU = 65_535
-private const val MAX_KEEPALIVE = 65_535
+internal const val MIN_WG_MTU = 1
+internal const val MAX_WG_MTU = 65_535
+internal const val MAX_KEEPALIVE = 65_535
 private val SECRET_KEY_NAMES = listOf("privatekey", "pk")
 private val PEER_KEY_NAMES = listOf("publickey", "peerpublickey", "pub", "peerpub", "peerpk")
 private val PSK_NAMES = listOf("presharedkey", "psk")

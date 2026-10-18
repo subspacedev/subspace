@@ -444,7 +444,7 @@ class XrayJsonTest {
 
     @Test
     fun `unsupported protocol is a typed closed-vocabulary failure`() {
-        val outcome = parseXrayJson("{\"outbounds\":[{\"protocol\":\"wireguard\"}]}")
+        val outcome = parseXrayJson("{\"outbounds\":[{\"protocol\":\"dokodemo-door\"}]}")
         outcome.profiles shouldBe emptyList()
         outcome.failures.size shouldBe 1
         outcome.failures[0].reason shouldBe ParseFailureReason.UnknownScheme

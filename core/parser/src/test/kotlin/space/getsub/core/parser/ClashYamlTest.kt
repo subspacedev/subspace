@@ -196,7 +196,7 @@ class ClashYamlTest {
             """
             proxies:
               - name: "Wire"
-                type: wireguard
+                type: hysteria
                 server: a.example
                 port: 443
             """.trimIndent()

@@ -29,8 +29,8 @@ import space.getsub.core.model.VmessOutbound
  * content arrives over the network and is attacker-controlled, and the classic
  * YAML RCE (CVE-2022-1471) is exactly a type-instantiation gadget.
  *
- * Only `vmess`, `trojan`, `ss`, `vless`, `hysteria2` and `socks5` entries become profiles.
- * Everything else — `hysteria` (v1), `wireguard`, proxy providers — is reported as
+ * Only `vmess`, `trojan`, `ss`, `vless`, `hysteria2`, `socks5`, `http` and `wireguard` entries become profiles.
+ * Everything else — `hysteria` (v1), proxy providers — is reported as
  * an unsupported type rather than skipped, so a subscription that yields
  * nothing says why. `ws-opts` and `grpc-opts` feed `TransportOptions` (see
  * `ClashTransport.kt`) for `vless`, `vmess`, and `trojan`. SOCKS has no
@@ -130,6 +130,8 @@ private fun proxyToProfile(
     proxy: YamlMap,
     index: Int,
 ): LinkResult {
+    // WireGuard's `peers:` form carries server/port per peer, so it cannot go through the check below.
+    if (proxy.text("type") == "wireguard") return wireGuardFromClash(proxy, index)
     val server = proxy.text("server")
     if (server == null) {
         return bad(index, ParseFailureReason.MalformedYaml, FailureDetail.Missing(DetailField.Address))
@@ -142,7 +144,7 @@ private fun proxyToProfile(
     val name = proxy.text("name") ?: server
     val sni = proxy.text("sni") ?: proxy.text("servername") ?: server
     val allowInsecure = proxy.text("skip-cert-verify") == "true"
-    val network = proxy.text("network") ?: "tcp"
+    val network = clashNetwork(proxy)
 
     return when (proxy.text("type")) {
         "vmess" -> vmess(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
@@ -151,6 +153,7 @@ private fun proxyToProfile(
         "vless" -> vless(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         "hysteria2" -> hysteria2FromClash(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         "socks5" -> socks5(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
+        "http" -> httpFromClash(proxy, ClashCommon(index, server, port, name, sni, allowInsecure, network))
         else -> bad(index, ParseFailureReason.UnknownScheme, FailureDetail.Unsupported(DetailField.Scheme))
     }
 }
