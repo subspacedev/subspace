@@ -727,11 +727,13 @@ none; an ineligible outbound is never touched.
 
 **Local inbound accounts (M9-E).** The loopback SOCKS and HTTP inbounds carry accounts, with
 credentials made per session and shared by hev (which dials the SOCKS inbound) and the core. In
-Auto mode they are random; in Manual mode they are the user's own, and a Manual field that fails
-the RFC 1929 limits falls back to Auto for that field. The credentials survive a retained-TUN
-rebuild, since it is the same session. The app's own fetches (subscriptions, geo files) send the
-HTTP account preemptively as `Proxy-Authorization: Basic`, and only on plain-http requests, never
-inside a CONNECT tunnel to the origin. A 407 after the credentials were sent is a failed fetch:
+Auto mode they are random; in Manual mode they are the user's own, and if either Manual field fails
+the RFC 1929 limits the session uses a random Auto account instead (the Settings page shows the field
+error). The credentials survive a retained-TUN rebuild, since it is the same session; saving the
+Tunnel page restarts the session, so a changed account applies at once. The app's own fetches
+(subscriptions, geo files) send the HTTP account preemptively as `Proxy-Authorization: Basic`: on the
+`CONNECT` to the inbound for https, and on the request itself for plain http. They never answer a 407
+that an origin sends back inside the tunnel. A 407 after the credentials were sent is a failed fetch:
 no retry without the proxy and no direct fallback. The certificate probe's own inbound is
 authenticated the same way (§5.6). Credential-holding types print `<redacted>`.
 
