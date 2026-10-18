@@ -256,6 +256,14 @@ class D2StorageTest {
     }
 
     @Test
+    fun `kcp with settings outside KcpRules limits is not connectable, matching the generator`() {
+        val clean = KcpObfuscation(null, null, false)
+        stored(kcpRow("kcp", kcp = TransportOptions.Kcp(65_535, 1000, clean))).connectable shouldBe true
+        stored(kcpRow("kcp", kcp = TransportOptions.Kcp(65_536, null, clean))).connectable shouldBe false
+        stored(kcpRow("kcp", kcp = TransportOptions.Kcp(null, 9, clean))).connectable shouldBe false
+    }
+
+    @Test
     fun `reality over kcp or httpupgrade is not connectable`() {
         stored(kcpRow("kcp", reality)).connectable shouldBe false
         val vmess = VmessOutbound("a", 1, "u", 0, "auto", StreamSettings("mkcp", reality, cleanKcp))

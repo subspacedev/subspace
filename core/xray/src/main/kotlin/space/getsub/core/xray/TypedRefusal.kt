@@ -54,10 +54,6 @@ internal fun typedRefusal(outbound: Outbound): String? =
     }
 
 private const val TRANSPORT_MISMATCH = "mKCP/HTTPUpgrade transport"
-private const val MIN_KCP_MTU = 21
-private const val MIN_KCP_TTI = 10
-private const val MAX_KCP_TTI = 1000
-private val KCP_TTI = MIN_KCP_TTI..MAX_KCP_TTI
 
 /**
  * mKCP and HTTPUpgrade (M9-D2 spec §3): REALITY over either fails the core's build (`REALITY only supports
@@ -87,14 +83,11 @@ private fun StreamSettings.mismatched(
         else -> kcp || upgrade
     }
 
-// `KCPConfig.Build` (infra/conf/transport_method.go:567-572) rejects these, quoting nothing secret, but a
-// refusal here names it before the core is involved.
+// `KCPConfig.Build` (infra/conf/transport_method.go:567-572) rejects mtu/tti below its floors, quoting nothing
+// secret, and KcpRules adds a datagram-sized mtu ceiling; a refusal here names it before the core is involved.
 private fun TransportOptions.Kcp.refusal(): String? =
     when (KcpRules.notConnectableReason(this)) {
-        null ->
-            "mKCP settings".takeIf {
-                mtu.let { it != null && it < MIN_KCP_MTU } || tti.let { it != null && it !in KCP_TTI }
-            }
+        null -> null
         KcpUnsupported.InvalidSetting -> "mKCP settings"
         else -> "mKCP obfuscation"
     }

@@ -86,4 +86,24 @@ class KcpTest {
         StreamSettings("httpupgrade", Security.None, TransportOptions.HttpUpgrade("h", "/p")).toString() shouldBe
             "StreamSettings(network=httpupgrade, security=None, transport=HttpUpgrade)"
     }
+
+    @Test
+    fun settingsLimitsAreTheCoresFloorsAndADatagramCeiling() {
+        KcpRules.settingsValid(null, null) shouldBe true
+        KcpRules.settingsValid(KcpRules.MIN_MTU, KcpRules.MIN_TTI) shouldBe true
+        KcpRules.settingsValid(KcpRules.MAX_MTU, KcpRules.MAX_TTI) shouldBe true
+        KcpRules.MAX_MTU shouldBe 65_535
+        for ((mtu, tti) in listOf(20 to null, 65_536 to null, null to 9, null to 1001)) {
+            KcpRules.settingsValid(mtu, tti) shouldBe false
+        }
+    }
+
+    @Test
+    fun aKcpRowWithSettingsOutsideTheLimitsIsNotConnectable() {
+        val clean = KcpObfuscation(null, null, false)
+        KcpRules.notConnectableReason(TransportOptions.Kcp(1350, 20, clean)) shouldBe null
+        KcpRules.notConnectableReason(TransportOptions.Kcp(65_536, null, clean)) shouldBe KcpUnsupported.InvalidSetting
+        val http = clean.copy(unsupported = KcpUnsupported.HttpHeader)
+        KcpRules.notConnectableReason(TransportOptions.Kcp(65_536, null, http)) shouldBe KcpUnsupported.HttpHeader
+    }
 }

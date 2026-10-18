@@ -15,10 +15,6 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.isHttpUpgradeNetwork
 import space.getsub.core.model.isKcpNetwork
 
-private const val MIN_KCP_MTU = 21
-private const val MIN_KCP_TTI = 10
-private const val MAX_KCP_TTI = 1000
-
 /**
  * mKCP and HTTPUpgrade from a vless/trojan link's query, or null when [network] is neither (the caller's
  * own reader handles it). A bad `mtu`/`tti` or an unreadable `fm=` is a typed failure.
@@ -44,9 +40,9 @@ internal fun httpUpgrade(
 }
 
 private fun kcpFromQuery(query: Map<String, String>): Step<TransportOptions> {
-    val mtu = boundedInt(query["mtu"], MIN_KCP_MTU, Int.MAX_VALUE, DetailField.Mtu)
+    val mtu = boundedInt(query["mtu"], KcpRules.MIN_MTU, KcpRules.MAX_MTU, DetailField.Mtu)
     if (mtu is Step.Fail) return mtu
-    val tti = boundedInt(query["tti"], MIN_KCP_TTI, MAX_KCP_TTI, DetailField.Tti)
+    val tti = boundedInt(query["tti"], KcpRules.MIN_TTI, KcpRules.MAX_TTI, DetailField.Tti)
     if (tti is Step.Fail) return tti
     val fm = readKcpFm(query["fm"])
     if (fm is Step.Fail) return fm

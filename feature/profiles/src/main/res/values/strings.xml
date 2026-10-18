@@ -311,8 +311,8 @@
     <string name="editor_http_tcp_only">This server type carries TCP only — UDP and QUIC sites fall back or fail.</string>
     <string name="editor_http_tls_label">TLS</string>
     <string name="editor_http_reality_error">An HTTP proxy can\'t use REALITY. Turn TLS on or off.</string>
-    <string name="editor_kcp_mtu_label">MTU (optional, at least 21)</string>
-    <string name="editor_kcp_mtu_error">The MTU must be a whole number of at least 21.</string>
+    <string name="editor_kcp_mtu_label">MTU (optional, 21 to 65535)</string>
+    <string name="editor_kcp_mtu_error">The MTU must be a whole number from 21 to 65535.</string>
     <string name="editor_kcp_tti_label">TTI (optional, 10 to 1000 ms)</string>
     <string name="editor_kcp_tti_error">The TTI must be a whole number from 10 to 1000.</string>
     <string name="editor_kcp_seed_label">Seed (optional)</string>

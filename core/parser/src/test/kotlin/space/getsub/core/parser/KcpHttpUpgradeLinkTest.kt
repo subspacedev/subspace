@@ -110,7 +110,10 @@ class KcpHttpUpgradeLinkTest {
         failure("vless://$uuid@h.example:443?type=kcp&mtu=abc").detail shouldBe
             FailureDetail.Malformed(DetailField.Mtu)
         kcp("mtu=21&tti=10").mtu shouldBe 21
-        kcp("mtu=100000").mtu shouldBe 100000
+        kcp("mtu=65535").mtu shouldBe 65535
+        // A UDP datagram cannot be larger; the core states no ceiling, the app does (KcpRules.MAX_MTU).
+        failure("vless://$uuid@h.example:443?type=kcp&mtu=65536").detail shouldBe
+            FailureDetail.Range(DetailField.Mtu, 21, 65535, 65536)
         kcp("tti=1000").tti shouldBe 1000
     }
 

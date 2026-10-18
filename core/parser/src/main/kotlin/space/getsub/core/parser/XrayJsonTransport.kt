@@ -4,6 +4,7 @@ package space.getsub.core.parser
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.KcpRules
 import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.isHttpUpgradeNetwork
@@ -107,10 +108,6 @@ private fun xhttpOptions(xhttp: JsonObject?): TransportOptions.Xhttp =
         mode = xhttp?.nonBlankString("mode"),
     )
 
-private const val MIN_KCP_MTU = 21
-private const val MIN_KCP_TTI = 10
-private const val MAX_KCP_TTI = 1000
-
 /**
  * `kcpSettings` plus the obfuscation, from `streamSettings.finalmask.udp` masks via [readKcpFinalmask]
  * (the v26.10 shape). Without any udp mask the pre-v26.10 fields `kcpSettings.header.type` and
@@ -127,7 +124,7 @@ private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
     val kcp = streamSettings?.objectValue("kcpSettings")
     val mtu = kcp?.intValue("mtu")
     val tti = kcp?.intValue("tti")
-    val settingBad = (mtu != null && mtu < MIN_KCP_MTU) || (tti != null && tti !in MIN_KCP_TTI..MAX_KCP_TTI)
+    val settingBad = !KcpRules.settingsValid(mtu, tti)
     val masks =
         streamSettings?.objectValue("finalmask")?.let { readKcpFinalmask(it, trailingNoiseAllowed = true) }?.obfuscation
     val header = kcp?.objectValue("header")

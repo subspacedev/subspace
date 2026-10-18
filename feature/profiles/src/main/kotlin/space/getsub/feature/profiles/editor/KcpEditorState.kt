@@ -4,6 +4,7 @@ package space.getsub.feature.profiles.editor
 
 import space.getsub.core.model.KcpHeader
 import space.getsub.core.model.KcpObfuscation
+import space.getsub.core.model.KcpRules
 import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
 
@@ -18,10 +19,6 @@ internal enum class RealityConflict {
     /** An HTTP proxy is TCP with optional TLS; there is no REALITY for it. */
     HttpProxy,
 }
-
-private const val MIN_KCP_MTU = 21
-private const val MIN_KCP_TTI = 10
-private const val MAX_KCP_TTI = 1000
 
 /**
  * The mKCP transport fields, as text so a half-typed value survives.
@@ -52,9 +49,9 @@ internal data class KcpDraft(
     fun validate(): Set<KcpField> =
         buildSet {
             val m = mtu.trim()
-            if (m.isNotEmpty() && (m.toIntOrNull() ?: 0) < MIN_KCP_MTU) add(KcpField.Mtu)
+            if (m.isNotEmpty() && m.toIntOrNull() !in KcpRules.MIN_MTU..KcpRules.MAX_MTU) add(KcpField.Mtu)
             val t = tti.trim()
-            if (t.isNotEmpty() && t.toIntOrNull() !in MIN_KCP_TTI..MAX_KCP_TTI) add(KcpField.Tti)
+            if (t.isNotEmpty() && t.toIntOrNull() !in KcpRules.MIN_TTI..KcpRules.MAX_TTI) add(KcpField.Tti)
         }
 
     /** Total: text that [validate] would refuse falls back to unset, since save validates first. */

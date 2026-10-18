@@ -494,6 +494,7 @@ class D2EditorTest {
         }
         rejected(KcpField.Mtu) { it.copy(mtu = "20") }
         rejected(KcpField.Mtu) { it.copy(mtu = "big") }
+        rejected(KcpField.Mtu) { it.copy(mtu = "65536") }
         rejected(KcpField.Tti) { it.copy(tti = "9") }
         rejected(KcpField.Tti) { it.copy(tti = "1001") }
 

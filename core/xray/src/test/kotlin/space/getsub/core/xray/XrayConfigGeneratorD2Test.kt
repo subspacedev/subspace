@@ -332,7 +332,7 @@ class XrayConfigGeneratorD2Test {
             val result = generate(vmessKcp(KcpObfuscation(null, null, false, reason)))
             result.shouldBeInstanceOf<ConfigResult.Unsupported>()
         }
-        for ((mtu, tti) in listOf(20 to null, null to 9, null to 1001)) {
+        for ((mtu, tti) in listOf(20 to null, 65536 to null, null to 9, null to 1001)) {
             val row =
                 vmessKcp(kcpObfs()).let {
                     it.copy(stream = it.stream.copy(transport = TransportOptions.Kcp(mtu, tti, kcpObfs())))

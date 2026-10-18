@@ -381,13 +381,13 @@ class ClashAndJsonWireGuardHttpTest {
 
     @Test
     fun `raw kcp mtu or tti the core rejects is not connectable`() {
-        for (settings in listOf("""{"mtu":20}""", """{"tti":5}""", """{"tti":1001}""")) {
+        for (settings in listOf("""{"mtu":20}""", """{"mtu":65536}""", """{"tti":5}""", """{"tti":1001}""")) {
             rawVless("""{"network":"kcp","kcpSettings":$settings}""")
                 .transport
                 .shouldBeInstanceOf<TransportOptions.Kcp>()
                 .obfuscation.unsupported shouldBe space.getsub.core.model.KcpUnsupported.InvalidSetting
         }
-        val ok = rawVless("""{"network":"kcp","kcpSettings":{"mtu":21,"tti":10}}""")
+        val ok = rawVless("""{"network":"kcp","kcpSettings":{"mtu":65535,"tti":10}}""")
         ok.transport
             .shouldBeInstanceOf<TransportOptions.Kcp>()
             .obfuscation.unsupported shouldBe null

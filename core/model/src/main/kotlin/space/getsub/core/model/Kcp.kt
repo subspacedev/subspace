@@ -30,7 +30,10 @@ public enum class KcpUnsupported {
     /** A finalmask the source carries that [KcpRules.masks] cannot reproduce (other type, order or combination). */
     UnknownMask,
 
-    /** A raw `kcpSettings` `mtu` or `tti` the core rejects (mtu below 21, tti outside 10..1000). */
+    /**
+     * A raw `kcpSettings` `mtu` or `tti` outside [KcpRules.MIN_MTU]..[KcpRules.MAX_MTU] or
+     * [KcpRules.MIN_TTI]..[KcpRules.MAX_TTI] (see [KcpRules.settingsValid]).
+     */
     InvalidSetting,
 }
 
@@ -84,6 +87,25 @@ public sealed interface KcpMask {
 }
 
 public object KcpRules {
+    /** `KCPConfig.Build` (`infra/conf/transport_method.go:567`): "MTU must be at least 21". */
+    public const val MIN_MTU: Int = 21
+
+    /**
+     * The app's own ceiling: the core states none (`mtu` is a `uint32`), but an mKCP segment travels in one UDP
+     * datagram, which cannot be larger than 65535 bytes.
+     */
+    public const val MAX_MTU: Int = 65_535
+
+    /** `KCPConfig.Build` (`transport_method.go:570`): "TTI must be between 10 and 1000". */
+    public const val MIN_TTI: Int = 10
+    public const val MAX_TTI: Int = 1000
+
+    /** Null means unset (Xray's default); otherwise within the limits above. */
+    public fun settingsValid(
+        mtu: Int?,
+        tti: Int?,
+    ): Boolean = (mtu == null || mtu in MIN_MTU..MAX_MTU) && (tti == null || tti in MIN_TTI..MAX_TTI)
+
     /** A link/Clash header name: case-insensitive, `wechat-video` is `wechat`, blank and `none` are no header. */
     public fun headerFromLinkName(name: String?): KcpHeaderResult {
         val n = name?.trim()?.lowercase().orEmpty()
@@ -113,6 +135,10 @@ public object KcpRules {
         return listOfNotNull(first, o.header?.let(KcpMask::Header))
     }
 
-    /** Non-null when [kcp] cannot be written: the connectable gate reads this. */
-    public fun notConnectableReason(kcp: TransportOptions.Kcp): KcpUnsupported? = kcp.obfuscation.unsupported
+    /**
+     * Non-null when [kcp] cannot be written: the connectable gate and the generator's refusal both read this.
+     * The source's own reason wins; otherwise settings outside the limits are [KcpUnsupported.InvalidSetting].
+     */
+    public fun notConnectableReason(kcp: TransportOptions.Kcp): KcpUnsupported? =
+        kcp.obfuscation.unsupported ?: KcpUnsupported.InvalidSetting.takeUnless { settingsValid(kcp.mtu, kcp.tti) }
 }
