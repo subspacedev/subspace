@@ -698,7 +698,8 @@ in `Inbounds.kt`, builds the block for every path:
 
 In the pure passthrough branch the config's own `sniffing` block is carried onto the injected
 SOCKS inbound verbatim when it has one, and stays unless the **user's own** setting is On; then
-the resolved value replaces it. A provider's value applies to a raw config only where it has no
+the resolved value replaces it, keeping `fakedns` in `destOverride` if the config's own (enabled)
+block sniffed it, for the reason above: the config's own FakeDNS needs it, On or Off. A provider's value applies to a raw config only where it has no
 block of its own. Not the reverse: injecting a wider `destOverride` than the config chose (adding
 `quic` to a config that sniffed only `http`/`tls`, say) would start matching rules the config's
 author never exercised, moving traffic the app was never asked to move — a leak in the other
@@ -706,19 +707,20 @@ direction, introduced by us, with no error and no log line. In the override bran
 are what runs, so the injected inbound takes the resolved value. The `SniffingCannotServeOwnRules`
 advisory is judged against the block actually emitted.
 
-When the effective value is off and the active rule set has any domain or `geosite:` entry, the
-rule set screen and the Settings control warn that those rules will not match
-(`sniffingOffBreaksRules`). Only the user's own setting raises that warning; a provider's
-`sniffing-enable=false` gives none on the rule set screen. The tunnel runs exactly as chosen
-either way.
+When sniffing is off and the active rule set has any domain or `geosite:` entry, a warning says
+those rules will not match (`sniffingOffBreaksRules`). The Settings → Tunnel control warns on the
+effective value, so a provider's `sniffing-enable=false` under a switch that is off warns there
+too. The rule set screen warns only for the user's own setting; a provider's off gives no warning
+there. The tunnel runs exactly as chosen either way.
 
 **Mux (M9-E).** Off by default. The user's own setting beats a provider's `mux-*` directives. The
 generator emits an outbound `mux {enabled, concurrency, xudpConcurrency, xudpProxyUDP443}` (keys
 checked against Xray-core v26.10.10 `infra/conf/xray.go:106-128`) only where `MuxApplicability`
 (`:core:model`, a sibling of `ObfuscationApplicability`) says the core supports it: VLESS without a
 flow, VMess, Trojan and Shadowsocks, and never on an `xhttp` stream (it has its own `xmux`).
-Hysteria2, WireGuard, HTTP, SOCKS and VLESS with a flow are ineligible; the server details say mux
-is not used for that server and why. It is emitted on the outermost proxy outbound only; on a
+Hysteria2, WireGuard, HTTP, SOCKS and VLESS with a flow are ineligible; when mux is on, the server
+details say mux is not used for that server because the core cannot use it with that protocol,
+flow or transport (one generic reason; the line does not name which). It is emitted on the outermost proxy outbound only; on a
 `dialerProxy` chain that is the wire-facing hop, never an inner hop. `xudpProxyUDP443` defaults to
 `reject`. In a raw config, `MuxDetection` makes the one decision and `MuxInjector` executes it: the
 config's own `mux` block stays unless the user's setting is On, which replaces it on the eligible
@@ -728,8 +730,9 @@ none; an ineligible outbound is never touched.
 **Local inbound accounts (M9-E).** The loopback SOCKS and HTTP inbounds carry accounts, with
 credentials made per session and shared by hev (which dials the SOCKS inbound) and the core. In
 Auto mode they are random; in Manual mode they are the user's own, and if either Manual field fails
-the RFC 1929 limits the session uses a random Auto account instead (the Settings page shows the field
-error). The credentials survive a retained-TUN rebuild, since it is the same session; saving the
+the RFC 1929 limits, or the user name contains `:` (HTTP Basic splits at the first colon, so the HTTP
+inbound would read another account), the session uses a random Auto account instead (the Settings
+page shows the field error). The credentials survive a retained-TUN rebuild, since it is the same session; saving the
 Tunnel page restarts the session, so a changed account applies at once. The app's own fetches
 (subscriptions, geo files) send the HTTP account preemptively as `Proxy-Authorization: Basic`: on the
 `CONNECT` to the inbound for https, and on the request itself for plain http. They never answer a 407
@@ -740,8 +743,22 @@ authenticated the same way (§5.6). Credential-holding types print `<redacted>`.
 **Tunnel MTU and excluded routes (M9-E).** The TUN MTU defaults to 8500 and is accepted from 1280
 to 65535. Excluded routes are applied with `excludeRoute` on API 33+ and as the complement list of
 `addRoute` calls below that; a `/0` range is refused, and a range covering a session resolver
-address is skipped. Both are part of the planned TUN shape (§5.2). A provider's excluded routes
-apply only after the user allows them.
+address is skipped. That address set is the TUN's advertised resolver, the builder's fallback
+resolver (advertised instead if the builder rejects the planned literal) and the DNS plan's plain
+resolvers. Both are part of the planned TUN shape (§5.2). A provider's excluded routes apply only
+after the user allows them. Allowing them from the card while connected, for the subscription that
+delivered the active server, restarts the session so they apply at once.
+
+**Why a tuning value does not apply (M9-E).** A provider's `xray-tun-mtu` outside 1280–65535 or not
+a number, a `mux-*` value out of range or unreadable (with `mux-enable` on), an `exclude-routes`
+list that does not parse, a whole-family range, and routes waiting for (or refused) the user's
+answer are each ignored with the reason. Subscription details list them, one line per directive,
+naming the key the provider can fix (`TuningResolver.directiveIssues`, the same pure resolution as
+a session with every override off). The Settings → Tunnel line under a switch that is off ("From
+your subscription" / "Default") appends the same reason. Both screens word it through one
+formatter (`TuningProblemText` in `:core:ui`). Which range is dropped at connect for covering a DNS
+server is decided in `:bg` from that session's DNS plan, which `:main` does not rebuild, so the
+screens state the rule ("skipped when you connect") rather than naming a range.
 
 **Eligibility is decided at import, against the real core**, not discovered at
 connect. `testXray` runs against the composed form — the same bytes with the
