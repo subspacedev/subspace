@@ -22,7 +22,9 @@ private val PEER_KEY_NAMES = listOf("publickey", "peerpublickey", "pub", "peerpu
 private val PSK_NAMES = listOf("presharedkey", "psk")
 
 /** AmneziaWG obfuscation parameters, as normalised query names (D2-R13). */
-private val AWG_PARAMETER_NAMES = listOf("jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4")
+private val AWG_PARAMETER_NAMES = listOf(
+        "jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5",
+    )
 private val ADDRESS_NAMES = listOf("address", "ip", "localaddress")
 
 private data class Pieces(
@@ -39,8 +41,8 @@ private data class Pieces(
  * `wireguard://<secretKey>@host:port?publickey=&presharedkey=&address=&reserved=&mtu=&keepalive=#name`, or
  * `wg://host:port/?pk=&peer_pk=&...`: query names are matched case-insensitively with `_`/`-` removed, so
  * the aliases of both dialects resolve. The secret key is the userinfo or, failing that, `privatekey`/`pk`.
- * Values are trimmed (D2-R7). `dns` is ignored. A link with AmneziaWG parameters (`jc`, `jmin`, `jmax`, `s1`, `s2`,
- * `h1`-`h4`) is an unsupported-protocol failure (D2-R13). `fm=` is ignored unless it carries masks, in which case the
+ * Values are trimmed (D2-R7). `dns` is ignored. A link with AmneziaWG parameters (`jc`, `jmin`, `jmax`, `s1`-`s4`,
+ * `h1`-`h4`, `i1`-`i5`) is an unsupported-protocol failure (D2-R13). `fm=` is ignored unless it carries masks, in which case the
  * row imports not connectable: WireGuard noise is a user setting, not a link field.
  *
  * Failures name a field, never a value (ARCHITECTURE.md §5.6).
