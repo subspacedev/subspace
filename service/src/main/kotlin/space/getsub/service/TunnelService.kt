@@ -2014,7 +2014,7 @@ class TunnelService : VpnService() {
                 // any excluded range covering one of this plan's DNS servers (spec §4), so the TUN shape
                 // below and the config read the same one decision.
                 val advertisedDns = advertisedTunDnsAddress(dnsPlan?.tunAdvertisedAddress(), DNS_SERVER)
-                val tuning = tuningResolver.forSession(rowId, sessionDnsAddresses(dnsPlan, advertisedDns))
+                val tuning = tuningResolver.forSession(rowId, sessionDnsAddresses(dnsPlan, advertisedDns, DNS_SERVER))
                 val xray = XrayController()
                 val ownsStart =
                     synchronized(lock) {

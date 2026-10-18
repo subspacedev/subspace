@@ -224,8 +224,15 @@ class TunShapeTest {
                 directMatch = null,
                 proxyMatch = null,
             )
-        sessionDnsAddresses(plan, "77.88.8.8") shouldBe listOf("77.88.8.8", "2001:db8::53")
-        sessionDnsAddresses(null, "1.1.1.1") shouldBe listOf("1.1.1.1")
+        sessionDnsAddresses(plan, "77.88.8.8", fallbackDns = "77.88.8.8") shouldBe listOf("77.88.8.8", "2001:db8::53")
+        sessionDnsAddresses(null, "1.1.1.1", fallbackDns = "1.1.1.1") shouldBe listOf("1.1.1.1")
+    }
+
+    @Test
+    fun `the builder's fallback resolver is a session DNS address when it differs from the planned one`() {
+        // addDnsServerOrFallback advertises the fallback if the builder rejects the planned literal,
+        // so a range covering the fallback would let those queries leave outside the tunnel.
+        sessionDnsAddresses(null, "77.88.8.8", fallbackDns = "1.1.1.1") shouldBe listOf("77.88.8.8", "1.1.1.1")
     }
 
     @Test

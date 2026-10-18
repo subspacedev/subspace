@@ -111,15 +111,22 @@ internal fun retainedTunKeepsShape(
 ): Boolean = live != null && live == next
 
 /**
- * The DNS servers an excluded range must not cover (M9-E spec §4): [advertisedDns], and every plain
- * resolver in [dnsPlan] that is an address literal. A DoH endpoint is a hostname and is skipped.
+ * The DNS servers an excluded range must not cover (M9-E spec §4): [advertisedDns], [fallbackDns]
+ * (what [addDnsServerOrFallback] advertises instead if the builder rejects the planned literal), and
+ * every plain resolver in [dnsPlan] that is an address literal. A DoH endpoint is a hostname and is
+ * skipped. The fallback is included even when the planned literal will be accepted: which one the
+ * builder takes is only known after the routes are planned, and dropping a range needlessly costs
+ * less than a resolver outside the tunnel.
  */
 internal fun sessionDnsAddresses(
     dnsPlan: DnsPlan?,
     advertisedDns: String,
+    fallbackDns: String,
 ): List<String> =
-    (listOf(advertisedDns) + dnsPlan?.servers.orEmpty().map { it.address }.filter(DnsValidation::isAddressLiteral))
-        .distinct()
+    (
+        listOf(advertisedDns, fallbackDns) +
+            dnsPlan?.servers.orEmpty().map { it.address }.filter(DnsValidation::isAddressLiteral)
+    ).distinct()
 
 /** The shape a session resolved to [tuning] plans, advertising [advertisedDns]. */
 internal fun tunShapeFor(
