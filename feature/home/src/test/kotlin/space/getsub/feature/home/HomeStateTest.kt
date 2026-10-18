@@ -9,6 +9,8 @@ import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
+import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
@@ -217,5 +219,17 @@ class HomeStateTest {
         HomeState(activeProfile = hysteria2(skipChecks = false)).checksStayOnWithoutPin shouldBe false
         HomeState(activeProfile = profile("tcp")).checksStayOnWithoutPin shouldBe false
         HomeState().checksStayOnWithoutPin shouldBe false
+    }
+
+    @Test
+    fun `the untrusted certificate note shows only for that outcome on the active row`() {
+        val untrusted = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED)
+        HomeState(activeProfile = profile("tcp"), latency = untrusted).showsCertUntrustedNote shouldBe true
+        HomeState(activeProfile = profile("tcp"), latency = LatencyResult.failed(LatencyOutcome.TIMEOUT))
+            .showsCertUntrustedNote shouldBe false
+        HomeState(activeProfile = profile("tcp"), latency = LatencyResult.ok(40)).showsCertUntrustedNote shouldBe false
+        HomeState(activeProfile = profile("tcp")).showsCertUntrustedNote shouldBe false
+        HomeState(activeProfile = profile("tcp"), latency = untrusted, isMeasuringLatency = true)
+            .showsCertUntrustedNote shouldBe false
     }
 }

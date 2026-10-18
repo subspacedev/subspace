@@ -11,6 +11,8 @@ import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Tls
+import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TagTraffic
@@ -109,6 +111,29 @@ class HomeSnapshotTest {
                     ),
                 ),
                 hasAnyProfile = true,
+            ),
+        )
+
+    /** The tile says "Untrusted cert"; the full sentence sits under the connection state, above the other note. */
+    @Test
+    fun certUntrusted() =
+        shoot(
+            "home-cert-untrusted",
+            HomeState(
+                activeProfile =
+                snapshotProfile("Hysteria").copy(
+                    protocol = "hysteria2",
+                    transport = "QUIC · 443",
+                    outbound =
+                    Hysteria2Outbound(
+                        address = "198.51.100.1",
+                        port = 443,
+                        password = "pw",
+                        tls = Hysteria2Tls("h.example", skipChecksRequested = true),
+                    ),
+                ),
+                hasAnyProfile = true,
+                latency = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED),
             ),
         )
 }

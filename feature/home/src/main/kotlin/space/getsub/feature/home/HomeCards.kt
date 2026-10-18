@@ -143,7 +143,7 @@ internal fun StatTilesRow(
             LatencyLabel.CertUntrusted -> stringResource(R.string.home_latency_cert_untrusted)
             LatencyLabel.Failed -> stringResource(R.string.home_latency_failed)
         }
-    val latencyHint = stringResource(R.string.home_latency_test_description)
+    val latencyHint = stringResource(state.latencyHintRes)
     val none = stringResource(R.string.home_latency_none)
     val live = state.liveSample()
     Row(

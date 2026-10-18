@@ -59,7 +59,9 @@ enum class NoteTone { Error, Info }
  * accessibility services; a selected row also shows a check before its pill,
  * so the active server is never marked by colour alone. [noteTone] picks the
  * note's colour: `error` for something that stops the row working, a muted
- * tone for information such as compatibility mode.
+ * tone for information such as compatibility mode. [latencyDescription], when
+ * set, replaces [latencyText] in the pill's accessibility label, for a pill whose
+ * text is shortened to fit.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -77,6 +79,7 @@ fun ServerRow(
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
     noteTone: NoteTone = NoteTone.Error,
+    latencyDescription: String? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val dim = Modifier.alpha(if (enabled) 1f else UNSUPPORTED_ALPHA)
@@ -104,7 +107,7 @@ fun ServerRow(
                     modifier = Modifier.size(22.dp),
                 )
             }
-            LatencyPill(latencyText, enabled, onTestLatency, dim)
+            LatencyPill(latencyText, latencyDescription, enabled, onTestLatency, dim)
             IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                 Icon(
                     painterResource(SubspaceIcons.Edit),
@@ -170,12 +173,16 @@ private fun ServerRowText(
 @Composable
 private fun LatencyPill(
     text: String,
+    textDescription: String?,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val description =
-        stringResource(if (enabled) R.string.server_latency_retest else R.string.server_latency, text)
+        stringResource(
+            if (enabled) R.string.server_latency_retest else R.string.server_latency,
+            textDescription ?: text,
+        )
     Surface(
         onClick = onClick,
         enabled = enabled,

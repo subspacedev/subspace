@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.home
 
+import androidx.annotation.StringRes
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.Hysteria2Outbound
@@ -140,6 +141,20 @@ internal data class HomeState(
      */
     val activeProfileUnsupported: Boolean
         get() = activeProfile?.let { it.outbound != null && !it.connectable } == true
+
+    /** The latency outcome is an untrusted certificate: Home shows the full sentence the short tile text stands for. */
+    val showsCertUntrustedNote: Boolean
+        get() = latencyLabel() == LatencyLabel.CertUntrusted
+
+    /** The latency tile's accessibility label: its text is shortened, so an untrusted certificate gets its sentence. */
+    @get:StringRes
+    val latencyHintRes: Int
+        get() =
+            if (showsCertUntrustedNote) {
+                R.string.home_latency_test_description_cert_untrusted
+            } else {
+                R.string.home_latency_test_description
+            }
 
     /**
      * M9-D1 spec §2: the active row is Hysteria2, its source asked to skip certificate checks, and it has

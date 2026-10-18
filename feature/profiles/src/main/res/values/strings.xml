@@ -38,7 +38,9 @@
     <string name="servers_latency_foreign_vpn">Another VPN</string>
     <!-- M9-D1: the certificate probe found the server's certificate untrusted (self-signed
          with no pin, a pin that does not match, or the wrong name). The fix is the pin. -->
-    <string name="servers_latency_cert_untrusted">Certificate not trusted — add its pin</string>
+    <string name="servers_latency_cert_untrusted">Untrusted cert</string>
+    <!-- The full sentence behind the short pill text, read by screen readers. -->
+    <string name="servers_latency_cert_untrusted_description">Certificate not trusted — add its pin</string>
     <string name="servers_test_group">Test all</string>
     <string name="servers_test_cancel">Stop testing</string>
     <!-- Beside the screen-level sort chip (M8.6 design). -->

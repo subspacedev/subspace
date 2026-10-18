@@ -148,6 +148,16 @@ internal fun HomeHero(
 /** Fixed notes about the active server, under the connection state. */
 @Composable
 private fun ActiveServerNotes(state: HomeState) {
+    // The tile says "Untrusted cert"; this is the sentence behind it, first because it is the live problem.
+    if (state.showsCertUntrustedNote) {
+        Text(
+            text = stringResource(R.string.home_cert_untrusted_note),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+        )
+    }
+
     // M9-D1 spec §2: same note as the editor, next to the connection state.
     if (state.checksStayOnWithoutPin) {
         Text(

@@ -66,7 +66,10 @@
     <string name="home_latency_foreign_vpn">Another VPN</string>
     <!-- M9-D1: the certificate probe found the server's certificate untrusted (self-signed
          with no pin, a pin that does not match, or the wrong name). The fix is the pin. -->
-    <string name="home_latency_cert_untrusted">Certificate not trusted — add its pin</string>
+    <string name="home_latency_cert_untrusted">Untrusted cert</string>
+    <!-- The full sentence behind the short tile text: the Home note and the tile's accessibility label. -->
+    <string name="home_cert_untrusted_note">Certificate not trusted — add its pin</string>
+    <string name="home_latency_test_description_cert_untrusted">Latency. Certificate not trusted — add its pin. Tap to test the active server.</string>
     <string name="home_latency_test_description">Latency. Tap to test the active server.</string>
     <!-- Counted at the TUN (hev-socks5-tunnel's own counters), so this is everything
          the tunnel carries, including traffic routed direct — not a proxied-vs-direct
