@@ -29,6 +29,9 @@ public enum class KcpUnsupported {
 
     /** A finalmask the source carries that [KcpRules.masks] cannot reproduce (other type, order or combination). */
     UnknownMask,
+
+    /** A raw `kcpSettings` `mtu` or `tti` the core rejects (mtu below 21, tti outside 10..1000). */
+    InvalidSetting,
 }
 
 /**

@@ -164,7 +164,7 @@ class RoutingProfileImportTest {
                 "\",\"ProxySites\":[\"a.test\"]}".toByteArray()
 
         RoutingProfileImport
-            .parse(linkFor(bytes))
+            .parse(linkForBytes(bytes))
             .shouldBeInstanceOf<ImportResult.Invalid>()
             .problem shouldBe ImportProblem.MalformedJson
     }
@@ -236,7 +236,9 @@ class RoutingProfileImportTest {
 
     private fun b64(text: String): String = Base64.getEncoder().encodeToString(text.toByteArray())
 
-    private fun linkFor(bytes: ByteArray): String = "happ://routing/add/${Base64.getEncoder().encodeToString(bytes)}"
+    private fun linkForBytes(bytes: ByteArray): String = "happ://routing/add/" + b64(bytes)
+
+    private fun b64(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
 
     private fun oversizedProfile(): String = """{"Name":"P","Padding":"${"x".repeat(MAX_PROFILE_BYTES + 1)}"}"""
 

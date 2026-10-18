@@ -128,7 +128,7 @@ public data class Hysteria2Outbound(
 /**
  * A WireGuard server (one peer). Not a [StreamSettings] protocol, like [Hysteria2Outbound].
  *
- * Keys are stored as given (base64, any form [WireGuardRules.keyValid] accepts).
+ * Keys are stored as given (base64 in either alphabet, or 64 hex characters: see [WireGuardRules.keyValid]).
  *
  * @property address the peer endpoint host.
  * @property localAddresses the interface addresses (CIDR).

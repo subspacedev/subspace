@@ -43,7 +43,8 @@ private fun clashPeers(proxy: YamlMap): List<YamlMap>? {
  * peer's data, so the row is visible rather than silently shortened. `ip` / `ipv6` are the local
  * addresses; `reserved` is a list or a base64 string. Keys are trimmed, then checked with
  * [WireGuardRules.keyValid] (D2-R7). `udp`, `dns` and `remote-dns-resolve` are ignored; `amnezia-wg-option`
- * is refused because dropping it would produce a tunnel the server cannot answer.
+ * keeps the row but not connectable ([WireGuardUnsupported.UnsupportedMask]), like a link's masks: dropping it
+ * would produce a tunnel the server cannot answer.
  *
  * Runs before the generic server/port check in `ClashYaml.kt`: the `peers:` form has no top-level server.
  * Failures name a field, never a value (ARCHITECTURE.md §5.6).
@@ -53,9 +54,6 @@ internal fun wireGuardFromClash(
     proxy: YamlMap,
     index: Int,
 ): LinkResult {
-    if (proxy.node("amnezia-wg-option") != null) {
-        return clashFail(index, ParseFailureReason.MalformedYaml, FailureDetail.Unsupported(DetailField.Obfuscation))
-    }
     val peers = clashPeers(proxy)
     if (peers != null && peers.isEmpty()) {
         return clashFail(index, ParseFailureReason.MalformedYaml, FailureDetail.Malformed(DetailField.YamlBody))
@@ -109,11 +107,21 @@ internal fun wireGuardFromClash(
             reserved = reserved,
             keepAlive = (keepAlive as Step.Ok).value?.takeIf { it > 0 },
             allowedIps = peer.listOrScalar("allowed-ips").orEmpty().ifEmpty { listOf("0.0.0.0/0", "::/0") },
-            notConnectableReason = if ((peers?.size ?: 0) > 1) WireGuardUnsupported.MultiplePeers else null,
+            notConnectableReason = unsupportedReason(proxy, peers),
         )
     val name = proxy.text("name") ?: server
     return LinkResult.Ok(Profile(profileId("wireguard", server, port, secret), name, outbound))
 }
+
+private fun unsupportedReason(
+    proxy: YamlMap,
+    peers: List<YamlMap>?,
+): WireGuardUnsupported? =
+    when {
+        (peers?.size ?: 0) > 1 -> WireGuardUnsupported.MultiplePeers
+        proxy.node("amnezia-wg-option") != null -> WireGuardUnsupported.UnsupportedMask
+        else -> null
+    }
 
 private fun keyProblem(
     key: String,

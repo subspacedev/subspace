@@ -4,6 +4,7 @@ package space.getsub.core.parser
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
 
 /**
@@ -117,12 +118,14 @@ private const val MAX_KCP_TTI = 1000
  * Legacy marker: none is stored. Like D1's `LegacyUdpHop`, `:core:xray`'s raw composer detects the shape
  * at compose time by re-reading the raw JSON (a kcp outbound with `kcpSettings.header`/`seed` and no
  * `finalmask.udp`) and rewrites it into masks, so the projection and the emitted config agree.
- * `mtu`/`tti` outside the core's accepted range are projected as unset rather than as a value the core rejects.
+ * `mtu`/`tti` are projected as given; one the core rejects makes the row not connectable
+ * ([KcpUnsupported.InvalidSetting]).
  */
 private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
     val kcp = streamSettings?.objectValue("kcpSettings")
-    val mtu = kcp?.intValue("mtu")?.takeIf { it >= MIN_KCP_MTU }
-    val tti = kcp?.intValue("tti")?.takeIf { it in MIN_KCP_TTI..MAX_KCP_TTI }
+    val mtu = kcp?.intValue("mtu")
+    val tti = kcp?.intValue("tti")
+    val settingBad = (mtu != null && mtu < MIN_KCP_MTU) || (tti != null && tti !in MIN_KCP_TTI..MAX_KCP_TTI)
     val masks = streamSettings?.objectValue("finalmask")?.let(::readKcpFinalmask)?.obfuscation
     val obfuscation =
         masks
@@ -130,7 +133,13 @@ private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
                 kcp?.stringValue("seed"),
                 kcp?.objectValue("header")?.stringValue("type") ?: kcp?.stringValue("header"),
             )
-    return TransportOptions.Kcp(mtu, tti, obfuscation)
+    val flagged =
+        if (settingBad && obfuscation.unsupported == null) {
+            obfuscation.copy(unsupported = KcpUnsupported.InvalidSetting)
+        } else {
+            obfuscation
+        }
+    return TransportOptions.Kcp(mtu, tti, flagged)
 }
 
 internal fun JsonObject.intValue(key: String): Int? = (this[key] as? JsonPrimitive)?.content?.trim()?.toIntOrNull()

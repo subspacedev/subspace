@@ -24,6 +24,16 @@ class WireGuardTest {
     }
 
     @Test
+    fun hexKeyIsValidInEitherCaseButOnlyAtSixtyFourCharacters() {
+        WireGuardRules.keyValid("ab".repeat(32)) shouldBe true
+        WireGuardRules.keyValid("AB".repeat(32)) shouldBe true
+        WireGuardRules.keyValid("aB09".repeat(16)) shouldBe true
+        WireGuardRules.keyValid("ab".repeat(31)) shouldBe false
+        WireGuardRules.keyValid("ab".repeat(33)) shouldBe false
+        WireGuardRules.keyValid("gg".repeat(32)) shouldBe false
+    }
+
+    @Test
     fun keyOfAnyOtherLengthOrNotBase64IsInvalid() {
         val b31 = Base64.getEncoder().encodeToString(ByteArray(31))
         val b33 = Base64.getEncoder().encodeToString(ByteArray(33))

@@ -111,7 +111,7 @@ class CapabilityMatrixTest {
     }
 
     @Test
-    fun `clash yaml supports every protocol`() {
+    fun `clash yaml supports exactly the protocols in the support set`() {
         val supported = setOf("vmess", "trojan", "ss", "vless", "socks", "hysteria2", "wireguard", "http")
         clash.forEach { (protocol, yaml) ->
             withClue("clash $protocol") { yieldsProfile(yaml) shouldBe (protocol in supported) }

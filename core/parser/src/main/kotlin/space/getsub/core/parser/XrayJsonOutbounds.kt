@@ -13,7 +13,6 @@ import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.WireGuardRules
 import space.getsub.core.model.WireGuardUnsupported
 
-private const val HEX_KEY_LENGTH = 64
 private const val MAX_PORT_TEXT = 5
 private val DEFAULT_WG_ADDRESSES = listOf("10.0.0.1", "fd59:7153:2388:b5fd:0000:0000:0000:0001")
 
@@ -53,11 +52,6 @@ private fun splitPlain(text: String): Pair<String, String>? {
     val valid = colon > 0 && text.indexOf(':') == colon
     return if (valid) text.substring(0, colon) to text.substring(colon + 1) else null
 }
-
-/** The core accepts 64 hex chars as well as base64 (research §1.1); the typed rules know only base64. */
-private fun rawKeyValid(key: String): Boolean =
-    WireGuardRules.keyValid(key) ||
-        (key.length == HEX_KEY_LENGTH && key.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' })
 
 /**
  * A raw Xray `protocol: "wireguard"` outbound as a typed [WireGuardOutbound].
@@ -111,21 +105,27 @@ internal fun parseWireGuardOutbound(
         when (val element = settings["reserved"]) {
             null -> ""
             is JsonArray -> element.joinToString(",") { (it as? JsonPrimitive)?.content.orEmpty() }
-            is JsonPrimitive -> if (element.isString) element.content else "?"
+            // Xray's `[]byte` takes a JSON array or base64; a comma list as a string is not base64.
+            is JsonPrimitive -> if (element.isString && ',' !in element.content) element.content else "?"
             else -> "?"
         }
     val reserved = WireGuardRules.parseReserved(reservedText)
+    // An explicit [] means no allowed IPs (nothing routes): project it as empty, not as the default.
     val allowed =
         (peer["allowedIPs"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.stringContent()?.trim()?.takeIf { v -> v.isNotEmpty() } }
-            ?.takeIf { it.isNotEmpty() }
-    val mtu = settings.intValue("mtu")?.takeIf { it in MIN_WG_MTU..MAX_WG_MTU } ?: WireGuardRules.DEFAULT_MTU
-    val keyBad = !rawKeyValid(secret) || !rawKeyValid(publicKey) || (psk.isNotEmpty() && !rawKeyValid(psk))
+    val mtuElement = settings["mtu"]
+    val mtuGiven = settings.intValue("mtu")
+    val mtuBad = mtuElement != null && (mtuGiven == null || mtuGiven != 0 && mtuGiven !in MIN_WG_MTU..MAX_WG_MTU)
+    val mtu = mtuGiven?.takeIf { it != 0 && !mtuBad } ?: WireGuardRules.DEFAULT_MTU
+    val keyBad =
+        listOf(secret, publicKey, psk).any { it.isNotEmpty() && !WireGuardRules.keyValid(it) }
     val reason =
         when {
             (peers.size) > 1 -> WireGuardUnsupported.MultiplePeers
             keyBad -> WireGuardUnsupported.InvalidKey
             reserved == null -> WireGuardUnsupported.InvalidReserved
+            mtuBad -> WireGuardUnsupported.InvalidMtu
             else -> null
         }
     val result =

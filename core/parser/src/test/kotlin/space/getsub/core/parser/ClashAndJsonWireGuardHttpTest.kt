@@ -148,6 +148,18 @@ class ClashAndJsonWireGuardHttpTest {
             .failures.size shouldBe 1
     }
 
+    @Test
+    fun `clash wireguard amnezia option keeps the row not connectable`() {
+        val o =
+            wg(
+                """
+                - {name: WG, type: wireguard, server: h.example, port: 1, ip: 10.0.0.2,
+                   private-key: "$sk", public-key: "$pk", amnezia-wg-option: {jc: 4}}
+                """,
+            )
+        o.notConnectableReason shouldBe WireGuardUnsupported.UnsupportedMask
+    }
+
     // ---------------------------------------------------------------- Clash HTTP
 
     @Test
@@ -304,6 +316,48 @@ class ClashAndJsonWireGuardHttpTest {
             """{"secretKey":"nonsense","address":["10.0.0.2"],
             "peers":[{"publicKey":"$pk","endpoint":"a.example:1"}]}""",
         ).notConnectableReason shouldBe WireGuardUnsupported.InvalidKey
+    }
+
+    @Test
+    fun `raw wireguard reserved string must be base64 not a comma list`() {
+        val peer = """"peers":[{"publicKey":"$pk","endpoint":"a.example:1"}]"""
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"reserved":"1,2,3",$peer}""")
+            .notConnectableReason shouldBe WireGuardUnsupported.InvalidReserved
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"reserved":"AQID",$peer}""")
+            .reserved shouldBe listOf(1, 2, 3)
+    }
+
+    @Test
+    fun `raw wireguard projects mtu as given and flags one the core would reject`() {
+        val peer = """"peers":[{"publicKey":"$pk","endpoint":"a.example:1"}]"""
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"mtu":1280,$peer}""").mtu shouldBe 1280
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"mtu":0,$peer}""").mtu shouldBe 1420
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"mtu":-5,$peer}""")
+            .notConnectableReason shouldBe WireGuardUnsupported.InvalidMtu
+        rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"mtu":"abc",$peer}""")
+            .notConnectableReason shouldBe WireGuardUnsupported.InvalidMtu
+    }
+
+    @Test
+    fun `raw wireguard explicit empty allowedIPs stays empty`() {
+        rawWg(
+            """{"secretKey":"$sk","address":["10.0.0.2"],
+            "peers":[{"publicKey":"$pk","endpoint":"a.example:1","allowedIPs":[]}]}""",
+        ).allowedIps shouldBe emptyList()
+    }
+
+    @Test
+    fun `raw kcp mtu or tti the core rejects is not connectable`() {
+        for (settings in listOf("""{"mtu":20}""", """{"tti":5}""", """{"tti":1001}""")) {
+            rawVless("""{"network":"kcp","kcpSettings":$settings}""")
+                .transport
+                .shouldBeInstanceOf<TransportOptions.Kcp>()
+                .obfuscation.unsupported shouldBe space.getsub.core.model.KcpUnsupported.InvalidSetting
+        }
+        val ok = rawVless("""{"network":"kcp","kcpSettings":{"mtu":21,"tti":10}}""")
+        ok.transport
+            .shouldBeInstanceOf<TransportOptions.Kcp>()
+            .obfuscation.unsupported shouldBe null
     }
 
     @Test

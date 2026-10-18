@@ -5,7 +5,7 @@ package space.getsub.core.model
 import java.util.Base64
 
 /** Why a WireGuard source parsed but cannot be connected to. */
-public enum class WireGuardUnsupported { MultiplePeers, InvalidKey, InvalidReserved, UnsupportedMask }
+public enum class WireGuardUnsupported { MultiplePeers, InvalidKey, InvalidReserved, UnsupportedMask, InvalidMtu }
 
 public object WireGuardRules {
     public const val KEY_BYTES: Int = 32
@@ -24,8 +24,15 @@ public object WireGuardRules {
         return runCatching { decoder.decode(text) }.getOrNull()
     }
 
-    /** True iff [text] decodes to exactly 32 bytes. Keys are stored as given; the core accepts both forms. */
-    public fun keyValid(text: String): Boolean = decode(text)?.size == KEY_BYTES
+    private const val HEX_KEY_LENGTH = KEY_BYTES * 2
+
+    /**
+     * True iff [text] is 64 hex characters (any case) or decodes to exactly 32 bytes as base64 (ruling D2-R8:
+     * Xray's `ParseWireGuardKey`, `infra/conf/wireguard.go`, takes both). Keys are stored as given.
+     */
+    public fun keyValid(text: String): Boolean =
+        (text.length == HEX_KEY_LENGTH && text.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) ||
+            decode(text)?.size == KEY_BYTES
 
     private const val MAX_BYTE = 255
     private const val MAX_BYTE_DIGITS = 3
