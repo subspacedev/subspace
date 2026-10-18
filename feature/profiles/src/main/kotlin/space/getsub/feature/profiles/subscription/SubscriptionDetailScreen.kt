@@ -166,9 +166,9 @@ internal data class SubscriptionDetailActions(
     val onAllowResolver: () -> Unit = {},
     val onDenyResolver: () -> Unit = {},
     val onResolverAllowedChanged: (Boolean) -> Unit = {},
-    // M9-E spec §4. Defaulted for the same reason.
-    val onAllowRouteExclusion: () -> Unit = {},
-    val onDenyRouteExclusion: () -> Unit = {},
+    // M9-E spec §4, with the fingerprint of the rendered request. Defaulted for the same reason.
+    val onAllowRouteExclusion: (fingerprint: String) -> Unit = {},
+    val onDenyRouteExclusion: (fingerprint: String) -> Unit = {},
 )
 
 /**
@@ -344,8 +344,8 @@ private fun TrustRequests(
         ) {
             RouteExclusionRequestContent(
                 request = routes,
-                onAllow = actions.onAllowRouteExclusion,
-                onDeny = actions.onDenyRouteExclusion,
+                onAllow = { actions.onAllowRouteExclusion(routes.fingerprint) },
+                onDeny = { actions.onDenyRouteExclusion(routes.fingerprint) },
                 modifier = Modifier.padding(CONTENT_PADDING),
             )
         }

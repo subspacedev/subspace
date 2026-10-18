@@ -606,5 +606,7 @@
     <!-- M9-E: the provider's exclude-routes. %1$s is the comma-separated list of address ranges. -->
     <string name="subscription_route_exclusion_title">Provider wants to bypass the VPN</string>
     <string name="subscription_route_exclusion_body">Traffic to these addresses would go out directly, outside the VPN: %1$s</string>
-    <string name="subscription_route_exclusion_refused">Won\'t be applied (too wide): %1$s</string>
+    <string name="subscription_route_exclusion_dns_note">Any of these that covers the DNS server in use is skipped when you connect, so DNS stays inside the VPN.</string>
+    <!-- Today only /0 ranges land here: each covers every address of its kind. -->
+    <string name="subscription_route_exclusion_refused">Won\'t be applied, because each covers every address: %1$s</string>
 </resources>

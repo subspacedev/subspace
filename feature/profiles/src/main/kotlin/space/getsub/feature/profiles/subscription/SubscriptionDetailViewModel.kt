@@ -393,14 +393,19 @@ constructor(
         viewModelScope.launch { profileSource.setResolverTrust(id, trust, host) }
     }
 
-    fun onAllowRouteExclusion() = setRouteExclusionTrust(RouteExclusionTrust.Allowed)
+    fun onAllowRouteExclusion(fingerprint: String) = setRouteExclusionTrust(RouteExclusionTrust.Allowed, fingerprint)
 
-    fun onDenyRouteExclusion() = setRouteExclusionTrust(RouteExclusionTrust.Denied)
+    fun onDenyRouteExclusion(fingerprint: String) = setRouteExclusionTrust(RouteExclusionTrust.Denied, fingerprint)
 
-    /** M9-E spec §4: the answer is bound to the list the user was shown, not one read later. */
-    private fun setRouteExclusionTrust(trust: RouteExclusionTrust) {
+    /**
+     * M9-E spec §4: the answer is bound to the list the user was shown. [fingerprint] comes from the
+     * rendered card, not from state read at click time, which a newer list may already have replaced.
+     */
+    private fun setRouteExclusionTrust(
+        trust: RouteExclusionTrust,
+        fingerprint: String,
+    ) {
         val id = loadedId ?: return
-        val fingerprint = _state.value.routeExclusionRequest?.fingerprint ?: return
         viewModelScope.launch { profileSource.setRouteExclusionTrust(id, trust, fingerprint) }
     }
 

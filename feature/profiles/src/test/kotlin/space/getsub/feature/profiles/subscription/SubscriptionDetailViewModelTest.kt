@@ -479,16 +479,16 @@ class SubscriptionDetailViewModelTest {
 
             viewModel.state.value.routeExclusionRequest shouldBe
                 RouteExclusionRequest("fp", applied = listOf("172.16.0.0/12"), refused = listOf("0.0.0.0/0"))
-            viewModel.onDenyRouteExclusion()
+            viewModel.onDenyRouteExclusion("fp")
             advanceUntilIdle()
             source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Denied, "fp")
-            viewModel.onAllowRouteExclusion()
+            viewModel.onAllowRouteExclusion("fp")
             advanceUntilIdle()
             source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
         }
 
     @Test
-    fun anAnsweredRouteExclusionShowsNothingAndWritesNothing() =
+    fun anAnsweredRouteExclusionShowsNothing() =
         runTest {
             source.routeStatus.value =
                 RouteExclusionStatus(RouteExclusionTrust.Allowed, "fp", listOf(CidrRange("172.16.0.0", 12, false)))
@@ -496,9 +496,22 @@ class SubscriptionDetailViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.routeExclusionRequest shouldBe null
-            viewModel.onAllowRouteExclusion()
+        }
+
+    @Test
+    fun theAnswerGoesToTheRenderedListEvenIfANewerOneArrived() =
+        runTest {
+            val lan = CidrRange("172.16.0.0", 12, isV6 = false)
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "shown", listOf(lan))
+            viewModel.load(SUBSCRIPTION_ID)
             advanceUntilIdle()
-            source.lastRouteTrust shouldBe null
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "newer", listOf(lan))
+            advanceUntilIdle()
+
+            viewModel.onAllowRouteExclusion("shown")
+            advanceUntilIdle()
+
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "shown")
         }
 
     @Test

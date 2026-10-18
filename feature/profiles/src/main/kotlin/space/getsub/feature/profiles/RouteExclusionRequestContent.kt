@@ -20,8 +20,8 @@ private val LINE_GAP = 4.dp
 
 /**
  * The provider's excluded-routes request (M9-E spec §4), shared by the Servers group card and
- * subscription details: what would bypass the VPN, every range by name, what is refused anyway,
- * then Don't allow and Allow.
+ * subscription details: what would bypass the VPN, every range by name, that a range covering the
+ * DNS server is skipped at connect, what is refused anyway, then Don't allow and Allow.
  *
  * ARCHITECTURE.md §A.1: this is a Dangerous directive and the confirm action is not the prominent
  * or default-focused one — Don't allow comes first and is the outlined button, Allow is a text
@@ -42,6 +42,12 @@ internal fun RouteExclusionRequestContent(
         Text(
             text = stringResource(R.string.subscription_route_exclusion_body, request.applied.joinToString(", ")),
             style = MaterialTheme.typography.bodyMedium,
+        )
+        // Review ruling: the DNS plan is decided in :bg at connect, so the card does not judge DNS
+        // coverage; it says what happens instead.
+        Text(
+            text = stringResource(R.string.subscription_route_exclusion_dns_note),
+            style = MaterialTheme.typography.bodySmall,
         )
         if (request.refused.isNotEmpty()) {
             val refused = request.refused.joinToString(", ")
