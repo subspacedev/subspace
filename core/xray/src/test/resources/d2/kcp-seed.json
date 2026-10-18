@@ -1,0 +1,56 @@
+{
+  "log": {
+    "access": "none",
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": ["1.1.1.1"]
+  },
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "protocol": "socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "settings": {
+        "udp": true
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "k.example.com",
+            "port": 4000,
+            "users": [
+              {
+                "id": "70cc48c5-b2f4-4a1e-9f3d-0123456789ab",
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "kcp",
+        "finalmask": {"udp":[{"type":"mkcp-legacy","settings":{"value":"kcp-seed"}}]},
+        "security": "none",
+        "kcpSettings": {}
+      }
+    },
+    { "tag": "direct", "protocol": "freedom" },
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": []
+  }
+}

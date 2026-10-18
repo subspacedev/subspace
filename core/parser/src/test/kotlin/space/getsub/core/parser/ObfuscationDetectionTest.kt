@@ -20,9 +20,10 @@ class ObfuscationDetectionTest {
         val array =
             outbounds(
                 """[{"tag":"a","protocol":"vless"},{"tag":"d","protocol":"freedom"},
-                    {"tag":"w","protocol":"wireguard"}]""",
+                    {"tag":"w","protocol":"wireguard"},{"tag":"b","protocol":"blackhole"}]""",
             )
-        ObfuscationDetection.outermostEligible(array) shouldBe setOf(0)
+        // M9-D2: WireGuard dials UDP itself and takes noise (research §1.3), so it is eligible.
+        ObfuscationDetection.outermostEligible(array) shouldBe setOf(0, 2)
     }
 
     @Test fun `an outbound dialling through another proxy outbound is not the outermost hop`() {
@@ -68,7 +69,7 @@ class ObfuscationDetectionTest {
 
     @Test fun `plan of junk or a config without eligible outbounds is empty`() {
         ObfuscationDetection.plan("not json", user, user) shouldBe emptyList()
-        ObfuscationDetection.plan("""{"outbounds":[{"tag":"w","protocol":"wireguard"}]}""", user, user) shouldBe
+        ObfuscationDetection.plan("""{"outbounds":[{"tag":"d","protocol":"freedom"}]}""", user, user) shouldBe
             emptyList()
         // Two eligible outbounds dialling through each other: neither is outermost (case c).
         ObfuscationDetection.plan(
@@ -128,5 +129,54 @@ class ObfuscationDetectionTest {
     @Test fun `a malformed streamSettings is not an own mask and does not throw`() {
         val array = outbounds("""[{"tag":"p","protocol":"vless","streamSettings":"oops"}]""")
         ObfuscationDetection.ownFragment(array[0].jsonObject, byTag(array)).present shouldBe false
+    }
+
+    // ── M9-D2 research §5.3: fragment is TCP, noise is UDP ──────────────────
+
+    private fun planOf(outbound: String): OutboundPlan {
+        val raw = """{"outbounds":[$outbound]}"""
+        return ObfuscationDetection.plan(raw, user, user).single()
+    }
+
+    @Test fun `wireguard and mkcp take noise but never the fragment`() {
+        val rows =
+            listOf(
+                """{"tag":"w","protocol":"wireguard","settings":{}}""",
+                """{"tag":"k","protocol":"vless","streamSettings":{"network":"kcp"}}""",
+                """{"tag":"k","protocol":"vmess","streamSettings":{"network":"mKCP","security":"tls"}}""",
+            )
+        for (row in rows) {
+            val plan = planOf(row)
+            plan.fragment shouldBe MaskFate.Nothing
+            plan.noise shouldBe MaskFate.Ours
+        }
+    }
+
+    @Test fun `http and httpupgrade take the fragment but never noise`() {
+        val rows =
+            listOf(
+                """{"tag":"h","protocol":"http","settings":{"address":"p.example","port":8080}}""",
+                """{"tag":"u","protocol":"vless","streamSettings":{"network":"httpupgrade","security":"tls"}}""",
+                """{"tag":"u","protocol":"trojan","streamSettings":{"network":"HTTPUpgrade"}}""",
+            )
+        for (row in rows) {
+            val plan = planOf(row)
+            plan.fragment shouldBe MaskFate.Ours
+            plan.noise shouldBe MaskFate.Nothing
+        }
+    }
+
+    @Test fun `a config's own mask still reads as its own where ours is not offered`() {
+        val ownNoise = """{"tag":"h","protocol":"http","streamSettings":{"finalmask":{"udp":[{"type":"noise"}]}}}"""
+        planOf(ownNoise).noise shouldBe MaskFate.Own
+        val ownFragment =
+            """{"tag":"w","protocol":"wireguard","streamSettings":{"finalmask":{"tcp":[{"type":"fragment"}]}}}"""
+        planOf(ownFragment).fragment shouldBe MaskFate.Own
+    }
+
+    @Test fun `tcp transports keep both, as before`() {
+        val plan = planOf("""{"tag":"v","protocol":"vless","streamSettings":{"network":"ws"}}""")
+        plan.fragment shouldBe MaskFate.Ours
+        plan.noise shouldBe MaskFate.Ours
     }
 }

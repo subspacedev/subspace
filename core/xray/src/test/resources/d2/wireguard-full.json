@@ -1,0 +1,52 @@
+{
+  "log": {
+    "access": "none",
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": ["1.1.1.1"]
+  },
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "protocol": "socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "settings": {
+        "udp": true
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "wireguard",
+      "settings": {
+        "secretKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "address": ["10.9.0.2/32", "fd00::2/128"],
+        "peers": [
+          {
+            "publicKey": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+            "preSharedKey": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+            "endpoint": "wg.example.com:51820",
+            "keepAlive": 25,
+            "allowedIPs": ["0.0.0.0/0"]
+          }
+        ],
+        "mtu": 1380,
+        "reserved": [1, 2, 3],
+        "noKernelTun": true
+      }
+    },
+    { "tag": "direct", "protocol": "freedom" },
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": []
+  }
+}

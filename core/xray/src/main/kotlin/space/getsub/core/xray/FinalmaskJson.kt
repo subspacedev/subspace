@@ -67,11 +67,24 @@ internal object FinalmaskJson {
     }
 
     /** The `finalmask` object's value, or null when there is nothing to emit. */
-    fun block(obfuscation: Obfuscation): String? {
+    fun block(obfuscation: Obfuscation): String? = streamBlock(obfuscation, emptyList())
+
+    /**
+     * The `finalmask` object's value for a stream that may carry mKCP masks, or null when there is nothing
+     * to emit. `udp` is `[kcpMasks…, noise?]`: JSON index 0 is applied to the payload first, so the mKCP
+     * masks (in [space.getsub.core.model.KcpRules.masks] order, seed or original before header) sit inside
+     * and user noise goes last, nearest the wire (M9-D2 research §3.3 capture: noise anywhere else gets the
+     * header wrapped around it). The caller has already dropped masks that do not apply to the outbound.
+     */
+    fun streamBlock(
+        obfuscation: Obfuscation?,
+        kcpMasks: List<KcpMask>,
+    ): String? {
+        val udp = kcpMasks.map(::kcpMask) + listOfNotNull(obfuscation?.noise?.let { noiseMask(it.spec) })
         val halves =
             buildList {
-                obfuscation.fragment?.let { add(""""tcp":[${fragmentMask(it.spec)}]""") }
-                obfuscation.noise?.let { add(""""udp":[${noiseMask(it.spec)}]""") }
+                obfuscation?.fragment?.let { add(""""tcp":[${fragmentMask(it.spec)}]""") }
+                if (udp.isNotEmpty()) add(""""udp":[${udp.joinToString(",")}]""")
             }
         return if (halves.isEmpty()) null else "{${halves.joinToString(",")}}"
     }
@@ -143,15 +156,15 @@ internal object FinalmaskJson {
                 ).joinToString(",", "{", "}")
         }
 
-    private fun IntRange.wire(): String = "$first-$last"
-
-    private fun FragmentPackets.wire(): String =
-        when (this) {
-            FragmentPackets.TlsHello -> "tlshello"
-            is FragmentPackets.Records -> range.wire()
-        }
-
     // `array` is a JSON byte array (PraseByteSlice unmarshals it into []byte); every other type is a string.
     private fun packetJson(p: NoisePayload.Fixed): String =
         if (p.type == NoisePacketType.Array) "[${p.packet}]" else jsonString(p.packet)
 }
+
+private fun IntRange.wire(): String = "$first-$last"
+
+private fun FragmentPackets.wire(): String =
+    when (this) {
+        FragmentPackets.TlsHello -> "tlshello"
+        is FragmentPackets.Records -> range.wire()
+    }
