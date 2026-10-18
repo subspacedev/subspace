@@ -7,6 +7,7 @@ import space.getsub.core.model.FragmentSpec
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.KcpMask
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoisePayload
 import space.getsub.core.model.NoiseSpec
@@ -48,6 +49,21 @@ internal object FinalmaskJson {
                 """{$payload,"delay":${jsonString(item.delay.wire())}}"""
             }
         return """{"type":"noise","settings":{"noise":[$items]}}"""
+    }
+
+    /**
+     * One mKCP `mkcp-legacy` mask (M9-D2 research §3.2, Xray-core v26.10.10 `infra/conf/transport_finalmask.go`
+     * `MkcpLegacy {header, value}`): `{}` is the classic original obfuscation, `value` a seed, `header` a packet
+     * header. Never both keys in one entry: with a header, `value` means a DNS domain, not a seed.
+     */
+    fun kcpMask(mask: KcpMask): String {
+        val settings =
+            when (mask) {
+                KcpMask.Original -> ""
+                is KcpMask.Seed -> """"value":${jsonString(mask.value)}"""
+                is KcpMask.Header -> """"header":${jsonString(mask.header.wireName)}"""
+            }
+        return """{"type":"mkcp-legacy","settings":{$settings}}"""
     }
 
     /** The `finalmask` object's value, or null when there is nothing to emit. */
