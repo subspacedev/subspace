@@ -41,7 +41,8 @@ internal fun typedRefusal(outbound: Outbound): String? =
         is VmessOutbound -> outbound.stream.refusal()
         is TrojanOutbound -> outbound.stream.refusal()
         is SocksOutbound -> null
-        // HTTP over REALITY is not a combination the core builds; plain and TLS are.
+        // A product call, not a core limit: the core would build HTTP over REALITY (REALITY supports RAW), but
+        // no HTTPS proxy speaks it, so the row is refused rather than left to time out. Plain and TLS are written.
         is HttpOutbound -> "HTTP proxy over REALITY".takeIf { outbound.security is Security.Reality }
         is WireGuardOutbound -> outbound.refusal()
         is Hysteria2Outbound -> outbound.refusal()

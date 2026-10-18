@@ -134,7 +134,8 @@ public data class StoredProfile(
                 // BBR_PROFILES mirrors the generator's refusal (the core fails `unknown bbr profile`).
                 is Hysteria2Outbound -> o.notConnectableReason == null && !o.hasUnknownBbrProfile()
                 is WireGuardOutbound -> o.notConnectableReason == null
-                // HTTP over REALITY is not a thing the core supports; plain and TLS are.
+                // A product call mirrored from TypedRefusal: the core would build HTTP over REALITY, but no
+                // HTTPS proxy speaks it. Plain and TLS are connectable.
                 is HttpOutbound -> o.security !is Security.Reality
                 null -> false
             }

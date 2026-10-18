@@ -1100,7 +1100,14 @@ HTTPUpgrade streamSettings: { network: "httpupgrade", httpupgradeSettings: { hos
 - **WireGuard.** One peer only (a second makes the row not connectable). `address` is omitted when empty
   and `allowedIPs` when empty (an explicit `[]` routes nothing; an absent one takes the defaults).
   Keys are validated as 32 bytes under standard or URL-safe base64, or 64 hex characters, and stored as
-  given. `reserved` is 0 or 3 bytes. `noKernelTun: true` always: Android gives the process no TUN to
+  given. A key that fails that check is a typed failure for a link or a Clash entry (the row is dropped,
+  the failure names the field), and a not-connectable row only for raw JSON, whose bytes are kept.
+  Every `allowedIPs` entry needs a prefix: wireguard-go reads it with `netip.ParsePrefix` when the
+  outbound first dials (`device/uapi.go:382`), after `xray -test` has passed, so a bare address fails only
+  on connect. Links, Clash and the editor write a bare address as `/32` or `/128`; anything else is a
+  typed failure (editor: a field error), and a raw row with an entry that is not already a valid prefix is
+  not connectable (ruling D2-R15). Interface addresses (`address`) keep bare addresses.
+  `reserved` is 0 or 3 bytes. `noKernelTun: true` always: Android gives the process no TUN to
   create. `endpoint` is the only dial target, so an address pin (M9-C) rewrites it (IPv6 bracketed). The
   user's noise is a UDP mask and applies; fragment is TCP-only and never does. WireGuard carries IP
   packets, so the **netstack drops loopback targets**, and a server `freedom` outbound **blackholes private
@@ -1109,7 +1116,12 @@ HTTPUpgrade streamSettings: { network: "httpupgrade", httpupgradeSettings: { hos
   as unsupported protocols, not imported as plain WireGuard.
 - **HTTP.** Flat `settings {address, port, user, pass}`; a password without a user is dropped. TLS comes
   from `streamSettings`, and `allowInsecure` is never written. It carries TCP only, so a UDP destination
-  needs another route. The user's fragment applies; noise does not. A Mihomo `fingerprint` (certificate
+  needs another route. That includes DNS: a generated config sends every plain (DoU) resolver the proxy
+  carries as `tcp://ip:53` (`tcp://[v6]:53`), which Xray dials through routing like DoU
+  (`app/dns/nameserver.go:67`), and always has a DNS plan so app lookups are hijacked into the dns module
+  rather than routed to the proxy as UDP (ruling D2-R16, `UdpCarriage`). DoH and the direct domestic
+  resolver are unchanged; a raw config keeps its own `dns`. HTTP over REALITY is refused as a product
+  call: the core would build it, but no HTTPS proxy speaks REALITY. The user's fragment applies; noise does not. A Mihomo `fingerprint` (certificate
   pin) is ignored: pins stay Hysteria2-only (§14.10), so a self-signed HTTPS proxy fails CA verification.
   There is no share-link form (an `http://` URL is a subscription URL).
 - **mKCP obfuscation is not in `kcpSettings`.** v26.10.10 parses `kcpSettings.header` and `kcpSettings.seed`
@@ -1118,7 +1130,9 @@ HTTPUpgrade streamSettings: { network: "httpupgrade", httpupgradeSettings: { hos
   `cwndMultiplier`, `maxSendingWindow`. Obfuscation is `finalmask.udp` masks of type `mkcp-legacy`:
   `{}` is the classic "original", `{"value": seed}` a seed, `{"header": h}` a header. Never write
   `kcpSettings.header` or `seed`; `RawConfigComposer` rewrites a raw config that has them
-  (`LegacyKcp`) into masks.
+  (`LegacyKcp`) into masks, in front of any `noise` masks already there (noise alone is no obfuscation).
+  `mtu` is 21..65535 and `tti` 10..1000 (`KcpRules`): the floors are the core's, the ceiling is one UDP
+  datagram.
 - **Mask order is `[seed or original, header, user noise]`.** Noise is last, as in Hysteria2, and is
   client-only (a server without it still works). A header-only source is `[original, header]`
   (ruling D2-R3; `[header]` alone is a different wire format). A source with no seed and no header is bare
@@ -1204,8 +1218,11 @@ connectable, with the reason named in the editor. M9-D2 adds WireGuard and HTTP
 the same way (typed rows, plus a typed projection of a raw `wireguard` or `http`
 outbound), and kcp / httpupgrade as VLESS, VMess and Trojan transports. A source
 the model cannot express (a WireGuard config with two peers, an mKCP `headerType=http`,
-REALITY over kcp or httpupgrade, a bad key) imports as a not-connectable row with the reason
-named; AmneziaWG is skipped as an unsupported protocol.
+REALITY over kcp or httpupgrade) imports as a not-connectable row with the reason
+named; AmneziaWG is skipped as an unsupported protocol. A bad WireGuard key, or an
+`allowedIPs` entry that is not an address or prefix, is a typed failure for a link or
+a Clash entry (the row is dropped, the failure names the field) and a not-connectable
+row only for raw JSON, which keeps its bytes.
 Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
 traffic and measures latency (Proxy mode HEADs through the server; TCP mode
 ran, but over the adb-reverse loopback it measured that loopback, not a server
@@ -1989,14 +2006,15 @@ Mandatory rules:
 ## A.2 Tier 1 — table stakes (MVP)
 
 - [ ] Protocols: VLESS (REALITY, XTLS Vision), VMess, Trojan, Shadowsocks,
-      SOCKS5, Hysteria2 — all native to Xray-core now (see §6). VLESS, VMess,
+      SOCKS5, Hysteria2, WireGuard, HTTP — all native to Xray-core now (see §6). VLESS, VMess,
       Trojan, Shadowsocks and SOCKS5 typed rows connect (M9-D2a, verified on
       the Pixel 8 on 2026-10-17); Hysteria2 (M9-D1: Salamander/Gecko, port
-      hopping, Brutal, certificate pins) is implemented on `feat/m9d1-hysteria2`,
-      device rows pending (`docs/agent/research/2026-10-17-m9d1-device-verification.md`);
-      left unchecked until they pass. WireGuard, HTTP and the mKCP / HTTPUpgrade
-      transports (M9-D2) are implemented on `feat/m9d2-wireguard-http-kcp-httpupgrade`,
-      device rows pending (`docs/agent/research/2026-10-18-m9d2-device-verification.md`).
+      hopping, Brutal, certificate pins) is merged (PR #28) and its device rows
+      passed on 2026-10-18 (`docs/agent/research/2026-10-17-m9d1-device-verification.md`).
+      WireGuard and the HTTP proxy, with the mKCP / HTTPUpgrade transports
+      (M9-D2), are implemented on `feat/m9d2-wireguard-http-kcp-httpupgrade`,
+      device rows pending (`docs/agent/research/2026-10-18-m9d2-device-verification.md`);
+      the box stays unchecked until they pass.
 - [ ] Import: manual entry, clipboard, QR camera scan, file, URL
 - [ ] Subscription import with auto-update on an interval, plus update on
       app launch

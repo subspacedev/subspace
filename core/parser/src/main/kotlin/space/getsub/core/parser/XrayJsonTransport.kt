@@ -110,14 +110,14 @@ private fun xhttpOptions(xhttp: JsonObject?): TransportOptions.Xhttp =
 
 /**
  * `kcpSettings` plus the obfuscation, from `streamSettings.finalmask.udp` masks via [readKcpFinalmask]
- * (the v26.10 shape). Without any udp mask the pre-v26.10 fields `kcpSettings.header.type` and
- * `kcpSettings.seed` are read instead, through [classicObfuscation]: v26.10.10 parses and ignores them, so
- * such a config runs as bare KCP, and the projection says what the author meant.
+ * (the v26.10 shape). Without any udp mask (noise masks do not count) the pre-v26.10 fields
+ * `kcpSettings.header.type` and `kcpSettings.seed` are read instead, through [classicObfuscation]: v26.10.10
+ * parses and ignores them, so such a config runs as bare KCP, and the projection says what the author meant.
  *
  * Legacy marker: none is stored. Like D1's `LegacyUdpHop`, `:core:xray`'s raw composer detects the shape
  * at compose time by re-reading the raw JSON (a kcp outbound with `kcpSettings.header`/`seed` and no
- * `finalmask.udp`) and rewrites it into masks, so the projection and the emitted config agree.
- * `mtu`/`tti` are projected as given; one the core rejects makes the row not connectable
+ * `finalmask.udp` mask other than noise) and rewrites it into masks, so the projection and the emitted config
+ * agree. `mtu`/`tti` are projected as given; one outside [KcpRules.settingsValid] makes the row not connectable
  * ([KcpUnsupported.InvalidSetting]).
  */
 private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
