@@ -140,8 +140,12 @@ class DirectiveTuningTest {
 
     @Test fun `mux fields without mux-enable do nothing`() {
         resolve(mapOf("mux-tcp-connections" to "4")).mux shouldBe TuningValue(null, TuningOrigin.Default)
+    }
+
+    @Test fun `an explicit mux-enable off is the subscription's answer`() {
+        resolve(mapOf("mux-enable" to "0")).mux shouldBe TuningValue(null, TuningOrigin.Subscription)
         resolve(mapOf("mux-enable" to "false", "mux-tcp-connections" to "4")).mux shouldBe
-            TuningValue(null, TuningOrigin.Default)
+            TuningValue(null, TuningOrigin.Subscription)
     }
 
     @Test fun `mux-enable with an out-of-range count leaves mux off with the reason`() {

@@ -116,7 +116,8 @@ private fun mux(
         user.override && !user.enabled -> TuningValue(null, TuningOrigin.Yours)
         user.override ->
             checkedValue(MuxRules.check(user.tcpConnections, user.xudpConnections, user.quic), TuningOrigin.Yours, null)
-        directiveBool(d[MUX_ENABLE]) != true -> TuningValue(null, TuningOrigin.Default)
+        directiveBool(d[MUX_ENABLE]) == null -> TuningValue(null, TuningOrigin.Default)
+        directiveBool(d[MUX_ENABLE]) == false -> TuningValue(null, TuningOrigin.Subscription)
         else -> {
             val defaults = MuxUserSettings.DEFAULT
             val tcp = d[MUX_TCP].orDefault(defaults.tcpConnections)
