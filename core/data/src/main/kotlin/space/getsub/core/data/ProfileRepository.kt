@@ -621,7 +621,7 @@ internal fun Outbound.transportSummary(): String =
         is Hysteria2Outbound -> listOf("QUIC", hopSummary() ?: port.toString()).joinToString(" · ")
         is WireGuardOutbound -> listOf("UDP", port.toString()).joinToString(" · ")
         is HttpOutbound ->
-            listOfNotNull("TCP", port.toString(), "TLS".takeIf { security is Security.Tls }).joinToString(" · ")
+            listOfNotNull("TCP", "TLS".takeIf { security is Security.Tls }, port.toString()).joinToString(" · ")
         is VlessOutbound -> stream.summary(port)
         is VmessOutbound -> stream.summary(port)
         is TrojanOutbound -> stream.summary(port)

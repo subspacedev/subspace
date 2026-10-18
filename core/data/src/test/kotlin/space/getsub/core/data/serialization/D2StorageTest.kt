@@ -11,6 +11,7 @@ import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.protocolName
 import space.getsub.core.data.transportSummary
 import space.getsub.core.model.HttpOutbound
+import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.KcpHeader
 import space.getsub.core.model.KcpObfuscation
 import space.getsub.core.model.KcpUnsupported
@@ -167,6 +168,18 @@ class D2StorageTest {
     }
 
     @Test
+    fun `a stored hysteria2 row decodes to the same outbound and re-encodes identically`() {
+        val json =
+            """{"type":"hysteria2","address":"hy.example","port":443,"password":"pw",""" +
+                """"tls":{"serverName":"sni","alpn":["h3"],"pins":[],"skipChecksRequested":false},""" +
+                """"hopping":null,"obfuscation":{"type":"none"},"congestion":{"type":"default"},"unsupported":null}"""
+        val o = json.toOutbound() as Hysteria2Outbound
+        o.address shouldBe "hy.example"
+        o.password shouldBe "pw"
+        o.toJson() shouldBe json
+    }
+
+    @Test
     fun `stored discriminators match protocolName`() {
         wg.protocolName() shouldBe "wireguard"
         wg.toJson().contains("\"type\":\"wireguard\"") shouldBe true
@@ -205,7 +218,7 @@ class D2StorageTest {
     fun `labels`() {
         wg.transportSummary() shouldBe "UDP · 51820"
         http.transportSummary() shouldBe "TCP · 8080"
-        http.copy(security = tls).transportSummary() shouldBe "TCP · 8080 · TLS"
+        http.copy(security = tls).transportSummary() shouldBe "TCP · TLS · 8080"
         kcpRow("kcp").transportSummary() shouldBe "mKCP · 443"
         kcpRow("mkcp").transportSummary() shouldBe "mKCP · 443"
         vless("httpupgrade", upgrade).copy(port = 80).transportSummary() shouldBe "HTTPUpgrade · 80"
