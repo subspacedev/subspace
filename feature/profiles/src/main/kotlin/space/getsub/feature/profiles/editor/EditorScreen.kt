@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -394,7 +397,12 @@ private fun EditorForm(
             )
         }
 
-        Button(onClick = actions.onSave, modifier = Modifier.padding(top = CONTENT_PADDING)) {
+        // A REALITY transport conflict is shown as an error in the Security card; Save stays off until it is fixed.
+        Button(
+            onClick = actions.onSave,
+            enabled = state.realityConflict == null,
+            modifier = Modifier.padding(top = CONTENT_PADDING),
+        ) {
             Text(stringResource(R.string.editor_save_button))
         }
     }
@@ -560,7 +568,7 @@ private fun CredentialFields(
                     value = state.primaryCredential,
                     onValueChange = actions.onPrimaryCredentialChanged,
                 )
-                EditorTextField(
+                EditorField(
                     label = stringResource(R.string.editor_socks_password_label),
                     value = state.secondaryCredential,
                     onValueChange = actions.onSecondaryCredentialChanged,
@@ -577,6 +585,7 @@ private fun CredentialFields(
                     label = stringResource(R.string.editor_socks_password_label),
                     value = state.secondaryCredential,
                     onValueChange = actions.onSecondaryCredentialChanged,
+                    secret = true,
                 )
             }
         }
@@ -978,13 +987,20 @@ private fun OverrideBlocker.messageRes(): Int =
 
 // One shared text-field primitive, reused for every field in the form —
 // label/value/callback/modifier are the composable-parameter baseline every
-// field in this module carries, keyboardType and error are the two axes an
-// individual field opts into (numeric input, validation). Grouping these into
-// a carrier class the way ImportActions/ServersActions do would just move the
-// same six names one level down without shrinking anything.
-@Suppress("LongParameterList")
+// field in this module carries; the rest are the axes an individual field opts
+// into (numeric input, validation, masking, multi-line). Grouping these into a
+// carrier class the way ImportActions/ServersActions do would just move the
+// same names one level down without shrinking anything.
+//
+// [error] is a parser [FailureDetail]; [errorText] and [hint] are already-resolved fixed text (never typed
+// content, ARCHITECTURE.md §5.6). [secret] masks the value (keys, passwords, the mKCP seed) with a Show/Hide
+// button and asks the keyboard not to learn it.
+//
+// DEPRECATION: the replacement (OutlinedSecureTextField) owns a TextFieldState, but every field in this form is a
+// hoisted String in [EditorState] so a half-typed value survives; PasswordVisualTransformation masks that model.
+@Suppress("LongParameterList", "DEPRECATION")
 @Composable
-private fun EditorField(
+internal fun EditorField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
@@ -993,15 +1009,33 @@ private fun EditorField(
     error: FailureDetail? = null,
     // Machine strings (address, UUID, SNI, paths, keys) read as config values, not prose.
     mono: Boolean = false,
+    secret: Boolean = false,
+    singleLine: Boolean = true,
+    errorText: String? = null,
+    hint: String? = null,
 ) {
+    var revealed by rememberSaveable { mutableStateOf(false) }
+    val message = errorText ?: error?.let { editorErrorText(label, it) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        singleLine = true,
-        isError = error != null,
-        supportingText = error?.let { { Text(editorErrorText(label, it)) } },
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 2,
+        isError = message != null,
+        supportingText = (message ?: hint)?.let { { Text(it) } },
+        trailingIcon =
+        if (secret) {
+            {
+                TextButton(onClick = { revealed = !revealed }) {
+                    Text(stringResource(if (revealed) R.string.editor_secret_hide else R.string.editor_secret_show))
+                }
+            }
+        } else {
+            null
+        },
+        visualTransformation = if (secret && !revealed) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else keyboardType),
         textStyle = MaterialTheme.typography.bodyLarge.let { if (mono) it.mono() else it },
         shape = MaterialTheme.shapes.large,
         modifier = modifier.fillMaxWidth(),

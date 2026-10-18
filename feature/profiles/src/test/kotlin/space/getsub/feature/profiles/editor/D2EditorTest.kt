@@ -163,19 +163,67 @@ class D2EditorTest {
     }
 
     @Test
-    fun `a WireGuard reason about a retypable value is dropped once the value validates`() =
-        runTest {
-            val (viewModel, source) = loaded(wg.copy(mtu = 0, notConnectableReason = WireGuardUnsupported.InvalidMtu))
-            advanceUntilIdle()
-            viewModel.save()
-            advanceUntilIdle()
-            source.lastUpdate shouldBe null
-            viewModel.state.value.wireGuardErrors shouldBe setOf(WireGuardField.Mtu)
+    fun `an untouched save of the importer's projection of a bad mtu or reserved keeps the reason`() {
+        // The raw-JSON importer stores the projected value (mtu 1420, no reserved), never the bad one.
+        listOf(WireGuardUnsupported.InvalidMtu, WireGuardUnsupported.InvalidReserved).forEach { reason ->
+            val projected = wg.copy(mtu = 1420, reserved = emptyList(), notConnectableReason = reason)
+            roundTrip(projected)
+        }
+    }
 
-            viewModel.editWg { it.copy(mtu = "1280") }
+    @Test
+    fun `editing the field a bad-value reason is about clears it`() =
+        runTest {
+            val mtuRow =
+                wg.copy(mtu = 1420, reserved = emptyList(), notConnectableReason = WireGuardUnsupported.InvalidMtu)
+            val (viewModel, source) = loaded(mtuRow)
+            advanceUntilIdle()
+            viewModel.editWg { it.copy(reserved = "1,2,3") }
             viewModel.save()
             advanceUntilIdle()
-            source.lastUpdate shouldBe wg.copy(notConnectableReason = null)
+            (source.lastUpdate as WireGuardOutbound).notConnectableReason shouldBe WireGuardUnsupported.InvalidMtu
+
+            viewModel.editWg { it.copy(mtu = "1400") }
+            viewModel.save()
+            advanceUntilIdle()
+            source.lastUpdate shouldBe mtuRow.copy(mtu = 1400, reserved = listOf(1, 2, 3), notConnectableReason = null)
+
+            val reservedRow = mtuRow.copy(notConnectableReason = WireGuardUnsupported.InvalidReserved)
+            val (second, secondSource) = loaded(reservedRow)
+            advanceUntilIdle()
+            second.editWg { it.copy(reserved = "4,5,6") }
+            second.save()
+            advanceUntilIdle()
+            secondSource.lastUpdate shouldBe reservedRow.copy(reserved = listOf(4, 5, 6), notConnectableReason = null)
+        }
+
+    @Test
+    fun `an empty stored allowed IPs list stays empty untouched, and a field edited to blank means the default`() =
+        runTest {
+            val none = wg.copy(allowedIps = emptyList())
+            roundTrip(none)
+
+            val (viewModel, source) = loaded(wg)
+            advanceUntilIdle()
+            viewModel.editWg { it.copy(allowedIps = "") }
+            viewModel.save()
+            advanceUntilIdle()
+            (source.lastUpdate as WireGuardOutbound).allowedIps shouldBe listOf("0.0.0.0/0", "::/0")
+        }
+
+    @Test
+    fun `an HTTP username and password are saved verbatim, and only empty means none`() =
+        runTest {
+            val padded = http.copy(username = " alice ", password = "  pass word  ")
+            roundTrip(padded)
+
+            val (viewModel, source) = loaded(http)
+            advanceUntilIdle()
+            viewModel.onPrimaryCredentialChanged("")
+            viewModel.onSecondaryCredentialChanged(" ")
+            viewModel.save()
+            advanceUntilIdle()
+            source.lastUpdate shouldBe http.copy(username = null, password = " ")
         }
 
     @Test
@@ -301,8 +349,8 @@ class D2EditorTest {
             advanceUntilIdle()
             viewModel.onAddressChanged(" 203.0.113.9 ")
             viewModel.onPortChanged("3128")
-            viewModel.onPrimaryCredentialChanged("  ")
-            viewModel.onSecondaryCredentialChanged(" new-pass ")
+            viewModel.onPrimaryCredentialChanged("")
+            viewModel.onSecondaryCredentialChanged("new-pass")
             viewModel.onTlsServerNameChanged(" other.example ")
             viewModel.save()
             advanceUntilIdle()

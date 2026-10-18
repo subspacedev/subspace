@@ -31,9 +31,8 @@ private val DEFAULT_ALLOWED_IPS = listOf("0.0.0.0/0", "::/0")
  * never reach a log or an error string; [toString] redacts them and [WireGuardField] errors carry no content.
  *
  * [notConnectableReason] is a fact about the source. `MultiplePeers` and `UnsupportedMask` cannot be fixed
- * here, so they travel through a save; the three reasons about a value the user can retype
- * (`InvalidKey`, `InvalidReserved`, `InvalidMtu`) are dropped by [toOutbound], which only runs on a draft
- * [validate] accepted.
+ * here, so they travel through a save; `InvalidKey`, `InvalidReserved` and `InvalidMtu` are dropped by
+ * [toOutbound] once the user has changed that value (see [remainingReason]).
  */
 internal data class WireGuardDraft(
     val secretKey: String = "",
@@ -45,6 +44,11 @@ internal data class WireGuardDraft(
     val keepAlive: String = "",
     val allowedIps: String = DEFAULT_ALLOWED_IPS.joinToString("\n"),
     val notConnectableReason: WireGuardUnsupported? = null,
+    /** The mtu and reserved text as loaded: a reason about either is kept until the user changes that field. */
+    val loadedMtu: String = WireGuardRules.DEFAULT_MTU.toString(),
+    val loadedReserved: String = "",
+    /** The row was stored with no allowed IPs (nothing routes). An untouched blank field keeps it that way. */
+    val loadedAllowedEmpty: Boolean = false,
 ) {
     private fun tokens(text: String): List<String> = text.trim().split(LIST_SEPARATORS).filter { it.isNotEmpty() }
 
@@ -90,22 +94,29 @@ internal data class WireGuardDraft(
             mtu = mtu.trim().toIntOrNull() ?: WireGuardRules.DEFAULT_MTU,
             reserved = WireGuardRules.parseReserved(reserved).orEmpty(),
             keepAlive = keepAlive.trim().toIntOrNull()?.takeIf { it > 0 },
-            allowedIps = allowedIpTokens.ifEmpty { DEFAULT_ALLOWED_IPS },
-            notConnectableReason = notConnectableReason.takeUnless { it in FIXABLE_BY_RETYPING },
+            allowedIps = allowedIpTokens.ifEmpty { if (loadedAllowedEmpty) emptyList() else DEFAULT_ALLOWED_IPS },
+            notConnectableReason = remainingReason(),
         )
+
+    /**
+     * The importer stores the projected value (the default mtu, empty reserved), not the bad one, so an invalid
+     * mtu or reserved is cleared only once the user changes that field from its loaded text. A bad key cannot be
+     * saved at all, so by the time this runs it has been retyped.
+     */
+    private fun remainingReason(): WireGuardUnsupported? =
+        when (notConnectableReason) {
+            WireGuardUnsupported.InvalidKey -> null
+            WireGuardUnsupported.InvalidMtu -> notConnectableReason.takeIf { mtu.trim() == loadedMtu.trim() }
+            WireGuardUnsupported.InvalidReserved ->
+                notConnectableReason.takeIf { reserved.trim() == loadedReserved.trim() }
+            else -> notConnectableReason
+        }
 
     override fun toString(): String =
         "WireGuardDraft(keys=<redacted>, localAddresses=${localAddressTokens.size}, " +
             "notConnectableReason=$notConnectableReason)"
 
     companion object {
-        private val FIXABLE_BY_RETYPING =
-            setOf(
-                WireGuardUnsupported.InvalidKey,
-                WireGuardUnsupported.InvalidReserved,
-                WireGuardUnsupported.InvalidMtu,
-            )
-
         fun from(outbound: WireGuardOutbound): WireGuardDraft =
             WireGuardDraft(
                 secretKey = outbound.secretKey,
@@ -117,6 +128,9 @@ internal data class WireGuardDraft(
                 keepAlive = outbound.keepAlive?.toString().orEmpty(),
                 allowedIps = outbound.allowedIps.joinToString("\n"),
                 notConnectableReason = outbound.notConnectableReason,
+                loadedMtu = outbound.mtu.toString(),
+                loadedReserved = outbound.reserved.joinToString(","),
+                loadedAllowedEmpty = outbound.allowedIps.isEmpty(),
             )
     }
 }

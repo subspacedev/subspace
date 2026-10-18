@@ -724,6 +724,8 @@ private fun EditorState.toTransportOptions(): TransportOptions =
 
         // Only the chosen network's fields are read, so what a previous choice left in the draft cannot
         // reach the saved outbound.
+        // D2-R10: a pre-D2 row with a kcp network and transport None loads as the default draft, so it saves as
+        // Kcp(null, null, no obfuscation): the same bare mKCP the generator already emitted for it.
         "kcp", "mkcp" -> kcp.toTransport()
         "httpupgrade" ->
             TransportOptions.HttpUpgrade(host = httpUpgradeHost.trim(), path = httpUpgradePath.trim().ifEmpty { "/" })

@@ -15,8 +15,10 @@ internal fun EditorState.toHttpOutbound(portValue: Int): HttpOutbound =
     HttpOutbound(
         address = address.trim(),
         port = portValue,
-        username = primaryCredential.trim().ifEmpty { null },
-        password = secondaryCredential.trim().ifEmpty { null },
+        // Verbatim, like the mKCP seed (D2-R6): the importers do not trim either, and a password may have a
+        // leading or trailing space. Only "" means none.
+        username = primaryCredential.ifEmpty { null },
+        password = secondaryCredential.ifEmpty { null },
         security =
         when (securityKind) {
             EditorSecurityKind.Tls -> Security.Tls(tlsServerName.trim(), tlsFingerprint.trim(), tlsAllowInsecure)

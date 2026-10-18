@@ -47,22 +47,22 @@ internal fun KcpFields(
                 modifier = Modifier.testTag(EDITOR_KCP_NOT_CONNECTABLE_TEST_TAG),
             )
         }
-        EditorTextField(
+        EditorField(
             label = stringResource(R.string.editor_kcp_mtu_label),
             value = draft.mtu,
             onValueChange = { onChanged(draft.copy(mtu = it)) },
             keyboardType = KeyboardType.Number,
-            error = errorIf(KcpField.Mtu in errors, R.string.editor_kcp_mtu_error),
+            errorText = errorIf(KcpField.Mtu in errors, R.string.editor_kcp_mtu_error),
         )
-        EditorTextField(
+        EditorField(
             label = stringResource(R.string.editor_kcp_tti_label),
             value = draft.tti,
             onValueChange = { onChanged(draft.copy(tti = it)) },
             keyboardType = KeyboardType.Number,
-            error = errorIf(KcpField.Tti in errors, R.string.editor_kcp_tti_error),
+            errorText = errorIf(KcpField.Tti in errors, R.string.editor_kcp_tti_error),
         )
         // The seed is verbatim (ruling D2-R6): a space is a real seed, so nothing here trims it.
-        EditorTextField(
+        EditorField(
             label = stringResource(R.string.editor_kcp_seed_label),
             value = draft.seed,
             onValueChange = { onChanged(draft.copy(seed = it)) },
@@ -130,13 +130,13 @@ internal fun HttpUpgradeFields(
     onHostChanged: (String) -> Unit,
     onPathChanged: (String) -> Unit,
 ) {
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_httpupgrade_host_label),
         value = state.httpUpgradeHost,
         onValueChange = onHostChanged,
         mono = true,
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_httpupgrade_path_label),
         value = state.httpUpgradePath,
         onValueChange = onPathChanged,

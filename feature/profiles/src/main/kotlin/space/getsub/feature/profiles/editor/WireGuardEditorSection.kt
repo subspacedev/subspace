@@ -50,28 +50,28 @@ private fun KeyFields(
     errors: Set<WireGuardField>,
     onChanged: (WireGuardDraft) -> Unit,
 ) {
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_secret_key_label),
         value = draft.secretKey,
         onValueChange = { onChanged(draft.copy(secretKey = it)) },
         mono = true,
         secret = true,
-        error = errorIf(WireGuardField.SecretKey in errors, R.string.editor_wireguard_key_error),
+        errorText = errorIf(WireGuardField.SecretKey in errors, R.string.editor_wireguard_key_error),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_peer_key_label),
         value = draft.peerPublicKey,
         onValueChange = { onChanged(draft.copy(peerPublicKey = it)) },
         mono = true,
-        error = errorIf(WireGuardField.PeerPublicKey in errors, R.string.editor_wireguard_key_error),
+        errorText = errorIf(WireGuardField.PeerPublicKey in errors, R.string.editor_wireguard_key_error),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_psk_label),
         value = draft.preSharedKey,
         onValueChange = { onChanged(draft.copy(preSharedKey = it)) },
         mono = true,
         secret = true,
-        error = errorIf(WireGuardField.PreSharedKey in errors, R.string.editor_wireguard_key_error),
+        errorText = errorIf(WireGuardField.PreSharedKey in errors, R.string.editor_wireguard_key_error),
     )
 }
 
@@ -81,43 +81,43 @@ private fun TunnelFields(
     errors: Set<WireGuardField>,
     onChanged: (WireGuardDraft) -> Unit,
 ) {
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_local_addresses_label),
         value = draft.localAddresses,
         onValueChange = { onChanged(draft.copy(localAddresses = it)) },
         mono = true,
         singleLine = false,
-        error = errorIf(WireGuardField.LocalAddresses in errors, R.string.editor_wireguard_local_addresses_error),
+        errorText = errorIf(WireGuardField.LocalAddresses in errors, R.string.editor_wireguard_local_addresses_error),
         hint = stringResource(R.string.editor_wireguard_local_addresses_hint),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_allowed_ips_label),
         value = draft.allowedIps,
         onValueChange = { onChanged(draft.copy(allowedIps = it)) },
         mono = true,
         singleLine = false,
-        error = errorIf(WireGuardField.AllowedIps in errors, R.string.editor_wireguard_allowed_ips_error),
+        errorText = errorIf(WireGuardField.AllowedIps in errors, R.string.editor_wireguard_allowed_ips_error),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_mtu_label),
         value = draft.mtu,
         onValueChange = { onChanged(draft.copy(mtu = it)) },
         keyboardType = KeyboardType.Number,
-        error = errorIf(WireGuardField.Mtu in errors, R.string.editor_wireguard_mtu_error),
+        errorText = errorIf(WireGuardField.Mtu in errors, R.string.editor_wireguard_mtu_error),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_reserved_label),
         value = draft.reserved,
         onValueChange = { onChanged(draft.copy(reserved = it)) },
         mono = true,
-        error = errorIf(WireGuardField.Reserved in errors, R.string.editor_wireguard_reserved_error),
+        errorText = errorIf(WireGuardField.Reserved in errors, R.string.editor_wireguard_reserved_error),
     )
-    EditorTextField(
+    EditorField(
         label = stringResource(R.string.editor_wireguard_keepalive_label),
         value = draft.keepAlive,
         onValueChange = { onChanged(draft.copy(keepAlive = it)) },
         keyboardType = KeyboardType.Number,
-        error = errorIf(WireGuardField.Keepalive in errors, R.string.editor_wireguard_keepalive_error),
+        errorText = errorIf(WireGuardField.Keepalive in errors, R.string.editor_wireguard_keepalive_error),
     )
 }
 
