@@ -55,7 +55,7 @@ public data class RouteExclusionStatus(
     val applicable: List<CidrRange>
         get() = offered.filterIndexed { index, _ -> index !in tooWideIndices }
 
-    /** The ranges in [offered] that are never applied: too wide (a whole family, or the TUN's own address). */
+    /** The ranges in [offered] that are never applied: too wide (`/0`, a whole address family). */
     val refused: List<CidrRange>
         get() = offered.filterIndexed { index, _ -> index in tooWideIndices }
 

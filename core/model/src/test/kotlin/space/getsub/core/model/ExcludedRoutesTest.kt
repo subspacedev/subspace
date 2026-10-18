@@ -57,11 +57,19 @@ class ExcludedRoutesTest {
         vararg dns: String,
     ) = ExcludedRoutes.validate(ranges(text), dns.toList())
 
+    // Controller ruling: containing the TUN's own addresses is not "too wide"; nothing dials 10.7.0.x.
+    @Test
+    fun rangesCoveringTheTunAddressesAreValid() {
+        problems("10.0.0.0/8 10.7.0.0/16") shouldBe emptyList()
+        problems("fd00:1:2:3::/64") shouldBe emptyList()
+        problems("0.0.0.0/1 ::/1") shouldBe emptyList()
+    }
+
     @Test
     fun validateFlagsWideAndDns() {
         problems("0.0.0.0/0") shouldBe listOf(TuningProblem.RangeTooWide(0))
-        problems("10.0.0.0/8 10.7.0.0/16") shouldBe listOf(TuningProblem.RangeTooWide(0), TuningProblem.RangeTooWide(1))
-        problems("fd00:1:2:3::/64") shouldBe listOf(TuningProblem.RangeTooWide(0))
+        problems("::/0") shouldBe listOf(TuningProblem.RangeTooWide(0))
+        problems("192.168.0.0/16 ::/0") shouldBe listOf(TuningProblem.RangeTooWide(1))
         problems("1.1.1.0/24", "1.1.1.1") shouldBe listOf(TuningProblem.RangeCoversDns(0))
         problems("192.168.0.0/16", "1.1.1.1", "not-an-ip", "2606:4700::1111") shouldBe emptyList()
         problems("2606:4700::/32", "2606:4700::1111") shouldBe listOf(TuningProblem.RangeCoversDns(0))

@@ -23,8 +23,6 @@ public object ExcludedRoutes {
     private const val V6_GROUPS = 8
     private const val GROUP_BITS = 16
     private const val OCTET_BITS = 8
-    private const val TUN_V4 = "10.7.0.1"
-    private const val TUN_V6 = "fd00:1:2:3::1"
     private val SEPARATORS = Regex("[,\\s]+")
     private const val HEX_RADIX = 16
     private const val MAX_PREFIX_DIGITS = 3
@@ -39,17 +37,24 @@ public object ExcludedRoutes {
         return TuningChecked.Ok(ranges.distinct())
     }
 
+    /**
+     * The problems with [ranges], each naming the range's index.
+     *
+     * [TuningProblem.RangeTooWide]: a `/0` range, the whole IPv4 or IPv6 space. Containing the TUN's
+     * own addresses is not a problem (controller ruling): `10.0.0.0/8` is the common LAN exclusion,
+     * and nothing in the app dials the TUN's addresses.
+     *
+     * [TuningProblem.RangeCoversDns]: the range contains one of [dnsAddresses]; entries that are not
+     * IP literals are skipped.
+     */
     public fun validate(
         ranges: List<CidrRange>,
         dnsAddresses: List<String>,
     ): List<TuningProblem> {
         val dns = dnsAddresses.mapNotNull { parseAddress(it.trim()) }
-        val tun = listOfNotNull(parseAddress(TUN_V4), parseAddress(TUN_V6))
         val problems = mutableListOf<TuningProblem>()
         ranges.forEachIndexed { index, range ->
-            if (range.prefixLength == 0 || tun.any { contains(range, it) }) {
-                problems += TuningProblem.RangeTooWide(index)
-            }
+            if (range.prefixLength == 0) problems += TuningProblem.RangeTooWide(index)
             if (dns.any { contains(range, it) }) problems += TuningProblem.RangeCoversDns(index)
         }
         return problems
