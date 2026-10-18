@@ -9,13 +9,19 @@ import space.getsub.core.data.db.SettingDao
 import space.getsub.core.data.db.SettingEntity
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.ExcludeRoutesUserSetting
 import space.getsub.core.model.FragmentSettings
+import space.getsub.core.model.MuxUserSettings
 import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.ProxyAuthMode
+import space.getsub.core.model.ProxyAuthSettings
+import space.getsub.core.model.SniffingUserSetting
+import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.perAppModeFrom
 import space.getsub.core.model.perAppModeWire
 import space.getsub.core.model.pingModeFrom
@@ -63,6 +69,20 @@ private const val KEY_NOISE_PACKET = "noise_packet"
 private const val KEY_NOISE_RAND = "noise_rand"
 private const val KEY_NOISE_RAND_RANGE = "noise_rand_range"
 private const val KEY_NOISE_DELAY = "noise_delay"
+private const val KEY_SNIFFING_OVERRIDE = "sniffing_override"
+private const val KEY_SNIFFING_ENABLED = "sniffing_enabled"
+private const val KEY_MUX_OVERRIDE = "mux_override"
+private const val KEY_MUX_ENABLED = "mux_enabled"
+private const val KEY_MUX_TCP = "mux_tcp"
+private const val KEY_MUX_XUDP = "mux_xudp"
+private const val KEY_MUX_QUIC = "mux_quic"
+private const val KEY_TUN_MTU_OVERRIDE = "tun_mtu_override"
+private const val KEY_TUN_MTU = "tun_mtu"
+private const val KEY_EXCLUDE_ROUTES_OVERRIDE = "exclude_routes_override"
+private const val KEY_EXCLUDE_ROUTES = "exclude_routes"
+private const val KEY_PROXY_AUTH_MODE = "proxy_auth_mode"
+private const val KEY_PROXY_AUTH_USER = "proxy_auth_user"
+private const val KEY_PROXY_AUTH_PASS = "proxy_auth_pass"
 
 /**
  * A 204 endpoint on purpose: a `HEAD` against it returns no body, so a latency
@@ -620,6 +640,120 @@ internal constructor(
         dao.put(SettingEntity(KEY_NOISE_RAND_RANGE, settings.randRange))
         dao.put(SettingEntity(KEY_NOISE_DELAY, settings.delay))
     }
+
+    public val sniffing: Flow<SniffingUserSetting> =
+        combine(dao.observe(KEY_SNIFFING_OVERRIDE), dao.observe(KEY_SNIFFING_ENABLED), ::sniffingFrom)
+
+    public suspend fun setSniffing(v: SniffingUserSetting) {
+        dao.put(SettingEntity(KEY_SNIFFING_OVERRIDE, v.override.toString()))
+        dao.put(SettingEntity(KEY_SNIFFING_ENABLED, v.enabled.toString()))
+    }
+
+    public val mux: Flow<MuxUserSettings> =
+        combine(
+            dao.observe(KEY_MUX_OVERRIDE),
+            dao.observe(KEY_MUX_ENABLED),
+            dao.observe(KEY_MUX_TCP),
+            dao.observe(KEY_MUX_XUDP),
+            dao.observe(KEY_MUX_QUIC),
+            ::muxFrom,
+        )
+
+    public suspend fun setMux(v: MuxUserSettings) {
+        dao.put(SettingEntity(KEY_MUX_OVERRIDE, v.override.toString()))
+        dao.put(SettingEntity(KEY_MUX_ENABLED, v.enabled.toString()))
+        dao.put(SettingEntity(KEY_MUX_TCP, v.tcpConnections))
+        dao.put(SettingEntity(KEY_MUX_XUDP, v.xudpConnections))
+        dao.put(SettingEntity(KEY_MUX_QUIC, v.quic))
+    }
+
+    public val tunMtu: Flow<TunMtuUserSetting> =
+        combine(dao.observe(KEY_TUN_MTU_OVERRIDE), dao.observe(KEY_TUN_MTU), ::tunMtuFrom)
+
+    public suspend fun setTunMtu(v: TunMtuUserSetting) {
+        dao.put(SettingEntity(KEY_TUN_MTU_OVERRIDE, v.override.toString()))
+        dao.put(SettingEntity(KEY_TUN_MTU, v.value))
+    }
+
+    public val excludeRoutes: Flow<ExcludeRoutesUserSetting> =
+        combine(dao.observe(KEY_EXCLUDE_ROUTES_OVERRIDE), dao.observe(KEY_EXCLUDE_ROUTES), ::excludeRoutesFrom)
+
+    public suspend fun setExcludeRoutes(v: ExcludeRoutesUserSetting) {
+        dao.put(SettingEntity(KEY_EXCLUDE_ROUTES_OVERRIDE, v.override.toString()))
+        dao.put(SettingEntity(KEY_EXCLUDE_ROUTES, v.ranges))
+    }
+
+    /** The manual proxy password is stored like every other setting (spec §5.2) and is never logged. */
+    public val proxyAuth: Flow<ProxyAuthSettings> =
+        combine(
+            dao.observe(KEY_PROXY_AUTH_MODE),
+            dao.observe(KEY_PROXY_AUTH_USER),
+            dao.observe(KEY_PROXY_AUTH_PASS),
+            ::proxyAuthFrom,
+        )
+
+    public suspend fun setProxyAuth(v: ProxyAuthSettings) {
+        dao.put(SettingEntity(KEY_PROXY_AUTH_MODE, v.mode.name))
+        dao.put(SettingEntity(KEY_PROXY_AUTH_USER, v.manualUser))
+        dao.put(SettingEntity(KEY_PROXY_AUTH_PASS, v.manualPass))
+    }
+}
+
+private fun sniffingFrom(
+    override: String?,
+    enabled: String?,
+): SniffingUserSetting {
+    val d = SniffingUserSetting.DEFAULT
+    return SniffingUserSetting(
+        override = override?.toBooleanStrictOrNull() ?: d.override,
+        enabled = enabled?.toBooleanStrictOrNull() ?: d.enabled,
+    )
+}
+
+private fun muxFrom(
+    override: String?,
+    enabled: String?,
+    tcp: String?,
+    xudp: String?,
+    quic: String?,
+): MuxUserSettings {
+    val d = MuxUserSettings.DEFAULT
+    return MuxUserSettings(
+        override = override?.toBooleanStrictOrNull() ?: d.override,
+        enabled = enabled?.toBooleanStrictOrNull() ?: d.enabled,
+        tcpConnections = tcp ?: d.tcpConnections,
+        xudpConnections = xudp ?: d.xudpConnections,
+        quic = quic ?: d.quic,
+    )
+}
+
+private fun tunMtuFrom(
+    override: String?,
+    value: String?,
+): TunMtuUserSetting {
+    val d = TunMtuUserSetting.DEFAULT
+    return TunMtuUserSetting(override?.toBooleanStrictOrNull() ?: d.override, value ?: d.value)
+}
+
+private fun excludeRoutesFrom(
+    override: String?,
+    ranges: String?,
+): ExcludeRoutesUserSetting {
+    val d = ExcludeRoutesUserSetting.DEFAULT
+    return ExcludeRoutesUserSetting(override?.toBooleanStrictOrNull() ?: d.override, ranges ?: d.ranges)
+}
+
+private fun proxyAuthFrom(
+    mode: String?,
+    user: String?,
+    pass: String?,
+): ProxyAuthSettings {
+    val d = ProxyAuthSettings.DEFAULT
+    return ProxyAuthSettings(
+        mode = mode?.let { runCatching { ProxyAuthMode.valueOf(it) }.getOrNull() } ?: d.mode,
+        manualUser = user ?: d.manualUser,
+        manualPass = pass ?: d.manualPass,
+    )
 }
 
 private fun preResolveFrom(
