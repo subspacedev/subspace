@@ -254,6 +254,19 @@ internal fun runsAsWrittenAtConnect(
 ): Boolean = storedRunsAsWritten && (rawJson == null || analysePassthrough(rawJson).rejection == null)
 
 /**
+ * The `outboundCarriesUdp` input to `DnsPlanner.plan` (ruling D2-R16): false forces a DNS plan so the
+ * generator sends DNS over TCP. Only for a row that does not run as written: a raw row whose first outbound
+ * is `http` has an [space.getsub.core.model.HttpOutbound] projection too, but it brings its own `dns`, and a
+ * forced plan would push it off the pure-passthrough branch ([passthroughPlanFor]) into the override path,
+ * which can fail (`UnresolvableOverrideTarget`, a `dns-out` tag collision) and writes plain DNS anyway.
+ * [runsAsWritten] is the [runsAsWrittenAtConnect] verdict, so raw rows behave exactly as before D2-R16.
+ */
+internal fun dnsPlanOutboundCarriesUdp(
+    outbound: Outbound,
+    runsAsWritten: Boolean,
+): Boolean = runsAsWritten || UdpCarriage.carriesUdp(outbound)
+
+/**
  * Which [FailureReason] a core refusal at `xray.validate` names.
  *
  * The backstop two accepted M7 limitations depend on: core validation at
@@ -1963,15 +1976,19 @@ class TunnelService : VpnService() {
                 // uses, rather than in startCore or attachTun — both need the exact
                 // same plan, and computing it once is what keeps the generated
                 // config and the TUN's advertised resolver from disagreeing.
+                // The same verdict resolveConfigJson reaches for this row; a row that is gone fails there.
+                val runsAsWritten =
+                    profileRepository.profile(rowId)?.let { runsAsWrittenAtConnect(it.runsAsWritten, it.rawJson) }
+                        ?: false
                 val dnsPlan =
                     DnsPlanner.plan(
                         profileDns = (routing as? RoutingResolution.Active)?.dns,
                         setting = settingsRepository.dnsResolver.first(),
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
                         sniffingEnabled = SNIFFING_ENABLED,
-                        // Ruling D2-R16: an outbound that drops UDP (the HTTP proxy) always gets the
-                        // port-53 hijack, so app lookups reach the dns module and leave over TCP.
-                        outboundCarriesUdp = UdpCarriage.carriesUdp(profile.outbound),
+                        // Ruling D2-R16: a typed row whose outbound drops UDP (the HTTP proxy) always gets
+                        // the port-53 hijack, so app lookups reach the dns module and leave over TCP.
+                        outboundCarriesUdp = dnsPlanOutboundCarriesUdp(profile.outbound, runsAsWritten),
                     )
                 val xray = XrayController()
                 val ownsStart =
