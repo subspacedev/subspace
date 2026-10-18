@@ -14,7 +14,7 @@ battery drain that only shows up after six hours. Standard agent heuristics
 
 A native Android VPN client that tunnels device traffic through a
 user-supplied Xray-core server (VLESS/REALITY, VMess, Trojan, Shadowsocks,
-SOCKS, Hysteria2).
+SOCKS, Hysteria2, WireGuard, HTTP, and mKCP / HTTPUpgrade transports).
 
 **Bring-your-own-server.** This app never ships, sells, or bundles servers.
 It is a configuration and connection tool.
@@ -143,7 +143,7 @@ process. Never route a call to a process that holds the wrong state.
   `io: read/write on closed pipe` for an untrusted certificate, wrong auth and a
   down server, and the core names a certificate failure only in an `Info` log
   line, which would also log destinations. So for a failed server that `:bg`
-  marked (`isUdpServer`, i.e. Hysteria2, typed or raw), `:ping` runs one probe
+  marked (`certProbeEligible`, i.e. Hysteria2, typed or raw), `:ping` runs one probe
   before answering: that server's own proxy outbound behind a loopback HTTP
   inbound, `log {loglevel: info, error: <private file in :ping's cacheDir>,
   access: none}`, one raw `CONNECT` to the check URL's host (a raw socket, so an
@@ -1075,6 +1075,71 @@ Trojan. There are open upstream issues around inbound responsiveness and
 Salamander obfuscation. Treat Hysteria2 failures as possibly-upstream before
 assuming a bug in this codebase, and check the Xray-core issue tracker.
 
+### WireGuard, HTTP, mKCP and HTTPUpgrade (M9-D2)
+
+All four are native to Xray-core v26.10.10. The layouts below are what Subspace writes, read from
+`infra/conf/` (`wireguard.go`, `http.go`, `transport_method.go`, `transport_finalmask.go`) and run
+against the real core (`D2XrayTest`); research:
+`docs/agent/research/2026-10-18-m9d2-wireguard-http-kcp-httpupgrade.md` ("Verified for D2").
+
+```
+WireGuard  { protocol: "wireguard",
+             settings: { secretKey, address: [..], mtu, reserved?: [a,b,c], noKernelTun: true,
+                         peers: [{ publicKey, preSharedKey?, endpoint: "host:port", keepAlive?, allowedIPs }] },
+             streamSettings: { finalmask: { udp: [noise] } }   // only when the user's noise is on
+           }
+HTTP       { protocol: "http",
+             settings: { address, port, user?, pass? },        // flat, not servers[]
+             streamSettings: { security: "tls", tlsSettings }  // only for an HTTPS proxy
+           }
+mKCP       streamSettings: { network: "kcp", kcpSettings: { mtu?, tti?, ... },
+                             finalmask: { udp: [ seed|original, header, noise ] } }
+HTTPUpgrade streamSettings: { network: "httpupgrade", httpupgradeSettings: { host, path } }
+```
+
+- **WireGuard.** One peer only (a second makes the row not connectable). `address` is omitted when empty
+  and `allowedIPs` when empty (an explicit `[]` routes nothing; an absent one takes the defaults).
+  Keys are validated as 32 bytes under standard or URL-safe base64, or 64 hex characters, and stored as
+  given. `reserved` is 0 or 3 bytes. `noKernelTun: true` always: Android gives the process no TUN to
+  create. `endpoint` is the only dial target, so an address pin (M9-C) rewrites it (IPv6 bracketed). The
+  user's noise is a UDP mask and applies; fragment is TCP-only and never does. WireGuard carries IP
+  packets, so the **netstack drops loopback targets**, and a server `freedom` outbound **blackholes private
+  targets unless it has `finalRules` allow** (v26); a test server needs both in mind. AmneziaWG
+  (`amnezia-wg-option`, link parameters such as `jc`/`s1`/`h1`) is future work: those sources are skipped
+  as unsupported protocols, not imported as plain WireGuard.
+- **HTTP.** Flat `settings {address, port, user, pass}`; a password without a user is dropped. TLS comes
+  from `streamSettings`, and `allowInsecure` is never written. It carries TCP only, so a UDP destination
+  needs another route. The user's fragment applies; noise does not. A Mihomo `fingerprint` (certificate
+  pin) is ignored: pins stay Hysteria2-only (§14.10), so a self-signed HTTPS proxy fails CA verification.
+  There is no share-link form (an `http://` URL is a subscription URL).
+- **mKCP obfuscation is not in `kcpSettings`.** v26.10.10 parses `kcpSettings.header` and `kcpSettings.seed`
+  and then **never reads them**: a classic config "builds" into bare KCP against a server expecting
+  obfuscation. `kcpSettings` carries only `mtu`, `tti`, `uplinkCapacity`, `downlinkCapacity`,
+  `cwndMultiplier`, `maxSendingWindow`. Obfuscation is `finalmask.udp` masks of type `mkcp-legacy`:
+  `{}` is the classic "original", `{"value": seed}` a seed, `{"header": h}` a header. Never write
+  `kcpSettings.header` or `seed`; `RawConfigComposer` rewrites a raw config that has them
+  (`LegacyKcp`) into masks.
+- **Mask order is `[seed or original, header, user noise]`.** Noise is last, as in Hysteria2, and is
+  client-only (a server without it still works). A header-only source is `[original, header]`
+  (ruling D2-R3; `[header]` alone is a different wire format). A source with no seed and no header is bare
+  KCP with no mask. Header names are `dns|dtls|srtp|utp|wechat|wireguard`; `wechat-video` is written
+  `wechat`; `headerType=http` has no mask and is not connectable, and neither is a `dns` header carrying a
+  domain (the model has nowhere to keep it). The seed is verbatim: only `""` means none.
+- **HTTPUpgrade carries no `Host` header.** `httpupgradeSettings {host, path}` is the only place the host
+  goes; `headers` never gets a `Host` key. With no TLS an empty `host` takes the address (so an address
+  pin fills it with the domain, as for WebSocket). Fragment applies; noise does not.
+- **REALITY is refused on kcp and httpupgrade** (`REALITY only supports RAW, XHTTP and gRPC`), as a named
+  refusal rather than a config the core rejects. TLS over either transport works.
+- **Plaintext rule.** VLESS or Trojan over mKCP or HTTPUpgrade with no TLS to a non-private address is
+  refused by the core (§14.10); mKCP's obfuscation does not count as encryption. "Private" is RFC 1918,
+  loopback and link-local: a LAN such as 172.100.x.x is public to the core.
+- **UDP changes the same three neighbours as Hysteria2**, minus the certificate probe: WireGuard and any
+  VLESS/VMess/Trojan over kcp are `isUdpServer`, so TCP-mode latency is `UNSUPPORTED` and pre-resolution
+  takes the first IPv4 answer without the TCP race. The certificate probe stays Hysteria2-only
+  (`certProbeEligible`).
+- The WireGuard keys, the HTTP password and the mKCP seed are redacted in `toString` and never reach
+  logs or UI error text (§5.6).
+
 ---
 
 ## 7. Subscription and share-link parsing
@@ -1083,14 +1148,14 @@ assuming a bug in this codebase, and check the Xray-core issue tracker.
 
 - Base64-encoded newline-separated lists
 - `vless://`, `vmess://` (base64 JSON body), `trojan://`, `ss://`, `socks://`,
-  `hysteria2://` / `hy2://`
+  `hysteria2://` / `hy2://`, `wireguard://` / `wg://`
 - Clash / Clash.Meta YAML
 - Raw Xray JSON
 
 ### What actually parses, per container
 
-Six protocols across four containers reads as twenty-four combinations. It is
-twenty. The gaps are not bugs — nobody has written those branches — but they
+Eight protocols across four containers reads as thirty-two combinations. It is
+twenty-six. The gaps are not bugs — nobody has written those branches — but they
 are load-bearing enough that guessing from the list above will mislead you:
 
 | | share link | base64 list | Clash YAML | raw Xray JSON |
@@ -1101,6 +1166,14 @@ are load-bearing enough that guessing from the list above will mislead you:
 | ss | ✓ | ✓ | ✓ | ✗ |
 | socks | ✓ | ✓ | ✓ | ✗ |
 | hysteria2 | ✓ | ✓ | ✓ | ✓ |
+| wireguard | ✓ | ✓ | ✓ | ✓ |
+| http | ✗ | ✗ | ✓ | ✓ |
+
+HTTP has no share-link form: `http://` and `https://` URLs are subscription URLs, so an
+HTTP proxy arrives through Clash (`type: http`) or raw Xray JSON. WireGuard links come in two
+spellings (v2rayN's `wireguard://` and Hiddify's `wg://`). mKCP and HTTPUpgrade are not protocols but
+transports (VLESS, VMess and Trojan links with `type=kcp|mkcp|httpupgrade`, and the Clash and
+raw-JSON equivalents), so they add no row.
 
 The base64 column can never differ from the share-link column: a blob is
 decoded and re-fed through detection, which lands on the link-list path.
@@ -1127,7 +1200,12 @@ is the one protocol whose raw Xray JSON cell is also filled: a raw `hysteria`
 outbound runs as written and gets a typed projection for latency, address pinning
 and details. A Hysteria2 row whose source carried a mask or congestion this
 build cannot write, or a BBR profile the core does not know, imports but is not
-connectable, with the reason named in the editor.
+connectable, with the reason named in the editor. M9-D2 adds WireGuard and HTTP
+the same way (typed rows, plus a typed projection of a raw `wireguard` or `http`
+outbound), and kcp / httpupgrade as VLESS, VMess and Trojan transports. A source
+the model cannot express (a WireGuard config with two peers, an mKCP `headerType=http`,
+REALITY over kcp or httpupgrade, a bad key) imports as a not-connectable row with the reason
+named; AmneziaWG is skipped as an unsupported protocol.
 Verified on the Pixel 8 on 2026-10-17: each of the four connects, carries
 traffic and measures latency (Proxy mode HEADs through the server; TCP mode
 ran, but over the adb-reverse loopback it measured that loopback, not a server
@@ -1916,8 +1994,9 @@ Mandatory rules:
       the Pixel 8 on 2026-10-17); Hysteria2 (M9-D1: Salamander/Gecko, port
       hopping, Brutal, certificate pins) is implemented on `feat/m9d1-hysteria2`,
       device rows pending (`docs/agent/research/2026-10-17-m9d1-device-verification.md`);
-      left unchecked until they pass. Not yet typed: WireGuard, HTTP, mKCP and
-      HTTPUpgrade (M9-D2).
+      left unchecked until they pass. WireGuard, HTTP and the mKCP / HTTPUpgrade
+      transports (M9-D2) are implemented on `feat/m9d2-wireguard-http-kcp-httpupgrade`,
+      device rows pending (`docs/agent/research/2026-10-18-m9d2-device-verification.md`).
 - [ ] Import: manual entry, clipboard, QR camera scan, file, URL
 - [ ] Subscription import with auto-update on an interval, plus update on
       app launch
