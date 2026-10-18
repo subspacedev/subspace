@@ -21,6 +21,8 @@ import space.getsub.core.data.RuleSetAssets
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.model.LocalProxy
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.network.FetchFailure
@@ -163,11 +165,11 @@ class SubscriptionSyncerTest {
         responseForRequest(request)
     }
 
-    /** No tunnel bound by default; individual tests override to assert the port is threaded through. */
-    private var proxyPort: Int? = null
+    /** No tunnel bound by default; individual tests override to assert the proxy is threaded through. */
+    private var proxy: LocalProxy? = null
 
     private fun syncer() =
-        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxyPort })
+        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxy })
 
     @Before
     fun setUp() {
@@ -284,13 +286,13 @@ class SubscriptionSyncerTest {
     }
 
     @Test
-    fun aRunningTunnelsProxyPortIsThreadedIntoTheFetch() = runTest {
+    fun aRunningTunnelsProxyIsThreadedIntoTheFetch() = runTest {
         val id = addSubscription()
-        proxyPort = 18080
+        proxy = LocalProxy(18080, ProxyCredentials("u", "p"))
 
         syncer().sync(id)
 
-        lastRequest?.proxyPort shouldBe 18080
+        lastRequest?.proxy shouldBe LocalProxy(18080, ProxyCredentials("u", "p"))
     }
 
     @Test
@@ -298,11 +300,11 @@ class SubscriptionSyncerTest {
         // §5.4/spec: a background refresh with nothing bound gets null and
         // goes direct rather than failing the sync outright.
         val id = addSubscription()
-        proxyPort = null
+        proxy = null
 
         syncer().sync(id)
 
-        lastRequest?.proxyPort shouldBe null
+        lastRequest?.proxy shouldBe null
     }
 
     @Test

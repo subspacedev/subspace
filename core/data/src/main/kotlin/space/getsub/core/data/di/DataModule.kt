@@ -152,7 +152,7 @@ internal object DataModule {
      * (`SubscriptionSyncFailure`, in this module, for the identical reason).
      * [TunnelProxyLocator] is resolved fresh on every download, not cached at
      * provider time, so a geo update started while the tunnel is connecting
-     * (or after it drops) reads the current port rather than a stale one.
+     * (or after it drops) reads the current port and credentials rather than stale ones.
      */
     @Provides
     @Singleton
@@ -166,7 +166,7 @@ internal object DataModule {
                     url,
                     target,
                     MAX_GEO_FILE_BYTES,
-                    proxyPort = proxyLocator.httpProxyPortOrNull(),
+                    proxy = proxyLocator.localHttpProxyOrNull(),
                     onProgress = onProgress,
                 )
             when (outcome) {

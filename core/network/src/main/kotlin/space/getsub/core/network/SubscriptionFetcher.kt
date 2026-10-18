@@ -16,7 +16,6 @@ import okhttp3.ResponseBody
 import space.getsub.core.network.di.AppVersion
 import java.io.IOException
 import java.io.InterruptedIOException
-import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -256,12 +255,10 @@ constructor(
                 // so there is nothing to verify for this path regardless. A fresh client is
                 // already built per attempt (the timeout chain above is per-request), so
                 // there is no pool to share by caching one per port here.
-                request.proxyPort?.let { port ->
-                    proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", port)))
-                }
+                request.proxy?.let { local -> throughLocalProxy(local) }
                 // Plan ruling P1: through the tunnel's proxy, the proxy resolves the host and splitting
                 // bytes to a loopback proxy never reaches the wire; the tunnel fragments with M9-A's mask.
-                if (request.proxyPort == null) {
+                if (request.proxy == null) {
                     request.route.resolveAddress?.let { address ->
                         // Direct, not via an OS-level proxy: a system proxy would resolve the URL host itself
                         // and ignore the chosen address.

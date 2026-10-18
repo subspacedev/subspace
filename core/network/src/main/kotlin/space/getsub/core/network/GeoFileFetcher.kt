@@ -16,10 +16,9 @@ import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import space.getsub.core.model.LocalProxy
 import java.io.File
 import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -133,7 +132,7 @@ public class GeoFileFetcher private constructor(
      * client per call is not a fresh pool — there is nothing here worth caching per port, and a
      * per-port cache would only accumulate: the port is allocated fresh per session (§10.6) and
      * nothing ever evicts an old one. An earlier version of this method cached one `OkHttpClient`
-     * per `proxyPort` in a `ConcurrentHashMap` on exactly the (wrong) premise that construction
+     * per proxy port in a `ConcurrentHashMap` on exactly the (wrong) premise that construction
      * was the expensive part; review round 2, Minor caught it.
      *
      * `Proxy.Type.HTTP`, never SOCKS. Whether a Java SOCKS proxy resolves the hostname locally
@@ -143,13 +142,13 @@ public class GeoFileFetcher private constructor(
      * the hostname in absolute-form and resolves it at the far end by construction, so there is
      * nothing to verify for this path regardless.
      */
-    private fun clientFor(proxyPort: Int?): OkHttpClient =
-        if (proxyPort == null) {
+    private fun clientFor(proxy: LocalProxy?): OkHttpClient =
+        if (proxy == null) {
             client
         } else {
             client
                 .newBuilder()
-                .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyPort)))
+                .throughLocalProxy(proxy)
                 .build()
         }
 
@@ -158,8 +157,8 @@ public class GeoFileFetcher private constructor(
      * count. Always on [Dispatchers.IO] (§5.3).
      *
      * @param maxBytes hard ceiling; exceeding it aborts and deletes [target].
-     * @param proxyPort the tunnel's loopback HTTP proxy, or null to fetch
-     *   directly. Declared here rather than added later because inserting a
+     * @param proxy the tunnel's loopback HTTP proxy and the session's account for it (M9-E spec
+     *   §5.3), or null to fetch directly. Declared here rather than added later because inserting a
      *   parameter before the trailing lambda would break every call site.
      */
     @Suppress(
@@ -170,7 +169,7 @@ public class GeoFileFetcher private constructor(
         url: String,
         target: File,
         maxBytes: Long,
-        proxyPort: Int? = null,
+        proxy: LocalProxy? = null,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): GeoDownloadOutcome =
         withContext(Dispatchers.IO) {
@@ -191,7 +190,7 @@ public class GeoFileFetcher private constructor(
             try {
                 val outcome =
                     awaitOutcome(
-                        call = clientFor(proxyPort).newCall(request),
+                        call = clientFor(proxy).newCall(request),
                         target = target,
                         maxBytes = maxBytes,
                         onProgress = onProgress,

@@ -69,7 +69,7 @@ private const val MAX_LOG_KEY_LENGTH = 64
  * `TunnelClient`'s published state, because `:core:data` cannot depend on
  * `:service` (§4). A background refresh with no bound service — or no tunnel
  * up at all — gets null back and fetches directly; that is correct fallback
- * behaviour, not a failure (see [TunnelProxyLocator.httpProxyPortOrNull]).
+ * behaviour, not a failure (see [TunnelProxyLocator.localHttpProxyOrNull]).
  */
 @Singleton
 public class SubscriptionSyncer
@@ -123,7 +123,7 @@ internal constructor(
                 hwidEnabled = subscription.hwidEnabled && settings.hwidEnabled.first(),
                 userAgentOverride = userAgent,
                 timeoutSeconds = timeout,
-                proxyPort = proxyLocator.httpProxyPortOrNull(),
+                proxy = proxyLocator.localHttpProxyOrNull(),
                 route =
                 FetchRoute(
                     resolveAddress = subscription.resolveAddress,

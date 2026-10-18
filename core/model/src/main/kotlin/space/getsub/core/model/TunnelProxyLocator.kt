@@ -18,12 +18,13 @@ package space.getsub.core.model
  */
 public fun interface TunnelProxyLocator {
     /**
-     * The loopback port to proxy through, or null when no tunnel is up, nothing
-     * is bound, or the session carries no HTTP inbound.
+     * The loopback port to proxy through and the session's account for it (M9-E spec §5.3), or
+     * null when no tunnel is up, nothing is bound, the session carries no HTTP inbound, or it
+     * publishes no credentials.
      *
      * **Null is ordinary, not an error.** A background refresh with no bound
      * service gets null and fetches directly, which is what keeps a broken
      * tunnel from also breaking subscription updates.
      */
-    public fun httpProxyPortOrNull(): Int?
+    public fun localHttpProxyOrNull(): LocalProxy?
 }

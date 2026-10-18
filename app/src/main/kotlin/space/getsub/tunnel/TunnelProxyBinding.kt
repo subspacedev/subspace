@@ -3,13 +3,14 @@
 package space.getsub.tunnel
 
 import space.getsub.core.model.ConnectionState
+import space.getsub.core.model.LocalProxy
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Reads the loopback HTTP proxy port out of the service's published state.
+ * Reads the loopback HTTP proxy port, and the account it requires, out of the service's published state.
  *
  * ARCHITECTURE.md §5.5: the service owns connection state and this reads it, rather than keeping
  * a local flag about whether a tunnel is up — except for the one flag it does
@@ -32,13 +33,15 @@ import javax.inject.Singleton
  * unbound for this purpose, so the old cache cannot escape during rebind.
  *
  * `TunnelClient.state` is a `StateFlow`, so `.value` is a plain synchronous read
- * of the last published value. That is what lets [httpProxyPortOrNull] stay a
+ * of the last published value. That is what lets [localHttpProxyOrNull] stay a
  * non-suspend function: §5.3 forbids blocking a caller's thread, and collecting
  * the flow to answer a question the cache already holds would do exactly that.
  *
  * A port of 0 means the session carries no HTTP inbound, which is not the same as
  * "connected with a proxy on port 0" — it is normalised to null here so no caller
- * can dial it.
+ * can dial it. A port without [ConnectionState.Connected.proxyCredentials] is not offered either:
+ * the inbound refuses every request without the session's account (M9-E spec §5.3), so a fetch
+ * handed only the port would fail with a 407 rather than reach anything.
  *
  * This lives in `:app` because it is the only module that can see both
  * `TunnelClient` (`:service`) and the `:core:model` interface `:core:data`
@@ -51,7 +54,7 @@ internal class TunnelProxyBinding
 constructor(
     private val client: TunnelClient,
 ) : TunnelProxyLocator {
-    override fun httpProxyPortOrNull(): Int? = resolveHttpProxyPort(client.isBound, client.state.value)
+    override fun localHttpProxyOrNull(): LocalProxy? = resolveHttpProxy(client.isBound, client.state.value)
 }
 
 /**
@@ -60,16 +63,18 @@ constructor(
  * `TunnelClient` needs a `Context` and a bound service to construct, which would
  * make the rule above reachable only from an instrumented test. The rule is the
  * part worth pinning — an unbound client yields null regardless of [state], every
- * non-`Connected` state yields null, and a zero port yields null — so it lives
+ * non-`Connected` state yields null, and a zero port or missing credentials yield null — so it lives
  * here, where a plain JVM test can reach it.
  */
-internal fun resolveHttpProxyPort(
+internal fun resolveHttpProxy(
     bound: Boolean,
     state: ConnectionState,
-): Int? = if (!bound) null else state.httpProxyPortOrNull()
+): LocalProxy? = if (!bound) null else state.localHttpProxyOrNull()
 
-/** The state-only half of [resolveHttpProxyPort]'s rule — see its KDoc for why [bound] gates it. */
-internal fun ConnectionState.httpProxyPortOrNull(): Int? =
-    (this as? ConnectionState.Connected)
-        ?.httpProxyPort
-        ?.takeIf { it > 0 }
+/** The state-only half of [resolveHttpProxy]'s rule — see its KDoc for why [bound] gates it. */
+internal fun ConnectionState.localHttpProxyOrNull(): LocalProxy? {
+    val connected = this as? ConnectionState.Connected
+    val credentials = connected?.proxyCredentials
+    val port = connected?.httpProxyPort?.takeIf { it > 0 }
+    return if (credentials == null || port == null) null else LocalProxy(port, credentials)
+}
