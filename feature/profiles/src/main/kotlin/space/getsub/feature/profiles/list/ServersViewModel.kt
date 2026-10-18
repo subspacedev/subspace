@@ -555,7 +555,7 @@ private fun List<ProfileGroup>.availableProtocolLabels(): List<String> =
  * The canonical protocol names [space.getsub.core.data.ProfileRepository]
  * stores, capitalised for display.
  */
-private fun String.toProtocolDisplayName(): String =
+internal fun String.toProtocolDisplayName(): String =
     when (this) {
         "vless" -> "VLESS"
         "vmess" -> "VMess"
@@ -563,6 +563,8 @@ private fun String.toProtocolDisplayName(): String =
         "shadowsocks" -> "Shadowsocks"
         "socks" -> "SOCKS"
         "hysteria2" -> "Hysteria2"
+        "wireguard" -> "WireGuard"
+        "http" -> "HTTP"
         else -> this
     }
 

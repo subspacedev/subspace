@@ -7,6 +7,7 @@ import space.getsub.core.model.FragmentSpec
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
 import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.KcpMask
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoisePayload
 import space.getsub.core.model.NoiseSpec
@@ -50,12 +51,37 @@ internal object FinalmaskJson {
         return """{"type":"noise","settings":{"noise":[$items]}}"""
     }
 
-    /** The `finalmask` object's value, or null when there is nothing to emit. */
-    fun block(obfuscation: Obfuscation): String? {
+    /**
+     * One mKCP `mkcp-legacy` mask (M9-D2 research §3.2, Xray-core v26.10.10 `infra/conf/transport_finalmask.go`
+     * `MkcpLegacy {header, value}`): `{}` is the classic original obfuscation, `value` a seed, `header` a packet
+     * header. Never both keys in one entry: with a header, `value` means a DNS domain, not a seed.
+     */
+    fun kcpMask(mask: KcpMask): String {
+        val settings =
+            when (mask) {
+                KcpMask.Original -> ""
+                is KcpMask.Seed -> """"value":${jsonString(mask.value)}"""
+                is KcpMask.Header -> """"header":${jsonString(mask.header.wireName)}"""
+            }
+        return """{"type":"mkcp-legacy","settings":{$settings}}"""
+    }
+
+    /**
+     * The `finalmask` object's value for a stream that may carry mKCP masks, or null when there is nothing
+     * to emit. `udp` is `[kcpMasks…, noise?]`: JSON index 0 is applied to the payload first, so the mKCP
+     * masks (in [space.getsub.core.model.KcpRules.masks] order, seed or original before header) sit inside
+     * and user noise goes last, nearest the wire (M9-D2 research §3.3 capture: noise anywhere else gets the
+     * header wrapped around it). The caller has already dropped masks that do not apply to the outbound.
+     */
+    fun streamBlock(
+        obfuscation: Obfuscation?,
+        kcpMasks: List<KcpMask>,
+    ): String? {
+        val udp = kcpMasks.map(::kcpMask) + listOfNotNull(obfuscation?.noise?.let { noiseMask(it.spec) })
         val halves =
             buildList {
-                obfuscation.fragment?.let { add(""""tcp":[${fragmentMask(it.spec)}]""") }
-                obfuscation.noise?.let { add(""""udp":[${noiseMask(it.spec)}]""") }
+                obfuscation?.fragment?.let { add(""""tcp":[${fragmentMask(it.spec)}]""") }
+                if (udp.isNotEmpty()) add(""""udp":[${udp.joinToString(",")}]""")
             }
         return if (halves.isEmpty()) null else "{${halves.joinToString(",")}}"
     }
@@ -127,15 +153,15 @@ internal object FinalmaskJson {
                 ).joinToString(",", "{", "}")
         }
 
-    private fun IntRange.wire(): String = "$first-$last"
-
-    private fun FragmentPackets.wire(): String =
-        when (this) {
-            FragmentPackets.TlsHello -> "tlshello"
-            is FragmentPackets.Records -> range.wire()
-        }
-
     // `array` is a JSON byte array (PraseByteSlice unmarshals it into []byte); every other type is a string.
     private fun packetJson(p: NoisePayload.Fixed): String =
         if (p.type == NoisePacketType.Array) "[${p.packet}]" else jsonString(p.packet)
 }
+
+private fun IntRange.wire(): String = "$first-$last"
+
+private fun FragmentPackets.wire(): String =
+    when (this) {
+        FragmentPackets.TlsHello -> "tlshello"
+        is FragmentPackets.Records -> range.wire()
+    }

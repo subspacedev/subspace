@@ -45,3 +45,4 @@ keystore.properties
 
 # Local Hysteria2 test server: run-time certificate, key, config, password and logs
 /scripts/hy2-test-server/.run/
+/scripts/d2-test-servers/.run/

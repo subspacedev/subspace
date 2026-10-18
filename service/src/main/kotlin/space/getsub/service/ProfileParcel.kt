@@ -6,6 +6,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import space.getsub.core.data.serialization.decodeOutboundJson
 import space.getsub.core.data.serialization.encodeOutboundJson
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -13,9 +14,11 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
 import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 
 /**
  * Carries a [Profile] across the AIDL boundary.
@@ -41,9 +44,13 @@ import space.getsub.core.model.VmessOutbound
  * `data class` would generate one that prints every secret, and `toString`
  * reaches crash output without anyone choosing to log it.
  *
- * [hysteria2Json] is the one extra field Hysteria2 needs: the whole outbound in `:core:data`'s stored
- * JSON form (R3), appended last so the flat order of every other field is unchanged. [from] fills it
- * and [toProfile] reads the outbound back from it, ignoring the flat address/port/uuid slots.
+ * [outboundJson] is the one extra field the richer rows need: the whole outbound in `:core:data`'s
+ * stored JSON form (R3), appended last so the flat order of every other field is unchanged. [from]
+ * fills it and [toProfile] reads the outbound back from it, ignoring the flat address/port/uuid slots.
+ * It carries Hysteria2, WireGuard and HTTP (which have no flat shape), and any VLESS/VMess/Trojan row
+ * whose [space.getsub.core.model.StreamSettings.transport] is not `None`: the flat slots hold only
+ * `network`, so kcp's mtu/tti/seed/header and httpupgrade's host/path (M9-D2) would otherwise be lost
+ * crossing into `:bg`. A plain tcp row keeps the flat path and an empty field.
  *
  * [rowId] is the Room primary key of the profile being connected (spec D4) —
  * not [id], which is the domain [Profile.id] the parser assigned and carries no
@@ -74,10 +81,10 @@ public class ProfileParcel(
     val fingerprint: String,
     val spiderX: String,
     val allowInsecure: Boolean,
-    // Last in the read/write order. Hysteria2's nested fields (TLS pins, hopping, obfuscation,
-    // congestion) travel as the outbound encoded with :core:data's DTO serializer; empty for every
-    // other protocol. A secret: never logged, and toString below does not print it.
-    val hysteria2Json: String = "",
+    // Last in the read/write order. Hysteria2, WireGuard, HTTP and any transport-carrying
+    // VLESS/VMess/Trojan row travel as the outbound encoded with :core:data's DTO serializer; empty
+    // for every other row. A secret: never logged, and toString below does not print it.
+    val outboundJson: String = "",
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         protocol = parcel.readInt(),
@@ -98,7 +105,7 @@ public class ProfileParcel(
         fingerprint = parcel.readString().orEmpty(),
         spiderX = parcel.readString().orEmpty(),
         allowInsecure = parcel.readInt() != 0,
-        hysteria2Json = parcel.readString().orEmpty(),
+        outboundJson = parcel.readString().orEmpty(),
     )
 
     override fun writeToParcel(
@@ -123,7 +130,7 @@ public class ProfileParcel(
         dest.writeString(fingerprint)
         dest.writeString(spiderX)
         dest.writeInt(if (allowInsecure) 1 else 0)
-        dest.writeString(hysteria2Json)
+        dest.writeString(outboundJson)
     }
 
     override fun describeContents(): Int = 0
@@ -150,6 +157,17 @@ public class ProfileParcel(
      * because of it.
      */
     fun toProfile(): Profile? =
+        if (outboundJson.isNotEmpty()) {
+            // The JSON is authoritative: it is the whole outbound. A protocol discriminant that
+            // disagrees with what it decodes to is a corrupt parcel, not something to guess at.
+            decodeOutboundJson(outboundJson)
+                ?.takeIf { protocolOf(it) == protocol }
+                ?.let { Profile(id = id, name = name, outbound = it) }
+        } else {
+            fromFlatFields()
+        }
+
+    private fun fromFlatFields(): Profile? =
         security()
             ?.let { StreamSettings(network = network, security = it) }
             ?.let { outbound(it) }
@@ -193,7 +211,8 @@ public class ProfileParcel(
                     password = uuid,
                 )
 
-            PROTOCOL_HYSTERIA2 -> decodeOutboundJson(hysteria2Json) as? Hysteria2Outbound
+            // These three have no flat shape: an empty [outboundJson] is a parcel without its payload.
+            PROTOCOL_HYSTERIA2, PROTOCOL_WIREGUARD, PROTOCOL_HTTP -> null
 
             PROTOCOL_SOCKS ->
                 SocksOutbound(
@@ -237,6 +256,8 @@ public class ProfileParcel(
         const val PROTOCOL_SHADOWSOCKS = 3
         const val PROTOCOL_SOCKS = 4
         const val PROTOCOL_HYSTERIA2 = 5
+        const val PROTOCOL_WIREGUARD = 6
+        const val PROTOCOL_HTTP = 7
 
         const val SECURITY_NONE = 0
         const val SECURITY_REALITY = 1
@@ -296,9 +317,30 @@ public class ProfileParcel(
                 fingerprint = reality?.fingerprint ?: tls?.fingerprint.orEmpty(),
                 spiderX = reality?.spiderX.orEmpty(),
                 allowInsecure = tls?.allowInsecure ?: false,
-                hysteria2Json = (out as? Hysteria2Outbound)?.let(::encodeOutboundJson).orEmpty(),
+                outboundJson = if (needsJson(out)) encodeOutboundJson(out) else "",
             )
         }
+
+        private fun needsJson(out: Outbound): Boolean =
+            when (out) {
+                is Hysteria2Outbound, is WireGuardOutbound, is HttpOutbound -> true
+                is VlessOutbound -> out.stream.transport != TransportOptions.None
+                is VmessOutbound -> out.stream.transport != TransportOptions.None
+                is TrojanOutbound -> out.stream.transport != TransportOptions.None
+                is ShadowsocksOutbound, is SocksOutbound -> false
+            }
+
+        private fun protocolOf(out: Outbound): Int =
+            when (out) {
+                is VlessOutbound -> PROTOCOL_VLESS
+                is VmessOutbound -> PROTOCOL_VMESS
+                is TrojanOutbound -> PROTOCOL_TROJAN
+                is ShadowsocksOutbound -> PROTOCOL_SHADOWSOCKS
+                is SocksOutbound -> PROTOCOL_SOCKS
+                is Hysteria2Outbound -> PROTOCOL_HYSTERIA2
+                is WireGuardOutbound -> PROTOCOL_WIREGUARD
+                is HttpOutbound -> PROTOCOL_HTTP
+            }
 
         /**
          * The per-protocol slice of [from]'s work, split out so `from` itself
@@ -322,8 +364,13 @@ public class ProfileParcel(
                 is SocksOutbound ->
                     OutboundFields(PROTOCOL_SOCKS, out.username.orEmpty(), out.password.orEmpty(), 0, null, null)
 
-                // Everything else Hysteria2 needs rides in [hysteria2Json]; the password is the credential.
+                // Everything else Hysteria2 needs rides in [outboundJson]; the password is the credential.
                 is Hysteria2Outbound -> OutboundFields(PROTOCOL_HYSTERIA2, out.password, "", 0, null, null)
+
+                // Both ride whole in [outboundJson]; the secret key / password is the credential slot.
+                is WireGuardOutbound -> OutboundFields(PROTOCOL_WIREGUARD, out.secretKey, "", 0, null, null)
+                is HttpOutbound ->
+                    OutboundFields(PROTOCOL_HTTP, out.username.orEmpty(), out.password.orEmpty(), 0, null, null)
             }
     }
 

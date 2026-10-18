@@ -4,24 +4,26 @@ package space.getsub.core.xray
 
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
-import space.getsub.core.model.Hysteria2Congestion
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
-import space.getsub.core.model.Hysteria2Unsupported
+import space.getsub.core.model.KcpRules
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
-import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.SocksOutbound
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
-import space.getsub.core.model.normaliseBbrProfile
-import space.getsub.core.model.shadowsocksCoreRefusal
+import space.getsub.core.model.WireGuardOutbound
+import space.getsub.core.model.applicableTo
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.parser.OverrideTarget
 
 /** Runtime settings that shape the config but do not belong to a stored profile. */
@@ -158,25 +160,29 @@ private val TYPED_PATH_TARGET = OverrideTarget.ViaOutbound("proxy")
  */
 private val PLAIN_TCP_STREAM = StreamSettings(network = "tcp", security = Security.None)
 
+/** Ruling D2-R10: an `httpupgrade` row stored without options (pre-D2) writes the core's own defaults. */
+private val DEFAULT_HTTP_UPGRADE = TransportOptions.HttpUpgrade(host = "", path = "/")
+
 // One object per wire shape (ARCHITECTURE.md §6); splitting it would scatter the shape's single author.
 @Suppress("TooManyFunctions")
 public object XrayConfigGenerator {
     /**
      * Dispatches on the profile's protocol.
      *
-     * Emits VLESS, VMess, Trojan, Shadowsocks, SOCKS (M9-D2a spec §1) and Hysteria2 (M9-D1 spec §4).
-     * The `when` below is exhaustive over the sealed [space.getsub.core.model.Outbound] with no
-     * `else` — adding a seventh protocol to the model is a compile error here
-     * until this generator is taught to emit it, rather than a silent
-     * fallthrough to a config that connects to nothing.
+     * Emits VLESS, VMess, Trojan, Shadowsocks, SOCKS (M9-D2a spec §1), Hysteria2 (M9-D1 spec §4),
+     * WireGuard and the HTTP proxy (M9-D2 spec §3). The `when`s over the sealed
+     * [space.getsub.core.model.Outbound] have no `else` — adding a protocol to the model is a compile
+     * error here until this generator is taught to emit it, rather than a silent fallthrough to a
+     * config that connects to nothing.
      *
-     * A Shadowsocks row the core would refuse is answered with [ConfigResult.Unsupported] before
-     * anything is generated: v26.10.10 has dropped ciphers the importers still accept, and its
-     * Shadowsocks 2022 error quotes the key (M9-D2a spec §0). The protocol string is a fixed
-     * literal because the UI shows it (ARCHITECTURE.md §5.6).
+     * A row the core would refuse, or that would connect to nothing, is answered with
+     * [ConfigResult.Unsupported] before anything is generated ([typedRefusal]): v26.10.10 has dropped
+     * Shadowsocks ciphers the importers still accept, its Shadowsocks 2022 error quotes the key
+     * (M9-D2a spec §0), and it refuses REALITY over mKCP and HTTPUpgrade. The protocol string is a
+     * fixed literal because the UI shows it (ARCHITECTURE.md §5.6).
      *
-     * For VLESS, VMess and Trojan it emits `tcp`, `ws`, `grpc` and `xhttp`. That set is mirrored by
-     * `StoredProfile.connectable` in `:core:data`, which decides what the UI offers —
+     * For VLESS, VMess and Trojan it emits `tcp`, `ws`, `grpc`, `xhttp`, `kcp` and `httpupgrade`.
+     * That set is mirrored by `StoredProfile.connectable` in `:core:data`, which decides what the UI offers —
      * `:core:data` cannot depend on this module (§4), so the two are kept in step by
      * hand. Teaching this generator a new transport means widening that set too;
      * leaving it narrow is how a working xhttp server came to be labelled
@@ -185,30 +191,11 @@ public object XrayConfigGenerator {
     public fun generate(
         profile: Profile,
         settings: TunnelSettings,
-    ): ConfigResult =
-        when (val outbound = profile.outbound) {
-            is VlessOutbound, is VmessOutbound, is TrojanOutbound, is SocksOutbound ->
-                ConfigResult.Ok(generateTyped(outbound, settings))
-            // A row whose source carried a mask or congestion this build cannot write would connect
-            // to nothing if generated without it (M9-D1 spec §1), so it is refused by a fixed name.
-            // A stored BBR profile outside BBR_PROFILES (an older row, an editor value) would fail the
-            // core's Build with `unknown bbr profile`; the profile itself is not quoted.
-            is Hysteria2Outbound ->
-                when {
-                    outbound.notConnectableReason == Hysteria2Unsupported.UnknownMask ->
-                        ConfigResult.Unsupported("Hysteria2 mask")
-                    outbound.notConnectableReason == Hysteria2Unsupported.UnknownCongestion ->
-                        ConfigResult.Unsupported("Hysteria2 congestion")
-                    outbound.unknownBbrProfile() -> ConfigResult.Unsupported("Hysteria2 BBR profile")
-                    else -> ConfigResult.Ok(generateTyped(outbound, settings))
-                }
-            is ShadowsocksOutbound ->
-                when (shadowsocksCoreRefusal(outbound.method, outbound.password)) {
-                    null -> ConfigResult.Ok(generateTyped(outbound, settings))
-                    ShadowsocksRefusal.Cipher -> ConfigResult.Unsupported("Shadowsocks cipher")
-                    ShadowsocksRefusal.Key -> ConfigResult.Unsupported("Shadowsocks 2022 key")
-                }
-        }
+    ): ConfigResult {
+        val outbound = profile.outbound
+        return typedRefusal(outbound)?.let { ConfigResult.Unsupported(it) }
+            ?: ConfigResult.Ok(generateTyped(outbound, settings))
+    }
 
     private fun generateTyped(
         outbound: Outbound,
@@ -239,7 +226,7 @@ public object XrayConfigGenerator {
             sb.appendLine("""  },""")
         }
 
-        appendDns(sb, settings)
+        appendDns(sb, settings, plainDnsOverTcp = !UdpCarriage.carriesUdp(outbound))
         appendInbounds(sb, settings)
         appendOutbounds(sb, outbound, settings)
 
@@ -257,12 +244,15 @@ public object XrayConfigGenerator {
      *
      * libXray v26.10.10 has `setDNS`, but it replaces Go's process-wide resolver and Subspace
      * does not call it (see `XrayController.start`), so the config is the only lever here.
+     *
+     * [plainDnsOverTcp]: the outbound cannot carry UDP (ruling D2-R16), see [dnsObject].
      */
     private fun appendDns(
         sb: StringBuilder,
         settings: TunnelSettings,
+        plainDnsOverTcp: Boolean,
     ) {
-        sb.appendLine("""  "dns": ${dnsObject(settings)},""")
+        sb.appendLine("""  "dns": ${dnsObject(settings, plainDnsOverTcp)},""")
     }
 
     /**
@@ -386,15 +376,15 @@ public object XrayConfigGenerator {
         sb.appendLine("""    {""")
         sb.appendLine("""      "tag": "proxy",""")
         sb.appendLine("""      "protocol": ${jsonString(out.wireProtocol())},""")
-        appendProtocolSettings(sb, out, address)
-        when (out) {
-            is VlessOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
-            is VmessOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
-            is TrojanOutbound -> appendStreamSettings(sb, out.stream, settings.obfuscation, pinDomain)
-            is ShadowsocksOutbound, is SocksOutbound ->
-                appendStreamSettings(sb, PLAIN_TCP_STREAM, settings.obfuscation, pinDomain)
-            // Its own stream block: the password lives in the transport, and TLS is mandatory.
-            is Hysteria2Outbound -> appendHysteria2Stream(sb, out, settings.obfuscation, pinDomain)
+        // M9-D2 research §5.3: a mask that cannot run on this outbound is not written, so the report
+        // (which asks the same ObfuscationApplicability) never claims one the tunnel does not run.
+        val obfuscation = settings.obfuscation?.applicableTo(out)
+        if (out is WireGuardOutbound) {
+            // Its own settings and stream writer: no server array, and a stream only for noise.
+            appendWireGuard(sb, out, address, obfuscation)
+        } else {
+            appendProtocolSettings(sb, out, address)
+            appendStream(sb, out, obfuscation, pinDomain)
         }
         sb.appendLine("""    },""")
         sb.appendLine("""    $DIRECT_OUTBOUND_JSON,""")
@@ -409,6 +399,79 @@ public object XrayConfigGenerator {
             sb.appendLine("""    $DNS_OUT_OUTBOUND_JSON""")
         }
         sb.appendLine("""  ],""")
+    }
+
+    private fun appendStream(
+        sb: StringBuilder,
+        out: Outbound,
+        obfuscation: Obfuscation?,
+        pinDomain: String?,
+    ) {
+        when (out) {
+            is VlessOutbound -> appendStreamSettings(sb, out.stream, obfuscation, pinDomain)
+            is VmessOutbound -> appendStreamSettings(sb, out.stream, obfuscation, pinDomain)
+            is TrojanOutbound -> appendStreamSettings(sb, out.stream, obfuscation, pinDomain)
+            is ShadowsocksOutbound, is SocksOutbound ->
+                appendStreamSettings(sb, PLAIN_TCP_STREAM, obfuscation, pinDomain)
+            // TLS, when set, rides the TCP stream (research §2.3); the outbound carries TCP only.
+            is HttpOutbound -> appendStreamSettings(sb, StreamSettings("tcp", out.security), obfuscation, pinDomain)
+            // Its own stream block: the password lives in the transport, and TLS is mandatory.
+            is Hysteria2Outbound -> appendHysteria2Stream(sb, out, obfuscation, pinDomain)
+            is WireGuardOutbound -> error("appendOutbounds writes WireGuard itself")
+        }
+    }
+
+    /**
+     * WireGuard (M9-D2 spec §3), `WireGuardConfig` in Xray-core v26.10.10 `infra/conf/wireguard.go`:
+     * `secretKey`, `address` (an array; omitted when empty, which takes the core's bogon defaults),
+     * one peer `{publicKey, preSharedKey?, endpoint "host:port", keepAlive?, allowedIPs}`, `mtu`,
+     * `reserved` (omitted when empty) and `noKernelTun: true` (research §1.2: never a kernel TUN, whatever
+     * the process's capabilities). Keys are emitted exactly as stored. `allowedIPs` is omitted when empty:
+     * an explicit `[]` routes nothing, an absent one is `0.0.0.0/0, ::/0` (research §1.1).
+     *
+     * [host] is the pinned IP when there is an address pin (research §5.2): the endpoint is the only dial
+     * target, and a domain there is resolved by the core's DNS, not the protected OS path.
+     *
+     * `streamSettings` only when user noise applies: the outbound honours `finalmask` UDP masks and
+     * `sockopt`, and ignores the rest without error (research §1.3, `w6.json`).
+     */
+    private fun appendWireGuard(
+        sb: StringBuilder,
+        out: WireGuardOutbound,
+        host: String,
+        obfuscation: Obfuscation?,
+    ) {
+        sb.appendLine("""      "settings": {""")
+        sb.appendLine("""        "secretKey": ${jsonString(out.secretKey)},""")
+        if (out.localAddresses.isNotEmpty()) sb.appendLine("""        "address": ${jsonList(out.localAddresses)},""")
+        sb.appendLine("""        "peers": [""")
+        sb.appendLine("""          {""")
+        val peer =
+            listOfNotNull(
+                """"publicKey": ${jsonString(out.peerPublicKey)}""",
+                out.preSharedKey?.takeIf { it.isNotEmpty() }?.let { """"preSharedKey": ${jsonString(it)}""" },
+                """"endpoint": ${jsonString(endpoint(host, out.port))}""",
+                out.keepAlive?.takeIf { it > 0 }?.let { """"keepAlive": $it""" },
+                out.allowedIps.takeIf { it.isNotEmpty() }?.let { """"allowedIPs": ${jsonList(it)}""" },
+            )
+        peer.forEachIndexed { index, field ->
+            val comma = if (index == peer.size - 1) "" else ","
+            sb.appendLine("""            $field$comma""")
+        }
+        sb.appendLine("""          }""")
+        sb.appendLine("""        ],""")
+        sb.appendLine("""        "mtu": ${out.mtu},""")
+        if (out.reserved.isNotEmpty()) sb.appendLine("""        "reserved": [${out.reserved.joinToString(", ")}],""")
+        sb.appendLine("""        "noKernelTun": true""")
+        val finalmask = obfuscation?.let { FinalmaskJson.streamBlock(it, emptyList()) }
+        if (finalmask == null) {
+            sb.appendLine("""      }""")
+        } else {
+            sb.appendLine("""      },""")
+            sb.appendLine("""      "streamSettings": {""")
+            sb.appendLine("""        "finalmask": $finalmask""")
+            sb.appendLine("""      }""")
+        }
     }
 
     /**
@@ -427,6 +490,8 @@ public object XrayConfigGenerator {
     ) {
         val endpoint = listOf(""""address": ${jsonString(address)}""", """"port": ${out.port}""")
         when (out) {
+            is WireGuardOutbound -> error("appendOutbounds writes WireGuard itself")
+            is HttpOutbound -> appendHttpSettings(sb, endpoint, out)
             // `HysteriaClientConfig` (`infra/conf/hysteria.go`): a flat `version`/`address`/`port`, no
             // server array and no credentials. Build fails unless `version == 2`.
             is Hysteria2Outbound -> {
@@ -490,6 +555,29 @@ public object XrayConfigGenerator {
     }
 
     /**
+     * `HTTPClientConfig` (`infra/conf/http.go:61-82`): the flat form, which Build rewrites into the
+     * one-member `servers` array itself. Credentials as SOCKS: a blank username means none, and a
+     * password alone is dropped (a `user` key, even with an empty `pass`, creates the account).
+     */
+    private fun appendHttpSettings(
+        sb: StringBuilder,
+        endpoint: List<String>,
+        out: HttpOutbound,
+    ) {
+        val credentials =
+            out.username?.takeIf { it.isNotBlank() }?.let { name ->
+                listOf(""""user": ${jsonString(name)}""", """"pass": ${jsonString(out.password.orEmpty())}""")
+            }
+        val fields = endpoint + credentials.orEmpty()
+        sb.appendLine("""      "settings": {""")
+        fields.forEachIndexed { index, field ->
+            val comma = if (index == fields.size - 1) "" else ","
+            sb.appendLine("""        $field$comma""")
+        }
+        sb.appendLine("""      },""")
+    }
+
+    /**
      * Writes `"settings": { "<listKey>": [ { <fields>, "users": [ { <user> } ] } ] },` at the
      * indentation the M1 VLESS block has always had, so that block stays byte-identical. [fields]
      * and [user] are `"key": value` pairs; a null [user] omits `users`.
@@ -544,12 +632,17 @@ public object XrayConfigGenerator {
         // The security block is last in the object unless a transport block
         // follows it, and JSON has no trailing commas — so whether it ends with
         // one is decided here rather than inside each security branch.
-        val tail = if (stream.transport is TransportOptions.None) "" else ","
+        val kcp = isKcpNetwork(stream.network)
+        val transportBlock = stream.transport !is TransportOptions.None || kcp || isHttpUpgradeNetwork(stream.network)
+        val tail = if (transportBlock) "," else ""
         sb.appendLine("""      "streamSettings": {""")
-        sb.appendLine("""        "network": ${jsonString(stream.network)},""")
+        // `kcp` and `mkcp` are one transport (`transport_internet.go:22-23`); written `kcp`, as spec §3 says.
+        sb.appendLine("""        "network": ${jsonString(if (kcp) "kcp" else stream.network)},""")
         // M9-A spec §3.3. Placed straight after `network` because `security` always follows,
         // so its trailing comma never depends on which transport block, if any, closes the object.
-        obfuscation?.let(FinalmaskJson::block)?.let { block ->
+        // mKCP's obfuscation is `finalmask.udp` masks, never `kcpSettings.header`/`seed` (research §3.1-3.3).
+        val kcpMasks = (stream.transport as? TransportOptions.Kcp)?.let { KcpRules.masks(it.obfuscation) }.orEmpty()
+        FinalmaskJson.streamBlock(obfuscation, kcpMasks)?.let { block ->
             sb.appendLine("""        "finalmask": $block,""")
         }
         when (val security = stream.security) {
@@ -579,7 +672,7 @@ public object XrayConfigGenerator {
                 sb.appendLine("""        "security": "none"$tail""")
             }
         }
-        appendTransportSettings(sb, stream.transport, stream.security, pinDomain)
+        appendTransportSettings(sb, stream, pinDomain)
         sb.appendLine("""      }""")
     }
 
@@ -655,14 +748,24 @@ public object XrayConfigGenerator {
      */
     private fun appendTransportSettings(
         sb: StringBuilder,
-        transport: TransportOptions,
-        security: Security,
+        stream: StreamSettings,
         pinDomain: String?,
     ) {
+        val transport = stream.transport
+        val security = stream.security
+        // mKCP and HTTPUpgrade are decided by the network: a row with no options (ruling D2-R10) still
+        // writes its defaults. typedRefusal has refused options of one under another network.
+        if (isKcpNetwork(stream.network)) return appendKcpSettings(sb, transport as? TransportOptions.Kcp)
+        if (isHttpUpgradeNetwork(stream.network)) {
+            val upgrade = transport as? TransportOptions.HttpUpgrade ?: DEFAULT_HTTP_UPGRADE
+            return appendHttpUpgradeSettings(sb, upgrade, pinDomain.takeUnless { security is Security.Tls })
+        }
         // A transport key is filled only where Xray's fallback chain would have reached the dial
         // address, so an address pin keeps every derived name on the domain (M9-C spec §3.2).
         when (transport) {
             is TransportOptions.None -> Unit
+            is TransportOptions.Kcp, is TransportOptions.HttpUpgrade ->
+                error("typedRefusal refuses this transport under another network")
             is TransportOptions.WebSocket ->
                 appendWebSocketSettings(sb, transport, pinDomain.takeUnless { security is Security.Tls })
             is TransportOptions.Grpc -> {
@@ -677,6 +780,47 @@ public object XrayConfigGenerator {
             is TransportOptions.Xhttp ->
                 appendXhttpSettings(sb, transport, pinDomain.takeIf { security == Security.None })
         }
+    }
+
+    /**
+     * `kcpSettings` (`KCPConfig`, `infra/conf/transport_method.go:532-581`): `mtu` and `tti` only, each
+     * when set. Never `header` or `seed`: v26.10.10 parses and ignores them (research §3.1); the
+     * obfuscation is the `finalmask.udp` masks [appendStreamSettings] wrote. `{}` takes the core's
+     * defaults, which is what a row with neither means.
+     */
+    private fun appendKcpSettings(
+        sb: StringBuilder,
+        kcp: TransportOptions.Kcp?,
+    ) {
+        val fields = listOfNotNull(kcp?.mtu?.let { """"mtu": $it""" }, kcp?.tti?.let { """"tti": $it""" })
+        if (fields.isEmpty()) {
+            sb.appendLine("""        "kcpSettings": {}""")
+            return
+        }
+        sb.appendLine("""        "kcpSettings": {""")
+        fields.forEachIndexed { index, field ->
+            val comma = if (index == fields.size - 1) "" else ","
+            sb.appendLine("""          $field$comma""")
+        }
+        sb.appendLine("""        }""")
+    }
+
+    /**
+     * `httpupgradeSettings` (`HttpUpgradeConfig`, `infra/conf/transport_method.go:660-694`): `host` and
+     * `path`, always both. Never `headers`: a `Host` key there is a hard Build error (research §4.1), and
+     * the model has nothing else to put in it. An empty `host` falls back to TLS `serverName`, then the
+     * dial address (`httpupgrade/dialer.go:82-88`), so [hostFallback] (the pinned domain, only without
+     * TLS) fills it exactly where the pinned IP would otherwise become the `Host`. `?ed=N` rides in `path`.
+     */
+    private fun appendHttpUpgradeSettings(
+        sb: StringBuilder,
+        transport: TransportOptions.HttpUpgrade,
+        hostFallback: String?,
+    ) {
+        sb.appendLine("""        "httpupgradeSettings": {""")
+        sb.appendLine("""          "host": ${jsonString(transport.host.fillBlank(hostFallback))},""")
+        sb.appendLine("""          "path": ${jsonString(transport.path)}""")
+        sb.appendLine("""        }""")
     }
 
     private fun appendWebSocketSettings(
@@ -740,10 +884,24 @@ private fun Outbound.wireProtocol(): String =
         is SocksOutbound -> "socks"
         // `hysteria` is the name `infra/conf` registers the outbound under; `hysteria2` is not one.
         is Hysteria2Outbound -> "hysteria"
+        is WireGuardOutbound -> "wireguard"
+        is HttpOutbound -> "http"
     }
 
-private fun Hysteria2Outbound.unknownBbrProfile(): Boolean =
-    (congestion as? Hysteria2Congestion.Bbr)?.let { normaliseBbrProfile(it.profile) == null } == true
+/** `host:port`, with an IPv6 literal bracketed as `ParseEndpoint` requires (research §1.1, `w12`). */
+private fun endpoint(
+    host: String,
+    port: Int,
+): String = if (IPV6_LITERAL.matches(host)) "[$host]:$port" else "$host:$port"
+
+// Hex groups and colons, optionally an embedded IPv4 tail and a zone; anything else (a domain, a bracketed
+// literal) is written as given. Deliberately permissive: it does not validate an address (`::::` matches),
+// it only decides whether brackets are needed. A host with a colon is never a valid domain, so bracketing a
+// malformed literal costs nothing the core would not have refused anyway, while a stricter pattern could
+// leave a real literal unbracketed and turn its last group into the port.
+private val IPV6_LITERAL = Regex("""[0-9A-Fa-f:]*:[0-9A-Fa-f:.]*(%[0-9A-Za-z._-]+)?""")
+
+private fun jsonList(values: List<String>): String = values.joinToString(", ", "[", "]", transform = ::jsonString)
 
 private fun String.fillBlank(fallback: String?): String = if (isBlank() && fallback != null) fallback else this
 
@@ -806,18 +964,43 @@ private fun resolverRule(
 }
 
 /**
+ * Ruling D2-R16: a plain-DNS (DoU) server, an IP literal, as DNS over TCP on port 53 — `tcp://1.1.1.1:53`,
+ * `tcp://[2606:4700:4700::1111]:53`. Anything else (DoH, a name, `fakedns`) is returned unchanged.
+ *
+ * For an outbound that cannot carry UDP ([UdpCarriage]): Xray's `http` outbound is CONNECT-only (M9-D2
+ * research §2.2), so a UDP query routed to it is dropped and every lookup fails. Xray v26.10.10's `tcp://`
+ * scheme (`app/dns/nameserver.go:67`) builds a `TCPNameServer` that dials through the same routing dispatcher
+ * as the UDP one (`app/dns/nameserver_tcp.go:44`), to `net.TCPDestination` on the same IP
+ * (`nameserver_tcp.go:82`), so the resolver rule that matches the IP by `ip` still claims it.
+ */
+private fun overTcp(address: String): String =
+    when {
+        !DnsValidation.isAddressLiteral(address) -> address
+        ':' in address -> "tcp://[$address]:53"
+        else -> "tcp://$address:53"
+    }
+
+/**
  * The `dns` object's text, without the surrounding key or trailing comma —
  * [XrayConfigGenerator.appendDns] supplies both for the typed path;
  * [XrayConfigGenerator.overrideBlocks] hands the bare object to the
  * passthrough path's override branch. Top-level rather than a member so it
  * does not count against the object's function budget.
+ *
+ * [plainDnsOverTcp] (ruling D2-R16) rewrites every DoU server the proxy carries — all but the one
+ * [DnsPlan.directMatch] sends direct — through [overTcp]. Only the typed path sets it: a passthrough
+ * config brings its own `dns` block, and the override branch writes plain DNS as before.
  */
-private fun dnsObject(settings: TunnelSettings): String {
+private fun dnsObject(
+    settings: TunnelSettings,
+    plainDnsOverTcp: Boolean = false,
+): String {
     val plan = settings.dns
     val sb = StringBuilder()
     sb.append("{\n")
     if (plan == null) {
-        sb.appendLine("""    "servers": [${jsonString(settings.dnsServer)}]""")
+        val server = if (plainDnsOverTcp) overTcp(settings.dnsServer) else settings.dnsServer
+        sb.appendLine("""    "servers": [${jsonString(server)}]""")
         sb.append("""  }""")
         return sb.toString()
     }
@@ -835,7 +1018,10 @@ private fun dnsObject(settings: TunnelSettings): String {
     sb.appendLine("""    "servers": [""")
     val entries = buildList {
         if (plan.fakeDns) add(""""fakedns"""")
-        plan.servers.forEach { add(it.render()) }
+        plan.servers.forEach { server ->
+            val proxied = plainDnsOverTcp && server.address != plan.directMatch
+            add((if (proxied) server.copy(address = overTcp(server.address)) else server).render())
+        }
     }
     entries.forEachIndexed { index, entry ->
         val comma = if (index == entries.size - 1) "" else ","

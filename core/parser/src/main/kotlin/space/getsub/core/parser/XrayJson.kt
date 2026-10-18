@@ -140,6 +140,18 @@ private fun parseXrayJsonDocument(
                             is LinkResult.Bad -> failures += result.failure
                         }
 
+                    "wireguard" ->
+                        when (val result = parseWireGuardOutbound(outbound, index, remarks, elementText)) {
+                            is LinkResult.Ok -> profiles += result.profile
+                            is LinkResult.Bad -> failures += result.failure
+                        }
+
+                    "http" ->
+                        when (val result = parseHttpOutbound(outbound, index, remarks, elementText)) {
+                            is LinkResult.Ok -> profiles += result.profile
+                            is LinkResult.Bad -> failures += result.failure
+                        }
+
                     else ->
                         failures +=
                             parseFailure(
@@ -289,7 +301,7 @@ private fun parseUser(
 }
 
 @Suppress("CyclomaticComplexMethod", "ReturnCount")
-private fun parseSecurity(
+internal fun parseSecurity(
     streamSettings: JsonObject?,
     address: String,
 ): SecurityParse {
@@ -347,7 +359,7 @@ private fun parseSecurity(
     }
 }
 
-private sealed interface SecurityParse {
+internal sealed interface SecurityParse {
     data class Ok(
         val security: Security,
     ) : SecurityParse

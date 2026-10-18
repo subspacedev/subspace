@@ -8,6 +8,9 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.Hysteria2Unsupported
+import space.getsub.core.model.KcpHeader
+import space.getsub.core.model.KcpUnsupported
+import space.getsub.core.model.WireGuardUnsupported
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
@@ -51,6 +54,10 @@ class EditorSnapshotTest {
             onXhttpHostChanged = {},
             onXhttpModeChanged = {},
             onHysteria2Changed = {},
+            onWireGuardChanged = {},
+            onKcpChanged = {},
+            onHttpUpgradeHostChanged = {},
+            onHttpUpgradePathChanged = {},
             onSave = {},
             onConvertRouting = {},
         )
@@ -108,6 +115,77 @@ class EditorSnapshotTest {
             ),
         )
 
+    private val wireGuardFull =
+        EditorState(
+            loading = false,
+            exists = true,
+            id = 4L,
+            kind = ProfileKind.TYPED,
+            protocol = "wireguard",
+            name = "WG",
+            groupId = 10L,
+            availableGroups = listOf(EditorGroupOption(10L, "Local configs")),
+            address = "198.51.100.10",
+            port = "51820",
+            wireGuard =
+            WireGuardDraft(
+                secretKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+                peerPublicKey = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+                localAddresses = "10.0.0.2/32\nfd00::2/128",
+                mtu = "1280",
+                reserved = "1,2,3",
+                keepAlive = "25",
+                notConnectableReason = WireGuardUnsupported.UnsupportedMask,
+            ),
+            wireGuardErrors = setOf(WireGuardField.PreSharedKey),
+        )
+
+    private val httpTls =
+        EditorState(
+            loading = false,
+            exists = true,
+            id = 5L,
+            kind = ProfileKind.TYPED,
+            protocol = "http",
+            name = "Proxy",
+            groupId = 10L,
+            availableGroups = listOf(EditorGroupOption(10L, "Local configs")),
+            address = "proxy.example",
+            port = "8443",
+            primaryCredential = "alice",
+            secondaryCredential = "hunter2",
+            securityKind = EditorSecurityKind.Tls,
+            tlsServerName = "proxy.example",
+            tlsFingerprint = "chrome",
+            tlsAllowInsecure = true,
+        )
+
+    private val vlessKcp =
+        vlessReality.copy(
+            id = 6L,
+            securityKind = EditorSecurityKind.Tls,
+            tlsServerName = "www.example.com",
+            tlsFingerprint = "chrome",
+            network = "kcp",
+            kcp =
+            KcpDraft(
+                mtu = "1350",
+                tti = "20",
+                seed = "secret",
+                header = KcpHeader.SRTP,
+                unsupported = KcpUnsupported.DnsHeaderDomain,
+            ),
+            kcpErrors = setOf(KcpField.Tti),
+        )
+
+    private val vlessHttpUpgradeReality =
+        vlessReality.copy(
+            id = 7L,
+            network = "httpupgrade",
+            httpUpgradeHost = "cdn.example",
+            httpUpgradePath = "/up?ed=2048",
+        )
+
     private val rawWithAdvisory =
         EditorState(
             loading = false,
@@ -148,6 +226,18 @@ class EditorSnapshotTest {
 
     @Test
     fun typedHysteria2() = shoot("editor-typed-hysteria2", hysteria2Full)
+
+    @Test
+    fun typedWireGuard() = shoot("editor-typed-wireguard", wireGuardFull)
+
+    @Test
+    fun typedHttp() = shoot("editor-typed-http", httpTls)
+
+    @Test
+    fun typedMkcp() = shoot("editor-typed-mkcp", vlessKcp)
+
+    @Test
+    fun typedHttpUpgradeWithReality() = shoot("editor-typed-httpupgrade-reality", vlessHttpUpgradeReality)
 
     @Test
     fun rawJsonWithAdvisory() = shoot("editor-raw-advisory", rawWithAdvisory)

@@ -8,6 +8,8 @@ import org.junit.Test
 import java.util.Base64
 
 private const val MATRIX_UUID = "70cc48c5-b2f4-4a1e-9f3d-0123456789ab"
+private const val WG_KEY_ENCODED = "ccccccccccccccccccccccccccccccccccccccccccc%3D"
+private const val WG_KEY = "ccccccccccccccccccccccccccccccccccccccccccc="
 
 /**
  * The protocol × container support matrix, as a test rather than a claim.
@@ -41,6 +43,8 @@ class CapabilityMatrixTest {
             "ss" to "ss://" + base64("aes-256-gcm:s3cret") + "@host.example:8388",
             "socks" to "socks://host.example:1080",
             "hysteria2" to "hysteria2://s3cret@host.example:443",
+            "wireguard" to
+                "wireguard://$WG_KEY_ENCODED@host.example:51820?publickey=$WG_KEY_ENCODED&address=10.0.0.2",
         )
 
     private val clash =
@@ -55,6 +59,10 @@ class CapabilityMatrixTest {
             "hysteria2" to
                 "proxies:\n  - {name: N, type: hysteria2, server: host.example, port: 443, " +
                 "password: s3cret}",
+            "wireguard" to
+                "proxies:\n  - {name: N, type: wireguard, server: host.example, port: 51820, ip: 10.0.0.2, " +
+                "private-key: '$WG_KEY', public-key: '$WG_KEY'}",
+            "http" to "proxies:\n  - {name: N, type: http, server: host.example, port: 3128}",
         )
 
     private val xrayJson =
@@ -79,6 +87,11 @@ class CapabilityMatrixTest {
                 """"settings":{"version":2,"address":"host.example","port":443},""" +
                 """"streamSettings":{"network":"hysteria","hysteriaSettings":{"version":2,"auth":"s3cret"},""" +
                 """"security":"tls","tlsSettings":{"serverName":"host.example"}}}]}""",
+            "wireguard" to
+                """{"outbounds":[{"protocol":"wireguard","settings":{"secretKey":"$WG_KEY",""" +
+                """"address":["10.0.0.2"],"peers":[{"publicKey":"$WG_KEY","endpoint":"host.example:51820"}]}}]}""",
+            "http" to
+                """{"outbounds":[{"protocol":"http","settings":{"address":"host.example","port":3128}}]}""",
         )
 
     @Test
@@ -98,17 +111,18 @@ class CapabilityMatrixTest {
     }
 
     @Test
-    fun `clash yaml supports vmess, trojan, ss, vless, socks5 and hysteria2`() {
-        val supported = setOf("vmess", "trojan", "ss", "vless", "socks", "hysteria2")
+    fun `clash yaml supports exactly the protocols in the support set`() {
+        val supported = setOf("vmess", "trojan", "ss", "vless", "socks", "hysteria2", "wireguard", "http")
         clash.forEach { (protocol, yaml) ->
             withClue("clash $protocol") { yieldsProfile(yaml) shouldBe (protocol in supported) }
         }
     }
 
     @Test
-    fun `raw xray json supports vless and hysteria2 only`() {
+    fun `raw xray json supports vless, hysteria2, wireguard and http only`() {
         xrayJson.forEach { (protocol, json) ->
-            withClue("xray json $protocol") { yieldsProfile(json) shouldBe (protocol in setOf("vless", "hysteria2")) }
+            val supported = setOf("vless", "hysteria2", "wireguard", "http")
+            withClue("xray json $protocol") { yieldsProfile(json) shouldBe (protocol in supported) }
         }
     }
 

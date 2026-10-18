@@ -1,0 +1,51 @@
+{
+  "log": {
+    "access": "none",
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": ["tcp://1.1.1.1:53"]
+  },
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "protocol": "socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "settings": {
+        "udp": true
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "http",
+      "settings": {
+        "address": "proxy.example.com",
+        "port": 8080,
+        "user": "proxy-user",
+        "pass": "proxy-pass"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "finalmask": {"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"50-100","delay":"10-20","maxSplit":"10"}}]},
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "proxy.example.com",
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    { "tag": "direct", "protocol": "freedom" },
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": []
+  }
+}

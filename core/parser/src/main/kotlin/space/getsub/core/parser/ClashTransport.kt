@@ -19,6 +19,18 @@ internal fun transportOptions(
     network: String,
 ): TransportOptions = transportOptions(proxy, network, preserveExplicitEmpty = false)
 
+/**
+ * The Xray network a Clash entry means. Mihomo has no `httpupgrade` network: HTTPUpgrade is `network: ws`
+ * with `ws-opts.v2ray-http-upgrade: true`, which on the wire is not a WebSocket at all, so it is
+ * mapped to `httpupgrade` here (`v2ray-http-upgrade-fast-open` only skips waiting for the upgrade reply
+ * and is ignored).
+ */
+internal fun clashNetwork(proxy: YamlMap): String {
+    val network = proxy.text("network") ?: "tcp"
+    val flag = ((proxy.node("ws-opts") as? YamlMap)?.node("v2ray-http-upgrade") as? YamlScalar)?.content
+    return if (network == "ws" && flag == "true") "httpupgrade" else network
+}
+
 internal fun transportOptionsPreservingEmpty(
     proxy: YamlMap,
     network: String,
@@ -41,6 +53,21 @@ private fun transportOptions(
                     .orEmpty()
             val path = opts?.transportText("path", preserveExplicitEmpty) ?: "/"
             TransportOptions.WebSocket(path = path, headers = headers)
+        }
+
+        "httpupgrade" -> {
+            val opts = proxy.node("ws-opts") as? YamlMap
+            val host =
+                (opts?.node("headers") as? YamlMap)
+                    ?.entries
+                    ?.entries
+                    ?.firstOrNull { it.key.content.equals("Host", ignoreCase = true) }
+                    ?.value
+                    ?.let { (it as? YamlScalar)?.content }
+                    ?.takeIf { it.isNotBlank() }
+                    ?: proxy.text("servername")
+                    ?: proxy.text("sni")
+            httpUpgrade(host, opts?.transportText("path", preserveExplicitEmpty))
         }
 
         "grpc" -> {

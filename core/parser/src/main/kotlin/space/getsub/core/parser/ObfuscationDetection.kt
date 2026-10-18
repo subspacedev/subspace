@@ -9,6 +9,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /** Whether one outbound already does a mask itself, and how (M9-A spec §3.3 rule 3). */
 public data class OwnMask(
@@ -64,9 +66,12 @@ public data class OutboundPlan(
  * report describes it, so the two cannot disagree about what a raw config ends up running.
  */
 public object ObfuscationDetection {
-    /** M9-A spec §3.3 rule 1. Anything else is left alone (ARCHITECTURE.md §10.5). */
+    /**
+     * M9-A spec §3.3 rule 1. Anything else is left alone (ARCHITECTURE.md §10.5). `wireguard` since M9-D2:
+     * it dials its own UDP socket and honours `streamSettings.finalmask` UDP masks (research §1.3).
+     */
     public val ELIGIBLE_PROTOCOLS: Set<String> =
-        setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria", "socks", "http")
+        setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria", "socks", "http", "wireguard")
 
     private val LENIENT = Json { isLenient = true }
 
@@ -115,8 +120,18 @@ public object ObfuscationDetection {
         return outermostEligible(outbounds).sorted().map { i ->
             val outbound = outbounds[i] as JsonObject
             // Fragment is a TCP mask; a QUIC-only Hysteria outbound never dials TCP (M9-D1 spec §4),
-            // so it is not offered there rather than written in and reported as applied.
-            plan(i, outbound, byTag, fragment.takeUnless { outbound.quicOnly() }, noise)
+            // nor do WireGuard and mKCP (M9-D2 research §5.3), so it is not offered there rather than
+            // written in and reported as applied. Noise is a UDP mask, likewise never offered to the
+            // CONNECT-only HTTP outbound or an HTTPUpgrade stream. The typed path asks the same table,
+            // `ObfuscationApplicability`.
+            val dials = outbound.dials()
+            plan(
+                i,
+                outbound,
+                byTag,
+                fragment.takeUnless { dials == Dials.UdpOnly },
+                noise.takeUnless { dials == Dials.TcpOnly },
+            )
         }
     }
 
@@ -225,9 +240,18 @@ private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? Js
 
 private fun JsonObject.protocol(): String? = string("protocol")
 
-private fun JsonObject.quicOnly(): Boolean {
-    val network = stream()?.string("network")?.lowercase()
-    return protocol() == "hysteria" || network == "hysteria"
+/** Which socket kinds an outbound dials, for mask applicability (mirrors `ObfuscationApplicability`). */
+private enum class Dials { TcpOnly, UdpOnly, Both }
+
+private fun JsonObject.dials(): Dials {
+    val network = stream()?.string("network").orEmpty()
+    val protocol = protocol()
+    return when {
+        protocol == "hysteria" || network.equals("hysteria", ignoreCase = true) -> Dials.UdpOnly
+        protocol == "wireguard" || isKcpNetwork(network) -> Dials.UdpOnly
+        protocol == "http" || isHttpUpgradeNetwork(network) -> Dials.TcpOnly
+        else -> Dials.Both
+    }
 }
 
 private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content

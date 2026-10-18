@@ -19,6 +19,7 @@ import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Rules
 import space.getsub.core.model.Outbound
@@ -31,6 +32,9 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.shadowsocksCoreRefusal
 import space.getsub.core.parser.DetailField
@@ -55,6 +59,8 @@ internal data class EditorGroupOption(val id: Long, val name: String)
 
 /** Which of the four field-level validators (§ARCHITECTURE 6) currently rejects a TYPED profile's draft. */
 internal enum class EditorFieldKey { Port, Credential, PublicKey, Method }
+
+private val STREAM_PROTOCOL_NAMES = setOf("vless", "vmess", "trojan")
 
 /** `StreamSettings.security`'s three shapes, as something a dropdown can select without nested data. */
 internal enum class EditorSecurityKind { None, Reality, Tls }
@@ -209,6 +215,18 @@ internal data class EditorState(
     val hysteria2: Hysteria2Draft = Hysteria2Draft(),
     /** Hysteria2 form fields the last [EditorViewModel.save] rejected. */
     val hysteria2Errors: Set<Hysteria2Field> = emptySet(),
+    /** WireGuard only: everything its form edits beyond address and port (the peer endpoint). */
+    val wireGuard: WireGuardDraft = WireGuardDraft(),
+    /** WireGuard form fields the last [EditorViewModel.save] rejected. */
+    val wireGuardErrors: Set<WireGuardField> = emptySet(),
+    /** mKCP transport fields; only written when [network] is mKCP. */
+    val kcp: KcpDraft = KcpDraft(),
+    /** mKCP fields the last [EditorViewModel.save] rejected. */
+    val kcpErrors: Set<KcpField> = emptySet(),
+    /** HTTPUpgrade `Host`. Blank means unset (the core then uses the SNI, then the address). */
+    val httpUpgradeHost: String = "",
+    /** HTTPUpgrade path, with any `?ed=` early-data suffix exactly as typed. Blank saves as `/`. */
+    val httpUpgradePath: String = "/",
     /**
      * `true` when the last [EditorViewModel.save] was rejected because the edited outbound
      * (or the destination group, for a group change) already holds an identical profile —
@@ -246,6 +264,20 @@ internal data class EditorState(
                 shadowsocksCoreRefusal(method, primaryCredential)
             } else {
                 null
+            }
+
+    /**
+     * REALITY chosen where the core cannot carry it: mKCP, HTTPUpgrade or an HTTP proxy. Saving would store a
+     * row that is not connectable, so [EditorViewModel.save] refuses and the form says why. Typed rows only.
+     */
+    val realityConflict: RealityConflict?
+        get() =
+            when {
+                !fieldsEditable || securityKind != EditorSecurityKind.Reality -> null
+                protocol == "http" -> RealityConflict.HttpProxy
+                protocol in STREAM_PROTOCOL_NAMES && (isKcpNetwork(network) || isHttpUpgradeNetwork(network)) ->
+                    RealityConflict.Transport
+                else -> null
             }
 
     /** TLS whose source asked for `allowInsecure`: shown as ignored, certificate checks stay on. */
@@ -402,6 +434,14 @@ constructor(
 
     fun onHysteria2Changed(value: Hysteria2Draft) = update { it.copy(hysteria2 = value) }
 
+    fun onWireGuardChanged(value: WireGuardDraft) = update { it.copy(wireGuard = value) }
+
+    fun onKcpChanged(value: KcpDraft) = update { it.copy(kcp = value) }
+
+    fun onHttpUpgradeHostChanged(value: String) = update { it.copy(httpUpgradeHost = value) }
+
+    fun onHttpUpgradePathChanged(value: String) = update { it.copy(httpUpgradePath = value) }
+
     /**
      * Persists the current draft.
      *
@@ -428,8 +468,19 @@ constructor(
             if (current.fieldsEditable) {
                 val validationErrors = current.validate()
                 val hysteria2Errors = current.validateHysteria2()
-                if (validationErrors.isNotEmpty() || hysteria2Errors.isNotEmpty()) {
-                    _state.update { it.copy(errors = validationErrors, hysteria2Errors = hysteria2Errors) }
+                val wireGuardErrors = current.validateWireGuard()
+                val kcpErrors = current.validateKcp()
+                val failedFields =
+                    validationErrors.size + hysteria2Errors.size + wireGuardErrors.size + kcpErrors.size
+                if (failedFields > 0 || current.realityConflict != null) {
+                    _state.update {
+                        it.copy(
+                            errors = validationErrors,
+                            hysteria2Errors = hysteria2Errors,
+                            wireGuardErrors = wireGuardErrors,
+                            kcpErrors = kcpErrors,
+                        )
+                    }
                     return@launch
                 }
                 if (current.groupId != current.loadedGroupId) {
@@ -445,7 +496,15 @@ constructor(
             } else {
                 profileSource.rename(current.id, current.name)
             }
-            _state.update { it.copy(errors = emptyMap(), hysteria2Errors = emptySet(), saved = true) }
+            _state.update {
+                it.copy(
+                    errors = emptyMap(),
+                    hysteria2Errors = emptySet(),
+                    wireGuardErrors = emptySet(),
+                    kcpErrors = emptySet(),
+                    saved = true,
+                )
+            }
         }
     }
 
@@ -534,6 +593,8 @@ private fun StoredProfile.toEditorState(groups: List<EditorGroupOption>): Editor
         is ShadowsocksOutbound -> base.copy(method = ob.method, primaryCredential = ob.password)
         is SocksOutbound ->
             base.copy(primaryCredential = ob.username.orEmpty(), secondaryCredential = ob.password.orEmpty())
+        is WireGuardOutbound -> base.copy(wireGuard = WireGuardDraft.from(ob))
+        is HttpOutbound -> base.withHttp(ob)
         is Hysteria2Outbound -> {
             // R11: a stored one-port hop dials that port; show it as the port, with no hopping, so a
             // save cannot silently move the row back to the outbound port.
@@ -570,6 +631,13 @@ private fun EditorState.withStream(stream: StreamSettings): EditorState {
         }
     return when (val transport = stream.transport) {
         TransportOptions.None -> withSecurity.copy(network = stream.network)
+        is TransportOptions.Kcp -> withSecurity.copy(network = stream.network, kcp = KcpDraft.from(transport))
+        is TransportOptions.HttpUpgrade ->
+            withSecurity.copy(
+                network = stream.network,
+                httpUpgradeHost = transport.host,
+                httpUpgradePath = transport.path,
+            )
         is TransportOptions.WebSocket ->
             withSecurity.copy(network = stream.network, wsPath = transport.path, originalWsHeaders = transport.headers)
         is TransportOptions.Grpc ->
@@ -616,6 +684,14 @@ private fun EditorState.validate(): Map<EditorFieldKey, FailureDetail> {
     return errors
 }
 
+/** The WireGuard form's own checks (the shared port check is in [validate]). */
+private fun EditorState.validateWireGuard(): Set<WireGuardField> =
+    if (protocol == "wireguard") wireGuard.validate() else emptySet()
+
+/** The mKCP fields' checks, only while mKCP is the chosen transport. */
+private fun EditorState.validateKcp(): Set<KcpField> =
+    if (protocol in STREAM_PROTOCOL_NAMES && isKcpNetwork(network)) kcp.validate() else emptySet()
+
 /** The Hysteria2 form's own checks (the shared port and password checks are in [validate]). */
 private fun EditorState.validateHysteria2(): Set<Hysteria2Field> =
     if (protocol == "hysteria2") hysteria2.validate() else emptySet()
@@ -636,24 +712,43 @@ private fun EditorState.validateHysteria2(): Set<Hysteria2Field> =
  * name of a working server must not quietly change how it dials.
  */
 private fun EditorState.toTransportOptions(): TransportOptions =
-    when (network) {
-        "ws" -> TransportOptions.WebSocket(path = wsPath, headers = originalWsHeaders)
-        "grpc" -> TransportOptions.Grpc(serviceName = grpcServiceName)
-        // Blank back to null, the inverse of [withStream]'s orEmpty(): "" and null are
-        // different requests on the wire, and only null means "let Xray decide".
-        "xhttp", "splithttp" ->
-            TransportOptions.Xhttp(
-                path = xhttpPath.ifBlank { "/" },
-                host = xhttpHost.ifBlank { null },
-                mode = xhttpMode.ifBlank { null },
-            )
+    when {
+        // Only the chosen network's fields are read, so what a previous choice left in the draft cannot
+        // reach the saved outbound.
+        // D2-R10: a pre-D2 row with a kcp network and transport None loads as the default draft, so it saves as
+        // Kcp(null, null, no obfuscation): the same bare mKCP the generator already emitted for it.
+        isKcpNetwork(network) -> kcp.toTransport()
+        isHttpUpgradeNetwork(network) ->
+            TransportOptions.HttpUpgrade(host = httpUpgradeHost.trim(), path = httpUpgradePath.trim().ifEmpty { "/" })
+        else ->
+            when (network.lowercase()) {
+                "ws" -> TransportOptions.WebSocket(path = wsPath, headers = originalWsHeaders)
+                "grpc" -> TransportOptions.Grpc(serviceName = grpcServiceName)
+                // Blank back to null, the inverse of [withStream]'s orEmpty(): "" and null are
+                // different requests on the wire, and only null means "let Xray decide".
+                "xhttp", "splithttp" ->
+                    TransportOptions.Xhttp(
+                        path = xhttpPath.ifBlank { "/" },
+                        host = xhttpHost.ifBlank { null },
+                        mode = xhttpMode.ifBlank { null },
+                    )
 
-        else -> TransportOptions.None
+                else -> TransportOptions.None
+            }
     }
 
 private fun EditorState.toOutbound(): Outbound {
     val portValue = port.toIntOrNull() ?: 0
-    if (protocol == "hysteria2") return hysteria2.toOutbound(address, portValue, primaryCredential)
+    return when (protocol) {
+        "hysteria2" -> hysteria2.toOutbound(address, portValue, primaryCredential)
+        "wireguard" -> wireGuard.toOutbound(address, portValue)
+        "http" -> toHttpOutbound(portValue)
+        else -> toStreamOrPlainOutbound(portValue)
+    }
+}
+
+/** VLESS, VMess, Trojan, Shadowsocks and SOCKS: the protocols that share the credential and security fields. */
+private fun EditorState.toStreamOrPlainOutbound(portValue: Int): Outbound {
     val security: Security =
         when (securityKind) {
             EditorSecurityKind.None -> Security.None

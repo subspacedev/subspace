@@ -106,7 +106,7 @@ class HomeStatusTest {
 
     @Test
     fun `disconnected with an unsupported server shows no line, the note explains`() {
-        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("kcp")).detail() shouldBe null
+        HomeState(connection = ConnectionState.Disconnected, activeProfile = profile("hysteria")).detail() shouldBe null
     }
 
     @Test
@@ -144,7 +144,7 @@ class HomeStatusTest {
         line(ConnectionState.Disconnected) shouldBe StatusLine(R.string.state_disconnected, null)
         line(ConnectionState.Disconnected, server = null) shouldBe
             StatusLine(R.string.state_disconnected, HomeDetail.ChooseServer)
-        line(ConnectionState.Disconnected, server = profile("kcp")) shouldBe
+        line(ConnectionState.Disconnected, server = profile("hysteria")) shouldBe
             StatusLine(R.string.state_disconnected, null)
         line(ConnectionState.Connecting(StartupStage.StartingCore)) shouldBe
             StatusLine(R.string.stage_starting_core, HomeDetail.Step(5, 7))

@@ -230,7 +230,7 @@ private fun CongestionFields(
 
 /** The fixed message for a failed field. It is a resource, so it cannot contain what the user typed. */
 @Composable
-private fun errorIf(
+internal fun errorIf(
     failed: Boolean,
     messageRes: Int,
 ): String? = if (failed) stringResource(messageRes) else null

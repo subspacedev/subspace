@@ -10,6 +10,8 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /** Parse a `vmess://<base64 of JSON object>` share link. */
 @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount")
@@ -202,7 +204,21 @@ private fun vmessTransportOptions(
                 ?.let(TransportOptions::Grpc)
                 ?: TransportOptions.None
 
-        else -> TransportOptions.None
+        // v2rayN's vmess JSON: `type` is the kcp header, `path` the kcp seed; no mtu/tti/fm fields exist.
+        else ->
+            when {
+                isKcpNetwork(network) ->
+                    TransportOptions.Kcp(
+                        mtu = null,
+                        tti = null,
+                        obfuscation = classicObfuscation(obj.stringPreservingEmpty("path"), obj.nonBlankString("type")),
+                    )
+
+                isHttpUpgradeNetwork(network) ->
+                    httpUpgrade(obj.stringPreservingEmpty("host"), obj.stringPreservingEmpty("path"))
+
+                else -> TransportOptions.None
+            }
     }
 
 private fun parseJsonObject(text: String): JsonObject? {

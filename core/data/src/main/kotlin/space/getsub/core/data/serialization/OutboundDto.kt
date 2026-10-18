@@ -5,6 +5,7 @@ package space.getsub.core.data.serialization
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import space.getsub.core.model.Hysteria2Rules
+import space.getsub.core.model.WireGuardRules
 
 /**
  * The persisted shape of [space.getsub.core.model.Outbound].
@@ -82,6 +83,39 @@ internal sealed interface OutboundDto {
         val obfuscation: Hysteria2ObfuscationDto = Hysteria2ObfuscationDto.None,
         val congestion: Hysteria2CongestionDto = Hysteria2CongestionDto.Default,
         val unsupported: String? = null,
+    ) : OutboundDto
+
+    /**
+     * WireGuard. Every field after [peerPublicKey] has a default (the extension rule of [Hysteria2]).
+     * [unsupported] is a `WireGuardUnsupported` name, a string so a newer build's reason still decodes
+     * (as [space.getsub.core.model.WireGuardUnsupported.UnsupportedMask], which is not connectable).
+     * Keys are secrets: never logged (ARCHITECTURE.md §5.6).
+     */
+    @Serializable
+    @SerialName("wireguard")
+    data class WireGuard(
+        val address: String,
+        val port: Int,
+        val secretKey: String,
+        val localAddresses: List<String>,
+        val peerPublicKey: String,
+        val preSharedKey: String? = null,
+        val mtu: Int = WireGuardRules.DEFAULT_MTU,
+        val reserved: List<Int> = emptyList(),
+        val keepAlive: Int? = null,
+        val allowedIps: List<String> = listOf("0.0.0.0/0", "::/0"),
+        val unsupported: String? = null,
+    ) : OutboundDto
+
+    /** An HTTP(S) proxy; TLS, if any, is [security]. */
+    @Serializable
+    @SerialName("http")
+    data class Http(
+        val address: String,
+        val port: Int,
+        val username: String? = null,
+        val password: String? = null,
+        val security: SecurityDto = SecurityDto.None,
     ) : OutboundDto
 }
 
@@ -208,5 +242,28 @@ internal sealed interface TransportDto {
         val path: String,
         val host: String? = null,
         val mode: String? = null,
+    ) : TransportDto
+
+    /**
+     * mKCP. Flattened from `Kcp` + `KcpObfuscation`; [header] and [unsupported] are `KcpHeader` /
+     * `KcpUnsupported` names, strings so a newer build's value still decodes (an unknown one reads as
+     * no header with `UnknownHeader`, or as `UnknownMask`, both not connectable). [seed] is a secret.
+     */
+    @Serializable
+    @SerialName("kcp")
+    data class Kcp(
+        val mtu: Int? = null,
+        val tti: Int? = null,
+        val seed: String? = null,
+        val header: String? = null,
+        val legacyOriginal: Boolean = false,
+        val unsupported: String? = null,
+    ) : TransportDto
+
+    @Serializable
+    @SerialName("httpupgrade")
+    data class HttpUpgrade(
+        val host: String = "",
+        val path: String = "/",
     ) : TransportDto
 }

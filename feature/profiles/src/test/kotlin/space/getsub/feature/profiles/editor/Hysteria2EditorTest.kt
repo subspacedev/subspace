@@ -89,7 +89,7 @@ class Hysteria2EditorTest {
         Dispatchers.resetMain()
     }
 
-    private class Source(
+    internal class Source(
         profile: StoredProfile,
     ) : ProfileSource {
         private var stored = profile

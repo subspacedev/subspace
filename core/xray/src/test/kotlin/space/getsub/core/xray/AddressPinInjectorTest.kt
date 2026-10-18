@@ -210,4 +210,46 @@ class AddressPinInjectorTest {
         json shouldContain "srv.example"
         json shouldNotContain "\"address\":\"srv.example\""
     }
+
+    // ── M9-D2 research §5.2: WireGuard's only dial target is peers[].endpoint ──
+
+    private fun wireguard(endpoint: String) =
+        outbounds(
+            """[{"tag":"wg","protocol":"wireguard","settings":{"secretKey":"k","peers":[
+                {"publicKey":"p","endpoint":"$endpoint"},{"publicKey":"q","endpoint":"other.example:1"}]}}]""",
+        )
+
+    @Test
+    fun wireguardEndpointHostIsSwappedAndThePortKept() {
+        val out = AddressPinInjector.apply(wireguard("SRV.example.:51820"), pin)
+        out.at(0, "settings", "peers", 0, "endpoint").jsonPrimitive.content shouldBe "203.0.113.5:51820"
+        out.at(0, "settings", "peers", 1, "endpoint").jsonPrimitive.content shouldBe "other.example:1"
+        // No TLS and no transport: nothing to fill, so no streamSettings appears.
+        out.has(0, "streamSettings") shouldBe false
+    }
+
+    @Test
+    fun wireguardEndpointGetsABracketedIpv6Pin() {
+        val v6 = ServerAddressPin("srv.example", "2001:db8::5")
+        val out = AddressPinInjector.apply(wireguard("srv.example:51820"), v6)
+        out.at(0, "settings", "peers", 0, "endpoint").jsonPrimitive.content shouldBe "[2001:db8::5]:51820"
+    }
+
+    @Test
+    fun wireguardEndpointNamingAnotherHostOrUnreadableIsLeftAlone() {
+        for (endpoint in listOf("other.example:51820", "[2001:db8::1]:51820", "srv.example", "srv.example:")) {
+            val array = wireguard(endpoint)
+            AddressPinInjector.apply(array, pin) shouldBe array
+            AddressPinInjector.matches("""{"outbounds":$array}""", "srv.example") shouldBe false
+        }
+    }
+
+    @Test
+    fun matchesFindsAWireguardEndpointAndAnHttpFlatAddress() {
+        AddressPinInjector.matches("""{"outbounds":${wireguard("srv.example:51820")}}""", "srv.example") shouldBe true
+        val http = """[{"protocol":"http","settings":{"address":"srv.example","port":8080}}]"""
+        AddressPinInjector.matches("""{"outbounds":$http}""", "srv.example") shouldBe true
+        val out = AddressPinInjector.apply(outbounds(http), pin)
+        out.at(0, "settings", "address").jsonPrimitive.content shouldBe "203.0.113.5"
+    }
 }

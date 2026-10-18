@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Test
+import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.LatencyOptions
@@ -23,7 +24,10 @@ import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.xray.PingBatch
 import space.getsub.core.xray.PingTarget
 
@@ -334,12 +338,68 @@ class PingBatchSchedulingTest {
             } shouldBe LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
         }
 
+    private val tlsSecurity = Security.Tls("x.example.com", "chrome", false)
+
+    private val wireGuard: Outbound =
+        WireGuardOutbound("wg.example.com", 51820, "sk", listOf("10.0.0.2/32"), "pk", null)
+
+    private fun vlessOver(network: String): Outbound =
+        VlessOutbound("v.example.com", 443, "u", null, StreamSettings(network, tlsSecurity))
+
     @Test
-    fun onlyHysteria2IsAUdpServer() {
+    fun hysteria2WireGuardAndKcpAreUdpServers() {
         isUdpServer(hysteria2) shouldBe true
+        isUdpServer(wireGuard) shouldBe true
+        isUdpServer(vlessOver("kcp")) shouldBe true
+        isUdpServer(vlessOver("mKCP")) shouldBe true
+        isUdpServer(
+            TrojanOutbound("t.example.com", 443, "pw", StreamSettings("KCP", tlsSecurity)),
+        ) shouldBe true
+        isUdpServer(
+            VmessOutbound("m.example.com", 443, "u", 0, "auto", StreamSettings("kcp", Security.None)),
+        ) shouldBe true
         isUdpServer(vless) shouldBe false
+        isUdpServer(vlessOver("httpupgrade")) shouldBe false
+        isUdpServer(HttpOutbound("h.example.com", 8080, null, null, Security.None)) shouldBe false
         isUdpServer(null) shouldBe false
     }
+
+    @Test
+    fun onlyHysteria2IsCertProbeEligible() {
+        certProbeEligible(hysteria2) shouldBe true
+        certProbeEligible(wireGuard) shouldBe false
+        certProbeEligible(vlessOver("kcp")) shouldBe false
+        certProbeEligible(vless) shouldBe false
+        certProbeEligible(null) shouldBe false
+    }
+
+    @Test
+    fun wireGuardAndKcpInTcpModeAreUnsupported() =
+        runTest {
+            for (o in listOf(wireGuard, vlessOver("kcp"))) {
+                planLatency(tcp, { false }, null, o) { error("never generated") } shouldBe
+                    LatencyPlan.Settled(LatencyResult.failed(LatencyOutcome.UNSUPPORTED))
+            }
+        }
+
+    @Test
+    fun httpUpgradeAndHttpStillTcpProbe() =
+        runTest {
+            val http: Outbound = HttpOutbound("h.example.com", 8080, null, null, Security.None)
+            for (o in listOf(vlessOver("httpupgrade"), http)) {
+                planLatency(tcp, { false }, null, o) { error("never generated") } shouldBe LatencyPlan.InPlace
+            }
+        }
+
+    @Test
+    fun onlyHysteria2BatchTargetsCarryTheCertProbeMark() =
+        runTest {
+            for ((o, marked) in listOf(hysteria2 to true, wireGuard to false, vlessOver("kcp") to false)) {
+                val plan = planLatency(fiveSeconds, { false }, null, o) { "cfg" }
+                plan.shouldBeInstanceOf<LatencyPlan.Batched>()
+                plan.certProbe shouldBe marked
+            }
+        }
 
     @Test
     fun hysteria2ProxyHeadIsBatched() =

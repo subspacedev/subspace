@@ -201,4 +201,44 @@ class ObfuscationInjectorTest {
         ObfuscationInjector.apply(b, Obfuscation(Applied(frag, false), null)).at(0).masks("tcp") shouldBe
             listOf("fragment")
     }
+
+    // ── M9-D2 research §5.3 ─────────────────────────────────────────────────
+
+    @Test fun `a raw wireguard outbound gets user noise in finalmask udp and never the fragment`() {
+        val array = parse("""[{"tag":"wg","protocol":"wireguard","settings":{"secretKey":"k","peers":[]}}]""")
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, true), Applied(noise, true)))
+        out.at(0).masks("udp") shouldBe listOf("noise")
+        out.at(0).masks("tcp") shouldBe emptyList()
+        out.at(0)["settings"] shouldBe array.at(0)["settings"]
+    }
+
+    @Test fun `raw mkcp gets no fragment, raw http and httpupgrade get no noise`() {
+        val array =
+            parse(
+                """[{"tag":"k","protocol":"vless","streamSettings":{"network":"kcp"}},
+                    {"tag":"h","protocol":"http","settings":{"address":"p.example","port":8080}},
+                    {"tag":"u","protocol":"vless","streamSettings":{"network":"httpupgrade"}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, true), Applied(noise, true)))
+        out.at(0).masks("tcp") shouldBe emptyList()
+        out.at(0).masks("udp") shouldBe listOf("noise")
+        for (i in 1..2) {
+            out.at(i).masks("tcp") shouldBe listOf("fragment")
+            out.at(i).masks("udp") shouldBe emptyList()
+        }
+    }
+
+    // Since WireGuard is eligible, it is the outermost hop of a vless-through-wireguard chain: only it is
+    // offered masks, and as a UDP dial only noise.
+    @Test fun `a vless dialling through wireguard leaves the wireguard hop with noise only`() {
+        val array =
+            parse(
+                """[{"tag":"inner","protocol":"vless","streamSettings":{"network":"tcp","sockopt":{"dialerProxy":"wg"}}},
+                    {"tag":"wg","protocol":"wireguard","settings":{"secretKey":"k","peers":[]}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, true), Applied(noise, true)))
+        out.at(0) shouldBe array.at(0)
+        out.at(1).masks("udp") shouldBe listOf("noise")
+        out.at(1).masks("tcp") shouldBe emptyList()
+    }
 }

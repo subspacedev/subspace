@@ -24,7 +24,7 @@ class FailureDetailShapeTest {
             "vless://$secretUuid@$secretHost:443?security=reality&pbk=AAEC",
             "trojan://@$secretHost:443",
             "ss://cm90MTM6cHc@$secretHost:8388",
-            "wireguard://$secretUuid@$secretHost:443",
+            "tuic://$secretUuid@$secretHost:443",
         )
 
     @Test

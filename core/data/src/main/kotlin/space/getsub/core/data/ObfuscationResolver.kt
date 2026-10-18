@@ -3,9 +3,9 @@
 package space.getsub.core.data
 
 import space.getsub.core.model.FragmentSettings
-import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.Obfuscation
+import space.getsub.core.model.ObfuscationApplicability
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.parser.MaskFate
 import space.getsub.core.parser.MaskOffer
@@ -74,9 +74,10 @@ internal constructor(
  *
  * A row that runs as written is described by [ObfuscationDetection.plan], the same decision the
  * injector executes. Any other row (typed, or raw running its projection) never runs a config's own
- * mask, so it reports straight from the resolution, except that a Hysteria2 outbound never gets the
- * fragment: it is a TCP mask and the outbound is QUIC-only (M9-D1 spec §4), so the fragment reads as
- * not applied exactly as the raw path's `quicOnly` rule makes it.
+ * mask, so it reports straight from the resolution, except where [ObfuscationApplicability] says the
+ * generator does not write the mask: no fragment (a TCP mask) for Hysteria2's QUIC (M9-D1 spec §4),
+ * WireGuard or mKCP, and no noise (a UDP mask) for the HTTP proxy or HTTPUpgrade (M9-D2 research §5.3).
+ * Such a mask reads as not applied, exactly as the raw path's plan makes it.
  */
 internal fun obfuscationReport(
     profile: StoredProfile,
@@ -84,13 +85,13 @@ internal fun obfuscationReport(
 ): ObfuscationReport {
     val rawJson = profile.rawJson?.takeIf { profile.runsAsWritten }
     if (rawJson == null) {
-        val fragment =
-            if (profile.outbound is Hysteria2Outbound) {
-                rawReport(resolved.fragment, listOf(MaskFate.Nothing))
-            } else {
-                typedReport(resolved.fragment)
-            }
-        return ObfuscationReport(fragment, typedReport(resolved.noise))
+        val outbound = profile.outbound
+        val fragment = outbound == null || ObfuscationApplicability.fragmentApplies(outbound)
+        val noise = outbound == null || ObfuscationApplicability.noiseApplies(outbound)
+        return ObfuscationReport(
+            if (fragment) typedReport(resolved.fragment) else rawReport(resolved.fragment, listOf(MaskFate.Nothing)),
+            if (noise) typedReport(resolved.noise) else rawReport(resolved.noise, listOf(MaskFate.Nothing)),
+        )
     }
     val plans = ObfuscationDetection.plan(rawJson, resolved.fragment.offer(), resolved.noise.offer())
     return ObfuscationReport(

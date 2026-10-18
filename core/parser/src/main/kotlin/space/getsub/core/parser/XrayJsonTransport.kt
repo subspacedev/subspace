@@ -4,7 +4,11 @@ package space.getsub.core.parser
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import space.getsub.core.model.KcpRules
+import space.getsub.core.model.KcpUnsupported
 import space.getsub.core.model.TransportOptions
+import space.getsub.core.model.isHttpUpgradeNetwork
+import space.getsub.core.model.isKcpNetwork
 
 /**
  * Reads a raw Xray outbound's `streamSettings` transport block into [TransportOptions] —
@@ -35,6 +39,19 @@ import space.getsub.core.model.TransportOptions
  * `SplitHTTPConfig` (`path`, `host`, `mode`).
  */
 internal fun transportOptions(
+    streamSettings: JsonObject?,
+    network: String,
+): TransportOptions =
+    if (isKcpNetwork(network)) {
+        kcpOptions(streamSettings)
+    } else if (isHttpUpgradeNetwork(network)) {
+        val settings = streamSettings?.objectValue("httpupgradeSettings")
+        httpUpgrade(settings?.stringValue("host"), settings?.stringValue("path"))
+    } else {
+        transportOptionsByName(streamSettings, network)
+    }
+
+private fun transportOptionsByName(
     streamSettings: JsonObject?,
     network: String,
 ): TransportOptions =
@@ -90,3 +107,41 @@ private fun xhttpOptions(xhttp: JsonObject?): TransportOptions.Xhttp =
         host = xhttp?.nonBlankString("host"),
         mode = xhttp?.nonBlankString("mode"),
     )
+
+/**
+ * `kcpSettings` plus the obfuscation, from `streamSettings.finalmask.udp` masks via [readKcpFinalmask]
+ * (the v26.10 shape). Without any udp mask (noise masks do not count) the pre-v26.10 fields
+ * `kcpSettings.header.type` and `kcpSettings.seed` are read instead, through [classicObfuscation]: v26.10.10
+ * parses and ignores them, so such a config runs as bare KCP, and the projection says what the author meant.
+ *
+ * Legacy marker: none is stored. Like D1's `LegacyUdpHop`, `:core:xray`'s raw composer detects the shape
+ * at compose time by re-reading the raw JSON (a kcp outbound with `kcpSettings.header`/`seed` and no
+ * `finalmask.udp` mask other than noise) and rewrites it into masks, so the projection and the emitted config
+ * agree. `mtu`/`tti` are projected as given; one outside [KcpRules.settingsValid] makes the row not connectable
+ * ([KcpUnsupported.InvalidSetting]).
+ */
+private fun kcpOptions(streamSettings: JsonObject?): TransportOptions.Kcp {
+    val kcp = streamSettings?.objectValue("kcpSettings")
+    val mtu = kcp?.intValue("mtu")
+    val tti = kcp?.intValue("tti")
+    val settingBad = !KcpRules.settingsValid(mtu, tti)
+    val masks =
+        streamSettings?.objectValue("finalmask")?.let { readKcpFinalmask(it, trailingNoiseAllowed = true) }?.obfuscation
+    val header = kcp?.objectValue("header")
+    val obfuscation =
+        masks
+            ?: classicObfuscation(
+                kcp?.stringValue("seed"),
+                header?.stringValue("type") ?: kcp?.stringValue("header"),
+                dnsDomain = header?.stringValue("domain"),
+            )
+    val flagged =
+        if (settingBad && obfuscation.unsupported == null) {
+            obfuscation.copy(unsupported = KcpUnsupported.InvalidSetting)
+        } else {
+            obfuscation
+        }
+    return TransportOptions.Kcp(mtu, tti, flagged)
+}
+
+internal fun JsonObject.intValue(key: String): Int? = (this[key] as? JsonPrimitive)?.content?.trim()?.toIntOrNull()

@@ -5,6 +5,8 @@ package space.getsub.feature.profiles.editor
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,6 +20,8 @@ import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.Hysteria2Unsupported
+import space.getsub.core.model.KcpHeader
+import space.getsub.core.model.WireGuardUnsupported
 import space.getsub.core.parser.DetailField
 import space.getsub.core.parser.FailureDetail
 import space.getsub.core.parser.PassthroughAdvisory
@@ -109,6 +113,10 @@ class EditorScreenTest {
             onXhttpHostChanged = {},
             onXhttpModeChanged = {},
             onHysteria2Changed = {},
+            onWireGuardChanged = {},
+            onKcpChanged = {},
+            onHttpUpgradeHostChanged = {},
+            onHttpUpgradePathChanged = {},
             onSave = onSave,
             onConvertRouting = onConvertRouting,
         )
@@ -579,5 +587,46 @@ class EditorScreenTest {
         composeRule.onNodeWithText("Server name (SNI)").performScrollTo().performTextInput("hy.example")
 
         picked?.serverName shouldBe "hy.example"
+    }
+
+    @Test
+    fun anHttpServerSaysItCarriesTcpOnly() {
+        setContent(state = typedState.copy(protocol = "http"))
+
+        composeRule.onNodeWithTag(EDITOR_HTTP_TCP_ONLY_TEST_TAG).performScrollTo().assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.editor_http_tcp_only)).assertExists()
+    }
+
+    @Test
+    fun aHeaderWithoutASeedLeavesTheLegacySwitchOnAndDisabled() {
+        setContent(
+            state =
+            typedState.copy(network = "kcp", kcp = KcpDraft(header = KcpHeader.DNS)),
+        )
+
+        composeRule.onNodeWithTag(EDITOR_KCP_LEGACY_SWITCH_TEST_TAG).performScrollTo().assertIsOn().assertIsNotEnabled()
+    }
+
+    @Test
+    fun realityOnMkcpShowsTheTransportError() {
+        setContent(
+            state =
+            typedState.copy(network = "kcp", securityKind = EditorSecurityKind.Reality),
+        )
+
+        composeRule.onNodeWithTag(EDITOR_REALITY_TRANSPORT_ERROR_TEST_TAG).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aWireGuardServerThatCannotConnectNamesWhy() {
+        setContent(
+            state =
+            typedState.copy(
+                protocol = "wireguard",
+                wireGuard = WireGuardDraft(notConnectableReason = WireGuardUnsupported.MultiplePeers),
+            ),
+        )
+
+        composeRule.onNodeWithTag(EDITOR_WIREGUARD_NOT_CONNECTABLE_TEST_TAG).performScrollTo().assertExists()
     }
 }

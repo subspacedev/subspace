@@ -156,6 +156,13 @@
     <string name="import_detail_field_obfuscation">Obfuscation</string>
     <string name="import_detail_field_bandwidth">Bandwidth</string>
     <string name="import_detail_field_hop_interval">Hop interval</string>
+    <string name="import_detail_field_mtu">MTU</string>
+    <string name="import_detail_field_tti">TTI</string>
+    <string name="import_detail_field_reserved">Reserved bytes</string>
+    <string name="import_detail_field_keepalive">Keepalive</string>
+    <string name="import_detail_field_secret_key">Secret key</string>
+    <string name="import_detail_field_local_address">Local address</string>
+    <string name="import_detail_field_allowed_ips">Allowed IPs</string>
 
     <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
          input box. ARCHITECTURE.md §5.6 applies here
@@ -275,6 +282,51 @@
     <string name="editor_hysteria2_bandwidth_error">Use a speed such as 100 or 1 gbps, of at least 512 kbps.</string>
     <string name="editor_hysteria2_unknown_mask">This server\'s panel uses an obfuscation Subspace can\'t run yet, so it can\'t connect.</string>
     <string name="editor_hysteria2_unknown_congestion">This server\'s panel uses a congestion setting Subspace can\'t run yet, so it can\'t connect.</string>
+    <string name="editor_secret_show">Show</string>
+    <string name="editor_secret_hide">Hide</string>
+    <string name="editor_reality_transport_error">REALITY needs RAW, XHTTP or gRPC. Pick another transport or turn REALITY off.</string>
+    <string name="editor_wireguard_section_keys">Keys</string>
+    <string name="editor_wireguard_section_tunnel">Tunnel</string>
+    <string name="editor_wireguard_secret_key_label">Secret key</string>
+    <string name="editor_wireguard_peer_key_label">Peer public key</string>
+    <string name="editor_wireguard_psk_label">Pre-shared key (optional)</string>
+    <string name="editor_wireguard_key_error">A key is 32 bytes in base64, or 64 hex characters.</string>
+    <string name="editor_wireguard_local_addresses_label">Local addresses (one per line)</string>
+    <string name="editor_wireguard_local_addresses_hint">At least one, such as 10.0.0.2/32.</string>
+    <string name="editor_wireguard_local_addresses_error">Enter at least one valid IPv4 or IPv6 address, with an optional prefix.</string>
+    <string name="editor_wireguard_allowed_ips_label">Allowed IPs (blank = everything)</string>
+    <string name="editor_wireguard_allowed_ips_error">Each entry must be an IPv4 or IPv6 range such as 10.0.0.0/8, or a single address.</string>
+    <string name="editor_wireguard_mtu_label">MTU (blank = 1420)</string>
+    <string name="editor_wireguard_mtu_error">The MTU must be a whole number from 1 to 65535.</string>
+    <string name="editor_wireguard_reserved_label">Reserved bytes (optional, e.g. 1,2,3)</string>
+    <string name="editor_wireguard_reserved_error">Use three numbers from 0 to 255, or three bytes in base64.</string>
+    <string name="editor_wireguard_keepalive_label">Keepalive seconds (optional)</string>
+    <string name="editor_wireguard_keepalive_error">The keepalive must be a whole number from 0 to 65535.</string>
+    <string name="editor_wireguard_multiple_peers">This server has several peers, which Subspace can\'t run yet, so it can\'t connect.</string>
+    <string name="editor_wireguard_invalid_key">This server\'s key is not valid, so it can\'t connect. Re-enter it.</string>
+    <string name="editor_wireguard_invalid_reserved">This server\'s reserved bytes are not valid, so it can\'t connect. Re-enter them.</string>
+    <string name="editor_wireguard_unsupported_mask">This server\'s source uses an obfuscation Subspace can\'t run yet, so it can\'t connect.</string>
+    <string name="editor_wireguard_invalid_mtu">This server\'s MTU is not valid, so it can\'t connect. Re-enter it.</string>
+    <string name="editor_wireguard_invalid_allowed_ips">This server\'s allowed IPs are not valid, so it can\'t connect. Re-enter them.</string>
+    <string name="editor_http_tcp_only">This server type carries TCP only — UDP and QUIC sites fall back or fail.</string>
+    <string name="editor_http_tls_label">TLS</string>
+    <string name="editor_http_reality_error">An HTTP proxy can\'t use REALITY. Turn TLS on or off.</string>
+    <string name="editor_kcp_mtu_label">MTU (optional, 21 to 65535)</string>
+    <string name="editor_kcp_mtu_error">The MTU must be a whole number from 21 to 65535.</string>
+    <string name="editor_kcp_tti_label">TTI (optional, 10 to 1000 ms)</string>
+    <string name="editor_kcp_tti_error">The TTI must be a whole number from 10 to 1000.</string>
+    <string name="editor_kcp_seed_label">Seed (optional)</string>
+    <string name="editor_kcp_header_label">Header</string>
+    <string name="editor_kcp_header_none">None</string>
+    <string name="editor_kcp_legacy_label">Legacy obfuscation (pre-2026 servers)</string>
+    <string name="editor_kcp_legacy_forced_hint">A header without a seed always uses the legacy obfuscation.</string>
+    <string name="editor_kcp_legacy_seed_hint">A seed replaces it.</string>
+    <string name="editor_kcp_http_header">This server\'s source uses the HTTP header, which Subspace can\'t run, so it can\'t connect.</string>
+    <string name="editor_kcp_unknown_mask">This server\'s source uses an mKCP obfuscation Subspace can\'t run, so it can\'t connect.</string>
+    <string name="editor_kcp_dns_domain">This server\'s DNS header names a domain, which Subspace can\'t write, so it can\'t connect.</string>
+    <string name="editor_kcp_invalid_setting">This server\'s mKCP settings are not valid, so it can\'t connect. Re-enter them.</string>
+    <string name="editor_httpupgrade_host_label">Host (optional)</string>
+    <string name="editor_httpupgrade_path_label">Path</string>
     <string name="editor_save_button">Save</string>
 
     <!-- M7: this config's own bytes now reach the core, when eligible. The old

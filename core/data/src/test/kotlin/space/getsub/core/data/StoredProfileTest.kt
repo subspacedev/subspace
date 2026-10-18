@@ -122,20 +122,20 @@ class StoredProfileTest {
 
     @Test
     fun `a transport the generator cannot emit is not connectable`() {
-        // kcp, httpupgrade and hysteria are real Xray transports with no emission
-        // here. The gate must stay an allow-list of what the generator handles —
-        // if it were a deny-list, adding a transport to the model would silently
-        // promise a config this build cannot write.
-        profile(protocol = "vless", network = "kcp").connectable shouldBe false
-        profile(protocol = "vless", network = "httpupgrade").connectable shouldBe false
-        profile(protocol = "vless", network = "hysteria").connectable shouldBe false
-        // VMess and Trojan share VLESS's network set, so the same unemitted networks stay refused.
-        // Hysteria2 must be gated by its own Outbound branch in `connectable`, not by adding
-        // `hysteria` to CONNECTABLE_NETWORKS: that would make a VLESS/VMess/Trojan row over
-        // `hysteria` connectable and write a stream block no such protocol can run.
-        for (protocol in listOf("vmess", "trojan")) {
-            for (network in listOf("kcp", "httpupgrade", "hysteria")) {
-                profile(protocol = protocol, network = network).connectable shouldBe false
+        // hysteria is a real Xray transport with no emission here. The gate must stay an allow-list of
+        // what the generator handles: a deny-list would promise a config this build cannot write.
+        // Hysteria2 is gated by its own Outbound branch in `connectable`, not by adding `hysteria` to
+        // CONNECTABLE_NETWORKS: that would make a row of any of these protocols over `hysteria` connectable.
+        for (protocol in listOf("vless", "vmess", "trojan")) {
+            profile(protocol = protocol, network = "hysteria").connectable shouldBe false
+        }
+    }
+
+    @Test
+    fun `kcp, mkcp and httpupgrade are emitted since M9-D2`() {
+        for (protocol in listOf("vless", "vmess", "trojan")) {
+            for (network in listOf("kcp", "mkcp", "KCP", "httpupgrade", "HttpUpgrade")) {
+                profile(protocol = protocol, network = network).connectable shouldBe true
             }
         }
     }
@@ -157,8 +157,8 @@ class StoredProfileTest {
     }
 
     @Test
-    fun `a vmess profile over kcp is not connectable`() {
-        profile(protocol = "vmess", network = "kcp").connectable shouldBe false
+    fun `a vmess profile over quic is not connectable`() {
+        profile(protocol = "vmess", network = "quic").connectable shouldBe false
     }
 
     @Test

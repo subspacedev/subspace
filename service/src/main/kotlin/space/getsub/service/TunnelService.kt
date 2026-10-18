@@ -60,7 +60,13 @@ import space.getsub.core.model.Profile
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
+import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.UdpCarriage
+import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.failure
+import space.getsub.core.model.isKcpNetwork
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.retryability
 import space.getsub.core.parser.OverrideTarget
@@ -246,6 +252,19 @@ internal fun runsAsWrittenAtConnect(
     storedRunsAsWritten: Boolean,
     rawJson: String?,
 ): Boolean = storedRunsAsWritten && (rawJson == null || analysePassthrough(rawJson).rejection == null)
+
+/**
+ * The `outboundCarriesUdp` input to `DnsPlanner.plan` (ruling D2-R16): false forces a DNS plan so the
+ * generator sends DNS over TCP. Only for a row that does not run as written: a raw row whose first outbound
+ * is `http` has an [space.getsub.core.model.HttpOutbound] projection too, but it brings its own `dns`, and a
+ * forced plan would push it off the pure-passthrough branch ([passthroughPlanFor]) into the override path,
+ * which can fail (`UnresolvableOverrideTarget`, a `dns-out` tag collision) and writes plain DNS anyway.
+ * [runsAsWritten] is the [runsAsWrittenAtConnect] verdict, so raw rows behave exactly as before D2-R16.
+ */
+internal fun dnsPlanOutboundCarriesUdp(
+    outbound: Outbound,
+    runsAsWritten: Boolean,
+): Boolean = runsAsWritten || UdpCarriage.carriesUdp(outbound)
 
 /**
  * Which [FailureReason] a core refusal at `xray.validate` names.
@@ -567,11 +586,21 @@ internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
     LatencyOutcome.UNSUPPORTED.takeIf { rawJson != null && analysePassthrough(rawJson).isBalancer }
 
 /**
- * Whether a TCP connect says nothing about this server, because it speaks QUIC over UDP. The one rule
+ * Whether a TCP connect says nothing about this server, because it speaks UDP (QUIC, WireGuard, mKCP). The one rule
  * both [planLatency] (no TCP-mode number) and `preResolve` (no TCP race) follow. A raw `hysteria` row
  * qualifies through its typed projection, which is what a stored row's [Outbound] is.
  */
-internal fun isUdpServer(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound
+internal fun isUdpServer(outbound: Outbound?): Boolean =
+    when (outbound) {
+        is Hysteria2Outbound, is WireGuardOutbound -> true
+        is VlessOutbound -> isKcpNetwork(outbound.stream.network)
+        is VmessOutbound -> isKcpNetwork(outbound.stream.network)
+        is TrojanOutbound -> isKcpNetwork(outbound.stream.network)
+        else -> false
+    }
+
+/** Whether `:ping` may certificate-probe this server. Hysteria2 only: WireGuard and mKCP have no certificate. */
+internal fun certProbeEligible(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound
 
 /**
  * The guards every measurement passes before any batching, then the mode.
@@ -610,7 +639,7 @@ internal suspend fun planLatency(
                     LatencyPlan.Batched(
                         it,
                         PingGroup(options.timeoutSeconds, options.checkUrl),
-                        certProbe = isUdpServer(outbound),
+                        certProbe = certProbeEligible(outbound),
                     )
                 }
                 ?: unsupported
@@ -1947,12 +1976,19 @@ class TunnelService : VpnService() {
                 // uses, rather than in startCore or attachTun — both need the exact
                 // same plan, and computing it once is what keeps the generated
                 // config and the TUN's advertised resolver from disagreeing.
+                // The same verdict resolveConfigJson reaches for this row; a row that is gone fails there.
+                val runsAsWritten =
+                    profileRepository.profile(rowId)?.let { runsAsWrittenAtConnect(it.runsAsWritten, it.rawJson) }
+                        ?: false
                 val dnsPlan =
                     DnsPlanner.plan(
                         profileDns = (routing as? RoutingResolution.Active)?.dns,
                         setting = settingsRepository.dnsResolver.first(),
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
                         sniffingEnabled = SNIFFING_ENABLED,
+                        // Ruling D2-R16: a typed row whose outbound drops UDP (the HTTP proxy) always gets
+                        // the port-53 hijack, so app lookups reach the dns module and leave over TCP.
+                        outboundCarriesUdp = dnsPlanOutboundCarriesUdp(profile.outbound, runsAsWritten),
                     )
                 val xray = XrayController()
                 val ownsStart =
