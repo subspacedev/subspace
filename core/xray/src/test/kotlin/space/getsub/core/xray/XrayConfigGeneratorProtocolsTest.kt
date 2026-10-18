@@ -187,7 +187,7 @@ class XrayConfigGeneratorProtocolsTest {
         }
     }
 
-    @Test fun `shadowsocks and socks carry finalmask from the tunnel settings`() {
+    @Test fun `shadowsocks and socks carry the fragment but no noise`() {
         val fragment =
             Applied(
                 FragmentSpec(FragmentPackets.TlsHello, XrayRange(50, 100), XrayRange(10, 20), XrayRange(10, 10)),
@@ -206,7 +206,7 @@ class XrayConfigGeneratorProtocolsTest {
             val stream = proxy(json(outbound, masked)).getValue("streamSettings").jsonObject
             stream.keys shouldBe setOf("network", "finalmask", "security")
             stream.getValue("finalmask") shouldBe vlessMask
-            stream.getValue("finalmask").jsonObject.keys shouldBe setOf("tcp", "udp")
+            stream.getValue("finalmask").jsonObject.keys shouldBe setOf("tcp")
         }
     }
 

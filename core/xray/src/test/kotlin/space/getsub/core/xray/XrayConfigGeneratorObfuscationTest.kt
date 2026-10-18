@@ -55,7 +55,8 @@ class XrayConfigGeneratorObfuscationTest {
         json(base.copy(obfuscation = Obfuscation(fragment, null))) shouldBe golden("vless-reality-fragment.json")
     }
 
-    @Test fun `fragment and noise match their golden`() {
-        json(base.copy(obfuscation = Obfuscation(fragment, noise))) shouldBe golden("vless-reality-fragment-noise.json")
+    @Test fun `noise is dropped on a TCP outbound, leaving only the fragment golden`() {
+        json(base.copy(obfuscation = Obfuscation(fragment, noise))) shouldBe golden("vless-reality-fragment.json")
+        json(base.copy(obfuscation = Obfuscation(null, noise))) shouldBe golden("vless-reality.json")
     }
 }

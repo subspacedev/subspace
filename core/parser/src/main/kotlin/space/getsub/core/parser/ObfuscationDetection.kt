@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import space.getsub.core.model.isHttpUpgradeNetwork
 import space.getsub.core.model.isKcpNetwork
 
 /** Whether one outbound already does a mask itself, and how (M9-A spec §3.3 rule 3). */
@@ -121,16 +120,16 @@ public object ObfuscationDetection {
             val outbound = outbounds[i] as JsonObject
             // Fragment is a TCP mask; a QUIC-only Hysteria outbound never dials TCP (M9-D1 spec §4),
             // nor do WireGuard and mKCP (M9-D2 research §5.3), so it is not offered there rather than
-            // written in and reported as applied. Noise is a UDP mask, likewise never offered to the
-            // CONNECT-only HTTP outbound or an HTTPUpgrade stream. The typed path asks the same table,
-            // `ObfuscationApplicability`.
+            // written in and reported as applied. Noise is a UDP mask offered only to the UDP-based
+            // servers (Hysteria, WireGuard, mKCP), never to a TCP-carried one (M9-E spec §7.2). The
+            // typed path asks the same table, `ObfuscationApplicability`.
             val dials = outbound.dials()
             plan(
                 i,
                 outbound,
                 byTag,
                 fragment.takeUnless { dials == Dials.UdpOnly },
-                noise.takeUnless { dials == Dials.TcpOnly },
+                noise.takeIf { dials == Dials.UdpOnly },
             )
         }
     }
@@ -241,7 +240,7 @@ private fun JsonObject.dialerProxy(): String? = (stream()?.get("sockopt") as? Js
 private fun JsonObject.protocol(): String? = string("protocol")
 
 /** Which socket kinds an outbound dials, for mask applicability (mirrors `ObfuscationApplicability`). */
-private enum class Dials { TcpOnly, UdpOnly, Both }
+private enum class Dials { UdpOnly, Both }
 
 private fun JsonObject.dials(): Dials {
     val network = stream()?.string("network").orEmpty()
@@ -249,7 +248,6 @@ private fun JsonObject.dials(): Dials {
     return when {
         protocol == "hysteria" || network.equals("hysteria", ignoreCase = true) -> Dials.UdpOnly
         protocol == "wireguard" || isKcpNetwork(network) -> Dials.UdpOnly
-        protocol == "http" || isHttpUpgradeNetwork(network) -> Dials.TcpOnly
         else -> Dials.Both
     }
 }

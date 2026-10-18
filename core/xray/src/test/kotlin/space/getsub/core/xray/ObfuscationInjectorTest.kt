@@ -105,7 +105,7 @@ class ObfuscationInjectorTest {
                 """[{"tag":"h","protocol":"hysteria","streamSettings":{"finalmask":{"udp":[
                     {"type":"udphop","settings":{}},{"type":"noise","settings":{}}]}}},
                    {"tag":"v","protocol":"vless",
-                    "streamSettings":{"finalmask":{"udp":[{"type":"xicmp","settings":{}}]}}}]""",
+                    "streamSettings":{"network":"kcp","finalmask":{"udp":[{"type":"xicmp","settings":{}}]}}}]""",
             )
         val out = ObfuscationInjector.apply(array, Obfuscation(null, Applied(noise, replaceOwn = true)))
         out.at(0).masks("udp") shouldBe listOf("noise", "udphop")
@@ -144,8 +144,9 @@ class ObfuscationInjectorTest {
     private fun freedomChain(
         freedomSettings: String,
         finalmask: String = "",
+        network: String = "tcp",
     ) = parse(
-        """[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"}$finalmask}},
+        """[{"tag":"p","protocol":"vless","streamSettings":{"network":"$network","sockopt":{"dialerProxy":"f"}$finalmask}},
             {"tag":"f","protocol":"freedom","settings":$freedomSettings}]""",
     )
 
@@ -153,22 +154,26 @@ class ObfuscationInjectorTest {
     private val both = """{"fragment":{"packets":"tlshello","length":"1-2","interval":"1"},"noises":[{"packet":"1"}]}"""
     private val noisesOnly = """{"noises":[{"packet":"1"}]}"""
 
-    @Test fun `fragment user mode cut leaves a noise directive to fill its gap`() {
+    // Fragment (TCP) and noise (UDP) are never both offered to one outbound (M9-E spec §7.2), so a cut
+    // made for one mask leaves nothing to fill the gap of the other.
+    @Test fun `fragment user mode cut on a tcp outbound drops the chain's noise`() {
         val out = ObfuscationInjector.apply(freedomChain(both), Obfuscation(Applied(frag, true), Applied(noise, false)))
         out.at(0).dialerProxy() shouldBe null
         out.at(0).masks("tcp") shouldBe listOf("fragment")
-        out.at(0).masks("udp").last() shouldBe "noise"
+        out.at(0).masks("udp") shouldBe emptyList()
     }
 
-    @Test fun `noise user mode cut leaves a fragment directive to fill its gap`() {
-        val out = ObfuscationInjector.apply(freedomChain(both), Obfuscation(Applied(frag, false), Applied(noise, true)))
+    @Test fun `noise user mode cut on an mkcp outbound drops the chain's fragment`() {
+        val array = freedomChain(both, network = "kcp")
+        val out = ObfuscationInjector.apply(array, Obfuscation(Applied(frag, false), Applied(noise, true)))
         out.at(0).dialerProxy() shouldBe null
-        out.at(0).masks("tcp")[0] shouldBe "fragment"
+        out.at(0).masks("tcp") shouldBe emptyList()
         out.at(0).masks("udp") shouldBe listOf("noise")
     }
 
     @Test fun `noise user mode cuts a noises-only chain`() {
-        val out = ObfuscationInjector.apply(freedomChain(noisesOnly), Obfuscation(null, Applied(noise, true)))
+        val array = freedomChain(noisesOnly, network = "kcp")
+        val out = ObfuscationInjector.apply(array, Obfuscation(null, Applied(noise, true)))
         out.at(0).dialerProxy() shouldBe null
         out.at(0).masks("udp") shouldBe listOf("noise")
         out.size shouldBe 2
@@ -210,6 +215,17 @@ class ObfuscationInjectorTest {
         out.at(0).masks("udp") shouldBe listOf("noise")
         out.at(0).masks("tcp") shouldBe emptyList()
         out.at(0)["settings"] shouldBe array.at(0)["settings"]
+    }
+
+    @Test fun `a raw VLESS-ws outbound keeps its own noise mask and gets no user noise`() {
+        val array =
+            parse(
+                """[{"tag":"w","protocol":"vless","streamSettings":{"network":"ws",
+                    "finalmask":{"udp":[{"type":"noise","settings":{"noise":[{"packet":"AA=="}]}}]}}}]""",
+            )
+        val out = ObfuscationInjector.apply(array, Obfuscation(null, Applied(noise, replaceOwn = true)))
+        out.at(0).masks("udp") shouldBe listOf("noise")
+        out.at(0)["streamSettings"] shouldBe array.at(0)["streamSettings"]
     }
 
     @Test fun `raw mkcp gets no fragment, raw http and httpupgrade get no noise`() {

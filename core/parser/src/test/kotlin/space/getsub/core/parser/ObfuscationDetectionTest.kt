@@ -67,6 +67,8 @@ class ObfuscationDetectionTest {
             {"tag":"f","protocol":"freedom",
              "settings":{"fragment":{"packets":"tlshello"},"noises":[{"packet":"1"}]}}]}"""
 
+    private val bothChainKcp = bothChain.replace(""""streamSettings":{""", """"streamSettings":{"network":"kcp",""")
+
     @Test fun `plan of junk or a config without eligible outbounds is empty`() {
         ObfuscationDetection.plan("not json", user, user) shouldBe emptyList()
         ObfuscationDetection.plan("""{"outbounds":[{"tag":"d","protocol":"freedom"}]}""", user, user) shouldBe
@@ -80,11 +82,17 @@ class ObfuscationDetectionTest {
         ) shouldBe emptyList()
     }
 
-    @Test fun `noise On alone cuts a chain carrying both, and the chain's fragmentation is lost`() {
-        ObfuscationDetection.plan(bothChain, fragment = null, noise = user) shouldBe
+    // Noise is offered only to UDP-based servers, which are never offered the fragment (M9-E spec §7.2).
+    @Test fun `noise On alone cuts an mkcp chain carrying both, and the chain's fragmentation is lost`() {
+        ObfuscationDetection.plan(bothChainKcp, fragment = null, noise = user) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Nothing, MaskFate.Ours))
-        ObfuscationDetection.plan(bothChain, fragment = directive, noise = user) shouldBe
-            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Ours, MaskFate.Ours))
+        ObfuscationDetection.plan(bothChainKcp, fragment = directive, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Nothing, MaskFate.Ours))
+    }
+
+    @Test fun `noise On does not cut a tcp chain`() {
+        ObfuscationDetection.plan(bothChain, fragment = null, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Own, MaskFate.Own))
     }
 
     @Test fun `fragmentation On alone cuts a chain carrying both, and the chain's noise is lost`() {
@@ -104,12 +112,15 @@ class ObfuscationDetectionTest {
         ObfuscationDetection.plan(plain, directive, null) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Ours, MaskFate.Nothing))
         ObfuscationDetection.plan(plain, null, user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Nothing, MaskFate.Nothing))
+        val kcp = """{"outbounds":[{"tag":"p","protocol":"trojan","streamSettings":{"network":"kcp"}}]}"""
+        ObfuscationDetection.plan(kcp, null, user) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Nothing, MaskFate.Ours))
     }
 
     @Test fun `an own finalmask mask survives a cut made for the other type`() {
         val json =
-            """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"},
+            """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"network":"kcp","sockopt":{"dialerProxy":"f"},
                 "finalmask":{"tcp":[{"type":"fragment"}]}}},
                 {"tag":"f","protocol":"freedom","settings":{"noises":[{"packet":"1"}]}}]}"""
         ObfuscationDetection.plan(json, null, user) shouldBe
@@ -174,9 +185,9 @@ class ObfuscationDetectionTest {
         planOf(ownFragment).fragment shouldBe MaskFate.Own
     }
 
-    @Test fun `tcp transports keep both, as before`() {
+    @Test fun `tcp transports keep the fragment and are offered no noise`() {
         val plan = planOf("""{"tag":"v","protocol":"vless","streamSettings":{"network":"ws"}}""")
         plan.fragment shouldBe MaskFate.Ours
-        plan.noise shouldBe MaskFate.Ours
+        plan.noise shouldBe MaskFate.Nothing
     }
 }
