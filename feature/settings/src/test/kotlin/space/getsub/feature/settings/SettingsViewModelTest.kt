@@ -24,6 +24,7 @@ import org.junit.Test
 import space.getsub.core.data.GeoInstallRequest
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.InstalledGeoAsset
+import space.getsub.core.data.ResolvedTuning
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
@@ -35,6 +36,8 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.TunMtuUserSetting
+import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
  * Covers Task 22's substance: theme is persisted through [SettingsSource]
@@ -245,6 +248,18 @@ class SettingsViewModelTest {
             preResolve.value = settings
         }
 
+        val tunnel = MutableStateFlow(TunnelDraft())
+        val tunnelSaves = mutableListOf<TunnelDraft>()
+        override val tunnelSettings: Flow<TunnelDraft> = tunnel.asStateFlow()
+
+        override suspend fun saveTunnelSettings(draft: TunnelDraft) {
+            tunnelSaves += draft
+            tunnel.value = draft
+        }
+
+        override val tunnelWithoutYourOverrides: Flow<ResolvedTuning?> = MutableStateFlow(null)
+        override val activeRuleSetHasDomainRules: Flow<Boolean> = MutableStateFlow(false)
+
         var ignoringBatteryOptimizations: Boolean = false
 
         override suspend fun isIgnoringBatteryOptimizations(): Boolean = ignoringBatteryOptimizations
@@ -276,6 +291,12 @@ class SettingsViewModelTest {
 
         fun publish(next: ConnectionState) {
             _state.value = next
+        }
+
+        var reapplyTuningCount = 0
+
+        override fun reapplyTuning() {
+            reapplyTuningCount++
         }
     }
 
@@ -1040,6 +1061,37 @@ class SettingsViewModelTest {
     // these cover the two cases review finding I-2 showed the old one-way latch got wrong (a
     // second toggle within one session, and a ViewModel recreated by a screen navigation) plus
     // the ordinary connect/disconnect transitions the old F2 tests already covered.
+
+    @Test
+    fun `saving tunnel settings writes the draft once and restarts the session once`() = runTest {
+        val source = FakeSettingsSource()
+        val session = FakeTunnelSessionSource(initial = ConnectionState.Connected(0L, 1080, 0))
+        val model = SettingsViewModel(source, FakeXraySource(), FakeAppVersionSource(), FakeGeoAssetSource(), session)
+        advanceUntilIdle()
+
+        val draft = TunnelDraft(mtu = TunMtuUserSetting(override = true, value = "1400"))
+        model.onTunnelSettingsSaved(draft)
+        advanceUntilIdle()
+
+        source.tunnelSaves shouldBe listOf(draft)
+        session.reapplyTuningCount shouldBe 1
+        model.state.value.tunnel shouldBe draft
+    }
+
+    @Test
+    fun `an invalid or unchanged tunnel draft is neither written nor applied`() = runTest {
+        val source = FakeSettingsSource()
+        val session = FakeTunnelSessionSource()
+        val model = SettingsViewModel(source, FakeXraySource(), FakeAppVersionSource(), FakeGeoAssetSource(), session)
+        advanceUntilIdle()
+
+        model.onTunnelSettingsSaved(TunnelDraft(mtu = TunMtuUserSetting(override = true, value = "1000")))
+        model.onTunnelSettingsSaved(TunnelDraft())
+        advanceUntilIdle()
+
+        source.tunnelSaves shouldBe emptyList()
+        session.reapplyTuningCount shouldBe 0
+    }
 
     private fun connectedSession() = FakeTunnelSessionSource(initial = ConnectionState.Connected(0L, 1080, 0))
 

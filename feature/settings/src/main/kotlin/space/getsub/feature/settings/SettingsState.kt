@@ -4,6 +4,7 @@ package space.getsub.feature.settings
 
 import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.InstalledGeoAsset
+import space.getsub.core.data.ResolvedTuning
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
@@ -14,6 +15,7 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
  * What the Settings screen shows: Appearance's current choice and About's
@@ -121,6 +123,12 @@ internal data class SettingsState(
     val preResolve: PreResolveSettings = PreResolveSettings.DEFAULT,
     /** The user's UDP noise, as stored (M9-A spec §2.1). Off means the provider's applies. */
     val noise: NoiseSettings = NoiseSettings.DEFAULT,
+    /** The Tunnel page's settings as stored (M9-E). The page edits its own draft of them. */
+    val tunnel: TunnelDraft = TunnelDraft(),
+    /** The active server's values with your overrides off, for "From your subscription". Null with none. */
+    val tunnelWithoutYourOverrides: ResolvedTuning? = null,
+    /** Whether the active rule set has domain rules, which stop matching while sniffing is off. */
+    val activeRuleSetHasDomainRules: Boolean = false,
 ) {
     /** One row per install filename. See [geoRowsFor]'s KDoc for exactly how ground truth is chosen. */
     val geoRows: List<GeoRow>

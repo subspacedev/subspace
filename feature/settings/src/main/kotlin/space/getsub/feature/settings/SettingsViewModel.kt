@@ -32,6 +32,9 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.isGeoFileName
+import space.getsub.feature.settings.pages.TunnelDraft
+import space.getsub.feature.settings.pages.canSave
+import space.getsub.feature.settings.pages.forSave
 import javax.inject.Inject
 
 /**
@@ -72,6 +75,9 @@ constructor(
 
     /** Serialises fragmentation, noise and pre-resolution patches (see [onFragmentSettingsChanged]). */
     private val obfuscationWrites = Mutex()
+
+    /** Serialises Tunnel page saves, so two quick saves land in order. */
+    private val tunnelWrites = Mutex()
 
     init {
         settingsSource.theme
@@ -172,6 +178,18 @@ constructor(
 
         settingsSource.preResolveSettings
             .onEach { value -> _state.update { it.copy(preResolve = value) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.tunnelSettings
+            .onEach { value -> _state.update { it.copy(tunnel = value) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.tunnelWithoutYourOverrides
+            .onEach { value -> _state.update { it.copy(tunnelWithoutYourOverrides = value) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.activeRuleSetHasDomainRules
+            .onEach { value -> _state.update { it.copy(activeRuleSetHasDomainRules = value) } }
             .launchIn(viewModelScope)
 
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)
@@ -276,6 +294,22 @@ constructor(
             obfuscationWrites.withLock {
                 settingsSource.setPreResolveSettings(patch(settingsSource.preResolveSettings.first()))
             }
+        }
+    }
+
+    /**
+     * The Tunnel page's Save (M9-E). Writes the draft, then asks the service once to restart the
+     * session with it. Nothing is written, and nothing restarts, for a draft the page should not have
+     * offered to save. Whether a session exists to restart is the service's call (a save during
+     * Connecting must still rebuild), the same rule per-app's Save follows.
+     */
+    fun onTunnelSettingsSaved(draft: TunnelDraft) {
+        val stored = _state.value.tunnel
+        if (!draft.canSave(stored)) return
+        val toSave = draft.forSave(stored)
+        viewModelScope.launch {
+            tunnelWrites.withLock { settingsSource.saveTunnelSettings(toSave) }
+            tunnelSessionSource.reapplyTuning()
         }
     }
 

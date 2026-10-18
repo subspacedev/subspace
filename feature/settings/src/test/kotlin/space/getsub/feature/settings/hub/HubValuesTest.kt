@@ -7,11 +7,18 @@ import org.junit.Test
 import space.getsub.core.data.InstalledGeoAsset
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.ExcludeRoutesUserSetting
 import space.getsub.core.model.GeoDataKind
+import space.getsub.core.model.MuxUserSettings
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.ProxyAuthMode
+import space.getsub.core.model.ProxyAuthSettings
+import space.getsub.core.model.SniffingUserSetting
+import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.feature.settings.SettingsState
+import space.getsub.feature.settings.pages.TunnelDraft
 
 class HubValuesTest {
     private val base = SettingsState()
@@ -112,5 +119,28 @@ class HubValuesTest {
         dnsHubAddress(DnsTransport.DOH, "https://dns.example.invalid:8443/q?x=1") shouldBe "dns.example.invalid:8443"
         dnsHubAddress(DnsTransport.DOU, "1.1.1.1") shouldBe "1.1.1.1"
         dnsHubAddress(DnsTransport.DOH, "") shouldBe ""
+    }
+
+    @Test
+    fun `tunnel reads Default with every override off and auto proxy auth`() {
+        base.tunnelValue() shouldBe TunnelHubValue.Default
+    }
+
+    @Test
+    fun `tunnel reads Custom when any override is on or proxy auth is manual`() {
+        val d = TunnelDraft()
+        listOf(
+            d.copy(sniffing = SniffingUserSetting(override = true, enabled = true)),
+            d.copy(mux = MuxUserSettings.DEFAULT.copy(override = true)),
+            d.copy(mtu = TunMtuUserSetting(override = true, value = "8500")),
+            d.copy(routes = ExcludeRoutesUserSetting(override = true, ranges = "")),
+            d.copy(proxyAuth = ProxyAuthSettings(ProxyAuthMode.Manual, "a", "b")),
+        ).forEach { base.copy(tunnel = it).tunnelValue() shouldBe TunnelHubValue.Custom }
+    }
+
+    @Test
+    fun `tunnel stays Default when values differ but every switch is off`() {
+        val d = TunnelDraft(mtu = TunMtuUserSetting(override = false, value = "1400"))
+        base.copy(tunnel = d).tunnelValue() shouldBe TunnelHubValue.Default
     }
 }

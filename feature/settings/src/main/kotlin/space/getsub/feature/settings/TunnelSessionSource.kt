@@ -25,7 +25,8 @@ import javax.inject.Singleton
  * `feature/settings/build.gradle.kts`'s own comment on the `:core:xray` edge for the same rule
  * from the other side), so Settings gets its own interface over the same underlying
  * [TunnelClient], sized to exactly what it needs — no `connect`/`disconnect`, no latency, no
- * traffic. Settings never drives the tunnel.
+ * traffic. Settings never drives the tunnel, apart from asking it to
+ * apply saved Tunnel settings ([reapplyTuning]).
  */
 internal interface TunnelSessionSource {
     /**
@@ -33,6 +34,12 @@ internal interface TunnelSessionSource {
      * infers on its own.
      */
     val state: StateFlow<ConnectionState>
+
+    /**
+     * M9-E: restart the session so saved Tunnel settings take effect. The service decides whether
+     * there is anything to restart and does nothing otherwise, as for per-app's reapply.
+     */
+    fun reapplyTuning() = Unit
 }
 
 /**
@@ -46,6 +53,8 @@ constructor(
     private val client: TunnelClient,
 ) : TunnelSessionSource {
     override val state: StateFlow<ConnectionState> get() = client.state
+
+    override fun reapplyTuning() = client.reapplyTuning()
 }
 
 /**

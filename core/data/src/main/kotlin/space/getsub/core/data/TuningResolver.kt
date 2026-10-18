@@ -3,7 +3,11 @@
 package space.getsub.core.data
 
 import kotlinx.coroutines.flow.first
+import space.getsub.core.model.ExcludeRoutesUserSetting
 import space.getsub.core.model.ExcludedRoutes
+import space.getsub.core.model.MuxUserSettings
+import space.getsub.core.model.SniffingUserSetting
+import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningProblem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,15 +26,37 @@ internal constructor(
     private val profiles: ProfileRepository,
 ) {
     /** What the config writers and the editor report get. No DNS check: see [forSession]. */
-    public suspend fun forConfig(rowId: Long): ResolvedTuning {
-        val subscriptionId = profiles.profile(rowId)?.let { subscriptions.subscriptionIdForGroup(it.groupId) }
-        val user =
+    public suspend fun forConfig(rowId: Long): ResolvedTuning =
+        resolve(
+            rowId,
             TuningUserInputs(
                 sniffing = settings.sniffing.first(),
                 mux = settings.mux.first(),
                 mtu = settings.tunMtu.first(),
                 excludeRoutes = settings.excludeRoutes.first(),
-            )
+            ),
+        )
+
+    /**
+     * What [rowId] gets with every override of yours off: the subscription's value, else the default.
+     * The Settings → Tunnel page shows it under a switch that is off ("From your subscription: …").
+     */
+    public suspend fun withoutYourOverrides(rowId: Long): ResolvedTuning =
+        resolve(
+            rowId,
+            TuningUserInputs(
+                sniffing = SniffingUserSetting.DEFAULT,
+                mux = MuxUserSettings.DEFAULT,
+                mtu = TunMtuUserSetting.DEFAULT,
+                excludeRoutes = ExcludeRoutesUserSetting.DEFAULT,
+            ),
+        )
+
+    private suspend fun resolve(
+        rowId: Long,
+        user: TuningUserInputs,
+    ): ResolvedTuning {
+        val subscriptionId = profiles.profile(rowId)?.let { subscriptions.subscriptionIdForGroup(it.groupId) }
         val directives = subscriptionId?.let { directives(it) }.orEmpty()
         val routes = subscriptionId?.let { subscriptions.routeExclusionStatus(it).first() } ?: RouteExclusionStatus.NONE
         return resolveTuning(user, directives, routes)
