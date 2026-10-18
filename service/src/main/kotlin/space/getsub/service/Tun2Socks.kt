@@ -2,6 +2,8 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.service
 
+import space.getsub.core.model.ProxyCredentials
+
 /**
  * Bridge to hev-socks5-tunnel.
  *
@@ -100,10 +102,16 @@ internal data class TunnelCounters(
  * already exists — we hand the tunnel an fd that `VpnService.Builder` created and
  * configured — so letting this file restate the addressing would be a second
  * source of truth for something ARCHITECTURE.md §5.2 depends on.
+ *
+ * [credentials] are the session's account on the Xray SOCKS inbound, which refuses NO_AUTH
+ * (M9-E spec §5.3). `socks5.username`/`password` are required together (hev `src/hev-config.c:240-243`)
+ * and also authenticate the UDP ASSOCIATE (research R4.3). `log-level` must stay above debug: hev
+ * logs `user:pass` at debug (`src/hev-socks5-session.c:40`). This string is a config: never log it.
  */
 internal fun tun2socksConfig(
     socksPort: Int,
     mtu: Int,
+    credentials: ProxyCredentials,
 ): String =
     """
     tunnel:
@@ -112,6 +120,11 @@ internal fun tun2socksConfig(
       port: $socksPort
       address: 127.0.0.1
       udp: 'udp'
+      username: ${yamlSingleQuoted(credentials.user)}
+      password: ${yamlSingleQuoted(credentials.pass)}
     misc:
       log-level: warn
     """.trimIndent()
+
+/** A YAML single-quoted scalar: the only escape inside one is a doubled `'`. Manual credentials need it. */
+private fun yamlSingleQuoted(value: String): String = "'" + value.replace("'", "''") + "'"

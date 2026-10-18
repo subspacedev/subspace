@@ -7,6 +7,7 @@ import android.os.Parcelable
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.FailureReason
 import space.getsub.core.model.Health
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.failure
 
@@ -30,6 +31,12 @@ public data class ConnectionStateParcel(
     val attempt: Int,
     val health: Int,
     val blocked: Boolean,
+    /**
+     * [ConnectionState.Connected.proxyCredentials], or null. Held as the redacting type rather than
+     * two strings so this data class's generated `toString` cannot print the password
+     * (ARCHITECTURE.md §5.6); written to the parcel as a presence flag plus two strings.
+     */
+    val proxyCredentials: ProxyCredentials? = null,
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         kind = parcel.readInt(),
@@ -42,6 +49,7 @@ public data class ConnectionStateParcel(
         attempt = parcel.readInt(),
         health = parcel.readInt(),
         blocked = parcel.readInt() != 0,
+        proxyCredentials = readCredentials(parcel),
     )
 
     override fun writeToParcel(
@@ -58,6 +66,13 @@ public data class ConnectionStateParcel(
         dest.writeInt(attempt)
         dest.writeInt(health)
         dest.writeInt(if (blocked) 1 else 0)
+        if (proxyCredentials == null) {
+            dest.writeInt(0)
+        } else {
+            dest.writeInt(1)
+            dest.writeString(proxyCredentials.user)
+            dest.writeString(proxyCredentials.pass)
+        }
     }
 
     override fun describeContents(): Int = 0
@@ -79,7 +94,13 @@ public data class ConnectionStateParcel(
             KIND_DISCONNECTED -> ConnectionState.Disconnected
             KIND_CONNECTING -> ConnectionState.Connecting(StartupStage.entries[stage])
             KIND_CONNECTED ->
-                ConnectionState.Connected(sinceEpochMillis, socksPort, httpProxyPort, Health.entries[health])
+                ConnectionState.Connected(
+                    sinceEpochMillis,
+                    socksPort,
+                    httpProxyPort,
+                    Health.entries[health],
+                    proxyCredentials,
+                )
             KIND_DISCONNECTING -> ConnectionState.Disconnecting
             KIND_FAILED -> failure(FailureReason.entries[reason], detail)
             KIND_RECONNECTING -> ConnectionState.Reconnecting(FailureReason.entries[reason], attempt, blocked)
@@ -93,6 +114,13 @@ public data class ConnectionStateParcel(
         const val KIND_DISCONNECTING = 3
         const val KIND_FAILED = 4
         const val KIND_RECONNECTING = 5
+
+        private fun readCredentials(parcel: Parcel): ProxyCredentials? =
+            if (parcel.readInt() == 0) {
+                null
+            } else {
+                ProxyCredentials(parcel.readString().orEmpty(), parcel.readString().orEmpty())
+            }
 
         @JvmField
         val CREATOR =
@@ -117,6 +145,7 @@ public data class ConnectionStateParcel(
                     ConnectionStateParcel(
                         KIND_CONNECTED, 0, state.sinceEpochMillis, state.socksPort, state.httpProxyPort,
                         0, "", 0, health = state.health.ordinal, blocked = false,
+                        proxyCredentials = state.proxyCredentials,
                     )
 
                 is ConnectionState.Disconnecting ->

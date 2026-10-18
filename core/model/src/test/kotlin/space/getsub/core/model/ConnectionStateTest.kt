@@ -89,4 +89,27 @@ class ConnectionStateTest {
         ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 1, blocked = true).blocked shouldBe true
         ConnectionState.Reconnecting(FailureReason.CoreStartFailed, attempt = 1, blocked = false).blocked shouldBe false
     }
+
+    @Test
+    fun `connected never prints its proxy password`() {
+        // ARCHITECTURE.md §5.6: a state is logged and shown in debug output; the credential must not be.
+        val state =
+            ConnectionState.Connected(
+                sinceEpochMillis = 1L,
+                socksPort = 1080,
+                httpProxyPort = 1081,
+                proxyCredentials = ProxyCredentials("session-user", "session-secret"),
+            )
+        state.toString() shouldNotContain "session-secret"
+        state.toString() shouldNotContain "session-user"
+    }
+
+    @Test
+    fun `connected states with different credentials are different states`() {
+        val base = ConnectionState.Connected(sinceEpochMillis = 1L, socksPort = 1080, httpProxyPort = 1081)
+        val first = base.copy(proxyCredentials = ProxyCredentials("a", "b"))
+        val second = base.copy(proxyCredentials = ProxyCredentials("a", "c"))
+        (first == second) shouldBe false
+        base.proxyCredentials shouldBe null
+    }
 }

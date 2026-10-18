@@ -57,7 +57,7 @@ import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
-import space.getsub.core.model.ProxyCredentialsFactory
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
@@ -1106,11 +1106,18 @@ class TunnelService : VpnService() {
      * gates on [ownTunnelActive] rather than trusting this field's nullness
      * alone, but a stale non-null value here would still be a latent trap for
      * the next reader, not just a harmless one.
+     *
+     * [credentials] is the loopback inbounds' account for this session (M9-E spec §5.3,
+     * Task 9 Review Focus 1): null until the session's first core start mints it in
+     * [sessionCredentialsFor], then kept by every `copy` here, so a retained-TUN restart or a
+     * server switch reuses it. A fresh [LiveSession] (a new connect, a per-app reapply's
+     * stop/start, a retry after a settled failure) starts null and mints again.
      */
     private data class LiveSession(
         val profile: Profile,
         val rowId: Long,
         val startId: Int,
+        val credentials: ProxyCredentials? = null,
     )
 
     private var liveSession: LiveSession? = null
@@ -1932,8 +1939,16 @@ class TunnelService : VpnService() {
      * Not a bare `Pair<Int, Int>`: `ports.first`/`ports.second` at the call site
      * would be one more place a reviewer has to remember which index is which,
      * for a mistake that decodes to a plausible port either way.
+     *
+     * [credentials] rides with the ports because it is the other half of reaching those
+     * inbounds: [attachTun]/[attachRetainedTun] hand it to hev and publish it in `Connected`,
+     * and it must be the exact value the core was configured with.
      */
-    private data class StartedPorts(val socksPort: Int, val httpPort: Int)
+    private data class StartedPorts(
+        val socksPort: Int,
+        val httpPort: Int,
+        val credentials: ProxyCredentials,
+    )
 
     /**
      * A started core leaves the routing-generation lease but still needs its TUN
@@ -2024,6 +2039,29 @@ class TunnelService : VpnService() {
         }
     }
 
+    /**
+     * The session's inbound credentials for a core start of [gen], minting them on the session's
+     * first start (Task 9 Review Focus 1; the rule itself is [credentialsForCoreStart]).
+     *
+     * Returns null when [gen] was superseded, like every other stage boundary in [startCore]. The
+     * stored value wins over a concurrently minted one, so two starts of one session cannot end up
+     * with different accounts. Never logged (ARCHITECTURE.md §5.6).
+     */
+    private suspend fun sessionCredentialsFor(gen: Int): ProxyCredentials? {
+        val own = synchronized(lock) { liveSession?.credentials }
+        val minted = credentialsForCoreStart(own) { settingsRepository.proxyAuth.first() }
+        return synchronized(lock) {
+            if (gen != generation) {
+                null
+            } else {
+                val session = liveSession
+                val kept = session?.credentials ?: minted
+                liveSession = session?.copy(credentials = kept)
+                kept
+            }
+        }
+    }
+
     // One early return per step is the point, not a smell: §10.4 requires each
     // stage of the start sequence to fail specifically and stop there.
     //
@@ -2071,7 +2109,7 @@ class TunnelService : VpnService() {
                 socksPort = socksPort,
                 dnsServer = DNS_SERVER,
                 enableSniffing = SNIFFING_ENABLED,
-                proxyCredentials = ProxyCredentialsFactory.random(),
+                proxyCredentials = sessionCredentialsFor(gen) ?: return null,
                 routing = (routing as? RoutingResolution.Active)?.ruleSet,
                 httpPort = httpPort,
                 dns = dnsPlan,
@@ -2144,7 +2182,7 @@ class TunnelService : VpnService() {
             return failStart(gen, FailureReason.CoreStartFailed, e, rowId)
         }
 
-        return StartedPorts(socksPort, httpPort)
+        return StartedPorts(socksPort, httpPort, settings.proxyCredentials)
     }
 
     /**
@@ -2658,7 +2696,7 @@ class TunnelService : VpnService() {
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingTunnel))) {
             return TunAttachOutcome.Settled
         }
-        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU)
+        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU, credentials = ports.credentials)
         // The shim refuses a bad fd rather than aborting the process; false here
         // is a real start failure, never something to ignore.
         if (!Tun2Socks.start(config, fd.fd)) {
@@ -2726,7 +2764,13 @@ class TunnelService : VpnService() {
         // this call site must not reintroduce it from the other side.
         trafficLoop.notifyCountersRestarted()
 
-        val connected = ConnectionState.Connected(System.currentTimeMillis(), ports.socksPort, ports.httpPort)
+        val connected =
+            ConnectionState.Connected(
+                System.currentTimeMillis(),
+                ports.socksPort,
+                ports.httpPort,
+                proxyCredentials = ports.credentials,
+            )
         // One generation-checked transition: the connected notification is established and
         // `Connected` published together under the lock, and the spec-D4 success write (see
         // ConnectionRecorder) happens strictly after. Previously this published, suspended in
@@ -4234,7 +4278,7 @@ class TunnelService : VpnService() {
         rowId: Long,
     ) {
         if (!publishIfCurrent(gen, ConnectionState.Connecting(StartupStage.StartingTunnel))) return
-        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU)
+        val config = tun2socksConfig(socksPort = ports.socksPort, mtu = TUN_MTU, credentials = ports.credentials)
         if (!Tun2Socks.start(config, fd.fd)) {
             xray.stop()
             // [fd] is not closed here. It is still [tunInterface], and whether
@@ -4266,7 +4310,13 @@ class TunnelService : VpnService() {
         // matters and what closes the race, not just narrows it.
         trafficLoop.notifyCountersRestarted()
 
-        val connected = ConnectionState.Connected(System.currentTimeMillis(), ports.socksPort, ports.httpPort)
+        val connected =
+            ConnectionState.Connected(
+                System.currentTimeMillis(),
+                ports.socksPort,
+                ports.httpPort,
+                proxyCredentials = ports.credentials,
+            )
         val settlement =
             terminalOutcome.settleHandlingLifecycleRejection(
                 gen = gen,
