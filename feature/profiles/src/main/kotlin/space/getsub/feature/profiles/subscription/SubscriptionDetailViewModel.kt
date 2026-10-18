@@ -39,6 +39,7 @@ import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.toUserMessage
+import space.getsub.feature.profiles.answerRouteExclusion
 import space.getsub.feature.profiles.request
 import javax.inject.Inject
 
@@ -406,7 +407,7 @@ constructor(
         fingerprint: String,
     ) {
         val id = loadedId ?: return
-        viewModelScope.launch { profileSource.setRouteExclusionTrust(id, trust, fingerprint) }
+        viewModelScope.launch { profileSource.answerRouteExclusion(id, trust, fingerprint) }
     }
 
     /** Blank values clear the field — see [ProfileSource.setFronting]. */

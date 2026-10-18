@@ -37,6 +37,7 @@ import space.getsub.core.ui.format.protocolDisplayName
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.toUserMessage
+import space.getsub.feature.profiles.answerRouteExclusion
 import space.getsub.feature.profiles.request
 import javax.inject.Inject
 
@@ -357,7 +358,7 @@ constructor(
         allowed: Boolean,
     ) {
         val trust = if (allowed) RouteExclusionTrust.Allowed else RouteExclusionTrust.Denied
-        viewModelScope.launch { profileSource.setRouteExclusionTrust(subscriptionId, trust, fingerprint) }
+        viewModelScope.launch { profileSource.answerRouteExclusion(subscriptionId, trust, fingerprint) }
     }
 
     /** Clears [ServersState.updateResult] once the user has read it. */

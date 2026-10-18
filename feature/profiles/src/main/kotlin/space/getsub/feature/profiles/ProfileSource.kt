@@ -346,6 +346,18 @@ internal interface ProfileSource {
         trust: RouteExclusionTrust,
         fingerprint: String,
     ) {}
+
+    /**
+     * The subscription that delivered the active row, or null for none or a manual row. Defaulted,
+     * like [observeRouteExclusionStatus].
+     */
+    suspend fun activeRowSubscriptionId(): Long? = null
+
+    /**
+     * Restarts a live session so changed tuning applies — see [TunnelClient.reapplyTuning]. The
+     * service ignores it while disconnected. Defaulted, like [observeRouteExclusionStatus].
+     */
+    fun reapplyTuning() {}
 }
 
 /**
@@ -591,6 +603,14 @@ constructor(
         trust: RouteExclusionTrust,
         fingerprint: String,
     ) = subscriptionRepository.setRouteExclusionTrust(id, trust, fingerprint)
+
+    override suspend fun activeRowSubscriptionId(): Long? =
+        settingsRepository.activeProfileId
+            .first()
+            ?.let { profileRepository.profile(it) }
+            ?.let { subscriptionRepository.subscriptionIdForGroup(it.groupId) }
+
+    override fun reapplyTuning() = tunnel.reapplyTuning()
 
     /**
      * Task 8: runs every [StoredProfile] in [groupId] for which [isCandidate] is true through

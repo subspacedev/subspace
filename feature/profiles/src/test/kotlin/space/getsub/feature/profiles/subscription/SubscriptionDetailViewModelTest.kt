@@ -162,6 +162,15 @@ class SubscriptionDetailViewModelTest {
             lastRouteTrust = Triple(id, trust, fingerprint)
         }
 
+        var activeSubscriptionId: Long? = null
+        var tuningReapplies = 0
+
+        override suspend fun activeRowSubscriptionId(): Long? = activeSubscriptionId
+
+        override fun reapplyTuning() {
+            tuningReapplies++
+        }
+
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
 
@@ -492,6 +501,34 @@ class SubscriptionDetailViewModelTest {
             viewModel.onAllowRouteExclusion("fp")
             advanceUntilIdle()
             source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
+        }
+
+    @Test
+    fun allowingRoutesForTheActiveRowsSubscriptionRestartsTheSession() =
+        runTest {
+            source.activeSubscriptionId = SUBSCRIPTION_ID
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onDenyRouteExclusion("fp")
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
+            viewModel.onAllowRouteExclusion("fp")
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
+            source.tuningReapplies shouldBe 1
+        }
+
+    @Test
+    fun allowingRoutesForAnotherSubscriptionRestartsNothing() =
+        runTest {
+            source.activeSubscriptionId = SUBSCRIPTION_ID + 1
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onAllowRouteExclusion("fp")
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
         }
 
     @Test

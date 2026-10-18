@@ -396,6 +396,15 @@ class ServersViewModelTest {
             routeTrustWrites += Triple(id, trust, fingerprint)
         }
 
+        var activeSubscriptionId: Long? = null
+        var tuningReapplies = 0
+
+        override suspend fun activeRowSubscriptionId(): Long? = activeSubscriptionId
+
+        override fun reapplyTuning() {
+            tuningReapplies++
+        }
+
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
 
         override suspend fun tuningReport(id: Long): TuningReport? = null
@@ -1097,6 +1106,30 @@ class ServersViewModelTest {
 
             source.routeTrustWrites shouldBe
                 listOf(Triple(7L, RouteExclusionTrust.Allowed, "a"), Triple(8L, RouteExclusionTrust.Denied, "b"))
+        }
+
+    @Test
+    fun `allowing the active row's subscription's routes restarts the session once, after the write`() =
+        runTest {
+            source.activeSubscriptionId = 7L
+            viewModel.onRouteExclusionAnswered(subscriptionId = 8L, fingerprint = "b", allowed = true)
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
+
+            viewModel.onRouteExclusionAnswered(subscriptionId = 7L, fingerprint = "a", allowed = true)
+            advanceUntilIdle()
+            source.routeTrustWrites.last() shouldBe Triple(7L, RouteExclusionTrust.Allowed, "a")
+            source.tuningReapplies shouldBe 1
+        }
+
+    @Test
+    fun `denying routes restarts nothing, since nothing applied before the answer`() =
+        runTest {
+            source.activeSubscriptionId = 7L
+            viewModel.onRouteExclusionAnswered(subscriptionId = 7L, fingerprint = "a", allowed = false)
+            advanceUntilIdle()
+
+            source.tuningReapplies shouldBe 0
         }
 
     @Test

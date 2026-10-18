@@ -38,3 +38,18 @@ internal fun RouteExclusionStatus.request(): RouteExclusionRequest? {
         )
     }
 }
+
+/**
+ * Writes the user's answer to [subscriptionId]'s card, then restarts a live session when the answer
+ * can change what it runs, the way Settings → Tunnel's Save does: an Allow for the subscription that
+ * delivered the active row. A Deny restarts nothing, since the card shows only while the list is
+ * unanswered and nothing from it applied before. The service ignores the restart while disconnected.
+ */
+internal suspend fun ProfileSource.answerRouteExclusion(
+    subscriptionId: Long,
+    trust: RouteExclusionTrust,
+    fingerprint: String,
+) {
+    setRouteExclusionTrust(subscriptionId, trust, fingerprint)
+    if (trust == RouteExclusionTrust.Allowed && activeRowSubscriptionId() == subscriptionId) reapplyTuning()
+}
