@@ -173,21 +173,14 @@ public object RawConfigComposer {
             kept.addMetricsBlocks(settings.metricsPort)
         }
 
-        val preservedSniffing = if (override == null) sniffingOf(root) else null
+        // M9-E spec §2. The override branch already owns `dns` wholesale (just above), so it emits
+        // the resolved value, fakedns included when its plan asks. The pure branch keeps the
+        // config's own block as written (M7 spec §4.2, research §5b.5) unless the value is the
+        // user's own override; a config with no block of its own takes the resolved value.
+        val preservedSniffing = sniffingOf(root).takeIf { override == null && !settings.sniffingReplacesOwn }
         val generatedSniffing =
-            if (override != null) {
-                // The app already owns `dns` wholesale on this branch (just above), so
-                // adding the one destOverride entry that block's fakeDns requires is
-                // completing our own substitution, not second-guessing the config's
-                // sniffing choice — unlike the pure-passthrough branch below, which
-                // must never touch a config's own sniffing (M7 spec §4.2, research §5b.5).
-                if (settings.dns?.fakeDns == true) {
-                    SniffingSettings(DEFAULT_SNIFFING.destOverride + "fakedns")
-                } else {
-                    DEFAULT_SNIFFING
-                }
-            } else if (preservedSniffing == null) {
-                DEFAULT_SNIFFING
+            if (preservedSniffing == null) {
+                sniffingFor(settings.enableSniffing, fakeDns = settings.dns?.fakeDns == true)
             } else {
                 null
             }
@@ -286,7 +279,7 @@ public object RawConfigComposer {
             } else {
                 socksInboundJson(
                     settings.socksPort,
-                    generatedSniffing.takeIf { settings.enableSniffing },
+                    generatedSniffing,
                     settings.proxyCredentials,
                     tags.socks,
                 )

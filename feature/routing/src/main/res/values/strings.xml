@@ -143,6 +143,10 @@
     <string name="rule_set_editor_problem_malformed_domain">Not a valid domain entry</string>
     <string name="rule_set_editor_problem_illegal_character">Entry cannot contain a quote or backslash</string>
 
+    <!-- M9-E spec §2 "warn but obey": shown while your sniffing override is off and the rule set has
+         domain or geosite: entries. No link: the Settings → Tunnel page arrives separately. -->
+    <string name="rule_set_editor_sniffing_off_warning">Sniffing is off, so domain rules can\'t match. Turn it on in Settings → Tunnel.</string>
+
     <!-- Save-time problems (fix round 1, Findings 7/8) — distinct from the per-entry problems
          above, shown once near the Save button rather than on any one field. -->
     <string name="rule_set_editor_save_problem_invalid_entry">One of the stored entries is no longer valid. Remove or fix it before saving.</string>

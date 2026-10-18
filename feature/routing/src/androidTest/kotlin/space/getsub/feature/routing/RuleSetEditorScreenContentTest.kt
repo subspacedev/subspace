@@ -78,6 +78,34 @@ class RuleSetEditorScreenContentTest {
     }
 
     @Test
+    fun yourSniffingOffWarnsOnADomainRuleSet() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "Mine",
+                buckets = mapOf(RouteOutcome.PROXY to RuleBucket(sites = listOf("geosite:youtube"))),
+                userSniffingOff = true,
+            ),
+        )
+
+        composeRule.onNodeWithText(SNIFFING_WARNING).assertIsDisplayed()
+    }
+
+    @Test
+    fun anIpOnlyRuleSetShowsNoSniffingWarning() {
+        setContent(
+            RuleSetEditorState(
+                loading = false,
+                name = "Mine",
+                buckets = mapOf(RouteOutcome.DIRECT to RuleBucket(ips = listOf("geoip:private"))),
+                userSniffingOff = true,
+            ),
+        )
+
+        composeRule.onNodeWithText(SNIFFING_WARNING).assertDoesNotExist()
+    }
+
+    @Test
     fun aLoadingDraftShowsTheSpinnerAndNothingElse() {
         setContent(RuleSetEditorState(loading = true))
 
@@ -318,3 +346,5 @@ class RuleSetEditorScreenContentTest {
         handled shouldBe 1
     }
 }
+
+private const val SNIFFING_WARNING = "Sniffing is off, so domain rules can't match. Turn it on in Settings → Tunnel."

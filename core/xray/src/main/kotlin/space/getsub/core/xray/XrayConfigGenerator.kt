@@ -33,6 +33,10 @@ public data class TunnelSettings(
     val socksPort: Int,
     /** Advertised to both the `dns` block and `VpnService.Builder.addDnsServer` (ARCHITECTURE.md §5.2). */
     val dnsServer: String,
+    /**
+     * The resolved sniffing value (M9-E spec §2). Off drops the SOCKS inbound's `sniffing` block,
+     * except that a FakeDNS [dns] plan keeps `destOverride: ["fakedns"]` alone ([sniffingFor]).
+     */
     val enableSniffing: Boolean,
     /**
      * The username and password both loopback inbounds require (M9-E spec §5.3).
@@ -103,6 +107,13 @@ public data class TunnelSettings(
      * `env` key, so the output is byte-identical to a build from before this existed.
      */
     val geoAssetDir: String? = null,
+    /**
+     * Whether [enableSniffing] is the user's own override (M9-E spec §2). Read only by the pure
+     * passthrough branch: false (the default, or a provider's value) keeps a raw config's own
+     * `sniffing` block as written; true replaces it with the resolved value. The typed and
+     * override branches always emit the resolved value.
+     */
+    val sniffingReplacesOwn: Boolean = false,
 )
 
 /**
@@ -357,14 +368,7 @@ public object XrayConfigGenerator {
         sb: StringBuilder,
         settings: TunnelSettings,
     ) {
-        val sniffing =
-            if (!settings.enableSniffing) {
-                null
-            } else if (settings.dns?.fakeDns == true) {
-                SniffingSettings(DEFAULT_SNIFFING.destOverride + "fakedns")
-            } else {
-                DEFAULT_SNIFFING
-            }
+        val sniffing = sniffingFor(settings.enableSniffing, fakeDns = settings.dns?.fakeDns == true)
         sb.appendLine("""  "inbounds": [""")
         sb.append(socksInboundJson(settings.socksPort, sniffing, settings.proxyCredentials))
         sb.appendLine(if (settings.httpPort != null) "," else "")

@@ -23,14 +23,14 @@ class DnsPlannerTest {
 
     @Test
     fun `nothing asking for dns yields no plan`() {
-        DnsPlanner.plan(null, defaultSetting, null, sniffingEnabled = true) shouldBe null
+        DnsPlanner.plan(null, defaultSetting, null) shouldBe null
     }
 
     @Test
     fun `an active rule set with the default setting still yields a plan`() {
         // Audit 2026-10-13 finding 1: a null plan under routing means no dns-out, no
         // dns-module catch-all and no port-53 hijack, so DNS leaks around the rule set.
-        val plan = requireNotNull(DnsPlanner.plan(null, defaultSetting, ruleSet(emptyList()), sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(null, defaultSetting, ruleSet(emptyList())))
 
         plan.servers.map { it.address } shouldBe listOf("1.1.1.1")
         plan.directMatch shouldBe null
@@ -41,14 +41,14 @@ class DnsPlannerTest {
 
     @Test
     fun `an active rule set with a profile block that asks for nothing still yields a plan`() {
-        val plan = DnsPlanner.plan(ProfileDns(fakeDns = false), defaultSetting, ruleSet(emptyList()), true)
+        val plan = DnsPlanner.plan(ProfileDns(fakeDns = false), defaultSetting, ruleSet(emptyList()))
 
         requireNotNull(plan).servers.single().address shouldBe "1.1.1.1"
     }
 
     @Test
     fun `a non-default setting yields a plan`() {
-        val plan = DnsPlanner.plan(null, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null, true)
+        val plan = DnsPlanner.plan(null, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null)
 
         requireNotNull(plan).servers.single().address shouldBe "9.9.9.9"
     }
@@ -57,14 +57,14 @@ class DnsPlannerTest {
     fun `a profile block wins over the setting`() {
         val profile = ProfileDns(remote = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
 
-        val plan = DnsPlanner.plan(profile, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null, true)
+        val plan = DnsPlanner.plan(profile, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null)
 
         requireNotNull(plan).servers.single().address shouldBe "8.8.8.8"
     }
 
     @Test
     fun `an invalid profile block falls back to the setting`() {
-        val plan = DnsPlanner.plan(ProfileDns.INVALID, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null, true)
+        val plan = DnsPlanner.plan(ProfileDns.INVALID, DnsResolver(DnsTransport.DOU, ip = "9.9.9.9"), null)
 
         requireNotNull(plan).servers.single().address shouldBe "9.9.9.9"
     }
@@ -77,7 +77,7 @@ class DnsPlannerTest {
                 domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn"))))
 
         val domestic = plan.servers.first { it.address == "8.8.8.8" }
         domestic.domains shouldBe listOf("geosite:cn")
@@ -93,7 +93,7 @@ class DnsPlannerTest {
                 domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList()), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList())))
 
         plan.servers.map { it.address } shouldBe listOf("1.0.0.1")
     }
@@ -102,7 +102,7 @@ class DnsPlannerTest {
     fun `a domestic-only profile emits it unscoped and does not borrow the setting`() {
         val profile = ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn"))))
 
         plan.servers.map { it.address } shouldBe listOf("8.8.8.8")
         plan.servers.single().domains shouldBe emptyList()
@@ -114,7 +114,7 @@ class DnsPlannerTest {
         // direct rule for it would send every lookup on the device out in the clear.
         val profile = ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn"))))
 
         plan.directMatch shouldBe null
         plan.proxyMatch shouldBe null
@@ -128,7 +128,7 @@ class DnsPlannerTest {
                 domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList()), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(emptyList())))
 
         plan.directMatch shouldBe null
     }
@@ -141,7 +141,7 @@ class DnsPlannerTest {
                 domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"),
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn"))))
 
         plan.directMatch shouldBe "8.8.8.8"
         plan.proxyMatch shouldBe "1.0.0.1"
@@ -152,7 +152,7 @@ class DnsPlannerTest {
         val same = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8")
         val profile = ProfileDns(remote = same, domestic = same)
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn")), true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, ruleSet(listOf("geosite:cn"))))
 
         plan.directMatch shouldBe "8.8.8.8"
         plan.proxyMatch shouldBe null
@@ -162,7 +162,7 @@ class DnsPlannerTest {
     fun `hosts and fakedns apply on top of the setting when no resolver is named`() {
         val profile = ProfileDns(hosts = mapOf("a.test" to "1.1.1.1"), fakeDns = true)
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null, true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null))
 
         plan.hosts shouldBe mapOf("a.test" to "1.1.1.1")
         plan.fakeDns shouldBe true
@@ -185,7 +185,7 @@ class DnsPlannerTest {
                 ip = "1.1.1.2",
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(null, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(null, setting, null))
 
         plan.hosts shouldBe mapOf("security.cloudflare-dns.com" to "1.1.1.2")
     }
@@ -206,7 +206,7 @@ class DnsPlannerTest {
                 ip = "1.1.1.2",
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(null, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(null, setting, null))
 
         plan.hosts shouldBe emptyMap()
     }
@@ -226,7 +226,7 @@ class DnsPlannerTest {
                 ip = "1.1.1.2",
             )
 
-        val plan = requireNotNull(DnsPlanner.plan(null, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(null, setting, null))
 
         plan.tunAdvertisedAddress() shouldBe "1.1.1.2"
     }
@@ -241,7 +241,7 @@ class DnsPlannerTest {
             )
         val profile = ProfileDns(hosts = mapOf("pinned.example" to "10.0.0.1"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null))
 
         plan.hosts shouldBe
             mapOf("pinned.example" to "10.0.0.1", "security.cloudflare-dns.com" to "1.1.1.2")
@@ -257,7 +257,7 @@ class DnsPlannerTest {
             )
         val profile = ProfileDns(hosts = mapOf("security.cloudflare-dns.com" to "9.9.9.9"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null))
 
         plan.hosts shouldBe mapOf("security.cloudflare-dns.com" to "9.9.9.9")
     }
@@ -272,7 +272,7 @@ class DnsPlannerTest {
             )
         val profile = ProfileDns(remote = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, setting, null))
 
         plan.hosts shouldBe emptyMap()
     }
@@ -295,7 +295,7 @@ class DnsPlannerTest {
 
         val plan =
             requireNotNull(
-                DnsPlanner.plan(ProfileDns(remote = resolver), defaultSetting, null, sniffingEnabled = true),
+                DnsPlanner.plan(ProfileDns(remote = resolver), defaultSetting, null),
             )
 
         plan.hosts shouldBe mapOf("security.cloudflare-dns.com" to "1.1.1.2")
@@ -312,18 +312,20 @@ class DnsPlannerTest {
             )
         val profile = ProfileDns(remote = resolver, hosts = mapOf("security.cloudflare-dns.com" to "9.9.9.9"))
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null, sniffingEnabled = true))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null))
 
         plan.hosts shouldBe mapOf("security.cloudflare-dns.com" to "9.9.9.9")
     }
 
+    // M9-E spec §2 (owner): FakeDNS no longer depends on sniffing. With sniffing off the inbound
+    // keeps a `fakedns`-only block, so the plan keeps FakeDNS whoever turned sniffing off.
     @Test
-    fun `fakedns is refused when sniffing is off`() {
+    fun `fakedns is kept regardless of sniffing`() {
         val profile = ProfileDns(fakeDns = true)
 
-        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null, sniffingEnabled = false))
+        val plan = requireNotNull(DnsPlanner.plan(profile, defaultSetting, null))
 
-        plan.fakeDns shouldBe false
+        plan.fakeDns shouldBe true
     }
 
     // Fix round 1, Finding 2/3: tunAdvertisedAddress() used to return whichever
@@ -409,7 +411,7 @@ class DnsPlannerTest {
         // `==` instead of the identity-based `isInvalid`.
         val profile = ProfileDns(fakeDns = false)
 
-        val plan = DnsPlanner.plan(profile, defaultSetting, null, sniffingEnabled = true)
+        val plan = DnsPlanner.plan(profile, defaultSetting, null)
 
         plan shouldBe null
     }

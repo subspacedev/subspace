@@ -26,6 +26,7 @@ import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.model.BucketField
 import space.getsub.core.model.RoutingEntries
 import space.getsub.core.model.RoutingRuleSet
+import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.parser.routing.ImportResult
 import space.getsub.core.parser.routing.RoutingConversion
 import space.getsub.core.parser.routing.RoutingProfileImport
@@ -124,6 +125,12 @@ internal interface RoutingSource {
      * [SettingsRepository.activeRoutingRuleSetId].
      */
     val activeRuleSetId: Flow<Long?>
+
+    /**
+     * Your own sniffing setting ([SettingsRepository.sniffing]). The rule set editor warns from it
+     * (M9-E spec §2); a provider's per-subscription value is not known on that global screen.
+     */
+    val sniffing: Flow<SniffingUserSetting>
 
     /**
      * The `.dat` filenames actually on disk. The activation gate's other
@@ -363,6 +370,8 @@ constructor(
     override val downloadProgress: Flow<Map<Long, GeoDownloadProgress>> = progressRegistry.progress
 
     override val activeRuleSetId: Flow<Long?> = settingsRepository.activeRoutingRuleSetId
+
+    override val sniffing: Flow<SniffingUserSetting> = settingsRepository.sniffing
 
     /**
      * The activation gate's input, and it must be **the same question the

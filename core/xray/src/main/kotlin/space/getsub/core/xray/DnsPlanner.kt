@@ -121,7 +121,6 @@ public object DnsPlanner {
         profileDns: ProfileDns?,
         setting: DnsResolver,
         routing: RoutingRuleSet?,
-        sniffingEnabled: Boolean,
         outboundCarriesUdp: Boolean = true,
     ): DnsPlan? {
         val candidate = profileDns?.takeUnless { it.isInvalid }
@@ -145,7 +144,9 @@ public object DnsPlanner {
             DnsPlan(
                 servers = it,
                 hosts = hostsFor(effective, setting),
-                fakeDns = (effective?.fakeDns ?: false) && sniffingEnabled,
+                // Not gated on sniffing (M9-E spec §2, owner): with sniffing off the SOCKS inbound
+                // keeps a `fakedns`-only block, which is all FakeDNS needs to map an address back.
+                fakeDns = effective?.fakeDns ?: false,
                 // Direct only for a domestic server that was emitted scoped to the direct
                 // bucket. Unscoped (domestic-only) it is the sole resolver, so a direct rule
                 // would send all resolution out in the clear; omitted, the rule is dead.

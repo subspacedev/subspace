@@ -47,7 +47,6 @@ class HttpDnsPlanTest {
             profileDns = null,
             setting = DnsResolver.DEFAULT,
             routing = null,
-            sniffingEnabled = true,
             outboundCarriesUdp = dnsPlanOutboundCarriesUdp(http, runsAsWritten),
         )
 

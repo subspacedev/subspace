@@ -42,10 +42,12 @@ import space.getsub.core.data.GeoAssetRepository
 import space.getsub.core.data.ObfuscationResolver
 import space.getsub.core.data.PerAppRepository
 import space.getsub.core.data.ProfileRepository
+import space.getsub.core.data.ResolvedTuning
 import space.getsub.core.data.RoutingRepository
 import space.getsub.core.data.RuleSetAssets
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.data.TuningResolver
 import space.getsub.core.data.preresolve.ServerPreResolution
 import space.getsub.core.data.toProfile
 import space.getsub.core.model.ConnectionState
@@ -62,6 +64,7 @@ import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
@@ -117,13 +120,6 @@ private const val TUN_MTU = 8500
 // setting or profile with no IP the TUN can be handed — and for the null-plan case
 // where nothing asked for DNS at all (M6.5 spec §7.4's M1-compatible path).
 private const val DNS_SERVER = "1.1.1.1"
-
-// Fix round 1, Finding 4: sniffing is not a user setting in this build, so both
-// DnsPlanner.plan's sniffingEnabled and TunnelSettings.enableSniffing must read
-// this one constant rather than repeat the literal `true` in two places coupled
-// only by a comment — if sniffing ever becomes configurable, both call sites
-// change together because there is only one place to change.
-private const val SNIFFING_ENABLED = true
 
 /**
  * Decodes only this service's explicit connect request without exposing/logging
@@ -752,6 +748,9 @@ class TunnelService : VpnService() {
 
     @Inject
     lateinit var obfuscationResolver: ObfuscationResolver
+
+    @Inject
+    lateinit var tuningResolver: TuningResolver
 
     @Inject
     lateinit var serverPreResolution: ServerPreResolution
@@ -1959,8 +1958,16 @@ class TunnelService : VpnService() {
      * `DnsPlanner.plan` call there — even from the same inputs — is one more place
      * the TUN's advertised resolver and the config's `dns.servers` could disagree
      * if either input changed between the two reads.
+     *
+     * [tuning] rides along for the same reason: resolved once per core start (M9-E spec §1), so
+     * everything this start configures reads the one decision the config was built from.
      */
-    private data class StartedCore(val xray: XrayController, val ports: StartedPorts, val dnsPlan: DnsPlan?)
+    private data class StartedCore(
+        val xray: XrayController,
+        val ports: StartedPorts,
+        val dnsPlan: DnsPlan?,
+        val tuning: ResolvedTuning,
+    )
 
     /**
      * Resolves routing, builds the controller, validates, and starts Xray inside
@@ -2001,11 +2008,13 @@ class TunnelService : VpnService() {
                         profileDns = (routing as? RoutingResolution.Active)?.dns,
                         setting = settingsRepository.dnsResolver.first(),
                         routing = (routing as? RoutingResolution.Active)?.ruleSet,
-                        sniffingEnabled = SNIFFING_ENABLED,
                         // Ruling D2-R16: a typed row whose outbound drops UDP (the HTTP proxy) always gets
                         // the port-53 hijack, so app lookups reach the dns module and leave over TCP.
                         outboundCarriesUdp = dnsPlanOutboundCarriesUdp(profile.outbound, runsAsWritten),
                     )
+                // M9-E spec §1: sniffing (and later mux, MTU, excluded routes) decided once for this
+                // start, from the row this session connects, and handed to everything it configures.
+                val tuning = tuningResolver.forConfig(rowId)
                 val xray = XrayController()
                 val ownsStart =
                     synchronized(lock) {
@@ -2018,9 +2027,10 @@ class TunnelService : VpnService() {
                     }
                 if (!ownsStart) return@withResolution null
 
-                val ports = startCore(gen, xray, profile, rowId, routing, dnsPlan) ?: return@withResolution null
+                val ports =
+                    startCore(gen, xray, profile, rowId, routing, dnsPlan, tuning) ?: return@withResolution null
                 started = xray
-                StartedCore(xray, ports, dnsPlan)
+                StartedCore(xray, ports, dnsPlan, tuning)
             }
         } catch (e: CancellationException) {
             throw e
@@ -2069,8 +2079,12 @@ class TunnelService : VpnService() {
     // the three inputs the config generator needs, and dnsPlan is the plan
     // resolveAndStartCore already computed once from routing — recomputing it
     // here to shrink the list would risk the TUN and the config disagreeing
-    // (M6.5 spec §7.4). Six genuinely distinct inputs, not one bundle hiding as several.
-    @Suppress("ReturnCount", "LongParameterList")
+    // (M6.5 spec §7.4). tuning is resolveAndStartCore's one per-start ResolvedTuning, passed down for
+    // the same reason. Seven genuinely distinct inputs, not one bundle hiding as several.
+    //
+    // LongMethod: the length is the start sequence's stages in order plus one TunnelSettings
+    // argument per input; splitting it would scatter the stage guards §10.4 wants read top to bottom.
+    @Suppress("ReturnCount", "LongParameterList", "LongMethod")
     private suspend fun startCore(
         gen: Int,
         xray: XrayController,
@@ -2078,6 +2092,7 @@ class TunnelService : VpnService() {
         rowId: Long,
         routing: RoutingResolution,
         dnsPlan: DnsPlan?,
+        tuning: ResolvedTuning,
     ): StartedPorts? {
         // ARCHITECTURE.md §10.6 and docs/agent/research/libxray-api.md §2: libXray v26.10.10's
         // getFreePorts holds every listener open until it returns, but releases them all then,
@@ -2108,7 +2123,8 @@ class TunnelService : VpnService() {
             TunnelSettings(
                 socksPort = socksPort,
                 dnsServer = DNS_SERVER,
-                enableSniffing = SNIFFING_ENABLED,
+                enableSniffing = tuning.sniffing.value,
+                sniffingReplacesOwn = tuning.sniffing.origin == TuningOrigin.Yours,
                 proxyCredentials = sessionCredentialsFor(gen) ?: return null,
                 routing = (routing as? RoutingResolution.Active)?.ruleSet,
                 httpPort = httpPort,

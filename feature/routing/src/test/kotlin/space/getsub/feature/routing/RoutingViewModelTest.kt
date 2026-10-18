@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -27,6 +28,7 @@ import space.getsub.core.model.RoutingSourceKind
 import space.getsub.core.model.RuleBucket
 import space.getsub.core.model.RuleSetAssetFailure
 import space.getsub.core.model.RuleSetAssetState
+import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.parser.routing.RoutingConversion
 
 /**
@@ -74,6 +76,7 @@ class RoutingViewModelTest {
     ) : RoutingSource {
         override val ruleSets = sets
         override val activeRuleSetId = activeId
+        override val sniffing = flowOf(SniffingUserSetting.DEFAULT)
         override val installedGeoFiles = installed
         override val failedGeoFiles = failed
         override val subscriptionNames = names
