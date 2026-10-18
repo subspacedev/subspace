@@ -36,7 +36,12 @@ internal fun muxText(spec: MuxSpec?): String =
     if (spec == null) {
         onOff(false)
     } else {
-        stringResource(R.string.settings_tunnel_mux_value, spec.concurrency, spec.xudpConcurrency, spec.udp443.wire)
+        stringResource(
+            R.string.settings_tunnel_mux_value,
+            spec.concurrency,
+            spec.xudpConcurrency,
+            stringResource(spec.udp443.labelRes()),
+        )
     }
 
 @Composable

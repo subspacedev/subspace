@@ -1093,6 +1093,21 @@ class SettingsViewModelTest {
         session.reapplyTuningCount shouldBe 0
     }
 
+    @Test
+    fun `saving only a value under a switch that is off writes it without restarting`() = runTest {
+        val source = FakeSettingsSource()
+        val session = FakeTunnelSessionSource(initial = ConnectionState.Connected(0L, 1080, 0))
+        val model = SettingsViewModel(source, FakeXraySource(), FakeAppVersionSource(), FakeGeoAssetSource(), session)
+        advanceUntilIdle()
+
+        val draft = TunnelDraft(mtu = TunMtuUserSetting(override = false, value = "1400"))
+        model.onTunnelSettingsSaved(draft)
+        advanceUntilIdle()
+
+        source.tunnelSaves shouldBe listOf(draft)
+        session.reapplyTuningCount shouldBe 0
+    }
+
     private fun connectedSession() = FakeTunnelSessionSource(initial = ConnectionState.Connected(0L, 1080, 0))
 
     @Test

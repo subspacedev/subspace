@@ -133,4 +133,14 @@ class TunnelPageStateTest {
     fun `toString never shows the credentials`() {
         manual("alice", "secret").toString().contains("secret") shouldBe false
     }
+
+    @Test
+    fun `a value under a switch that is off does not change the effective settings`() {
+        val hidden = stored.copy(mtu = TunMtuUserSetting(override = false, value = "1400"))
+        hidden.effective() shouldBe stored.effective()
+        mtu("1400").effective() shouldBe mtu("1400")
+        val autoWithNames = stored.copy(proxyAuth = ProxyAuthSettings(ProxyAuthMode.Auto, "alice", "secret"))
+        autoWithNames.effective() shouldBe stored.effective()
+        manual("alice", "secret").effective() shouldBe manual("alice", "secret")
+    }
 }

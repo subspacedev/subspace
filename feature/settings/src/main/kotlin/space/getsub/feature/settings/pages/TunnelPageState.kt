@@ -8,6 +8,8 @@ import space.getsub.core.model.MuxRules
 import space.getsub.core.model.MuxUserSettings
 import space.getsub.core.model.ProxyAuthMode
 import space.getsub.core.model.ProxyAuthSettings
+import space.getsub.core.model.ProxyCredentialProblem
+import space.getsub.core.model.ProxyCredentialRules
 import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.model.TunMtu
 import space.getsub.core.model.TunMtuUserSetting
@@ -64,8 +66,6 @@ internal data class TunnelErrors(
     val isEmpty: Boolean get() = fields.isEmpty() && routeLines.isEmpty()
 }
 
-private const val RFC1929_FIELD_MAX_BYTES = 255
-
 /** A known-good value for the mux field not under test, so [MuxRules.check] names one field. */
 private const val MUX_PROBE = "8"
 
@@ -86,38 +86,6 @@ internal fun TunnelDraft.errors(): TunnelErrors {
     return TunnelErrors(fields, routeLines)
 }
 
-/**
- * What Save writes: the draft, except that a field whose section is off and whose text is invalid
- * keeps its stored value. Values survive the switch going off, but an invalid one is never stored.
- */
-internal fun TunnelDraft.forSave(stored: TunnelDraft): TunnelDraft {
-    val muxValid = muxTcpError(mux.tcpConnections) == null && muxXudpError(mux.xudpConnections) == null
-    val mux =
-        if (muxInUse || muxValid) {
-            mux
-        } else {
-            mux.copy(tcpConnections = stored.mux.tcpConnections, xudpConnections = stored.mux.xudpConnections)
-        }
-    val mtu = if (mtu.override || mtuError(mtu.value) == null) mtu else mtu.copy(value = stored.mtu.value)
-    val routes =
-        if (routes.override || routeLineErrors(routes.ranges).isEmpty()) {
-            routes
-        } else {
-            routes.copy(ranges = stored.routes.ranges)
-        }
-    val credsValid = credentialError(proxyAuth.manualUser) == null && credentialError(proxyAuth.manualPass) == null
-    val proxyAuth =
-        if (proxyAuth.mode == ProxyAuthMode.Manual || credsValid) {
-            proxyAuth
-        } else {
-            proxyAuth.copy(manualUser = stored.proxyAuth.manualUser, manualPass = stored.proxyAuth.manualPass)
-        }
-    return copy(mux = mux, mtu = mtu, routes = routes, proxyAuth = proxyAuth)
-}
-
-/** Save is offered when nothing in use is wrong and saving would change something. */
-internal fun TunnelDraft.canSave(stored: TunnelDraft): Boolean = errors().isEmpty && forSave(stored) != stored
-
 internal fun mtuError(text: String): TunnelFieldError? = TunMtu.check(text).toFieldError()
 
 /** −1 is valid: don't mux TCP, only apply the UDP 443 rule (research R2.4). */
@@ -127,13 +95,13 @@ internal fun muxTcpError(text: String): TunnelFieldError? =
 internal fun muxXudpError(text: String): TunnelFieldError? =
     MuxRules.check(MUX_PROBE, text, Udp443Mode.Reject.wire).toFieldError()
 
-/** The checks `:bg` applies before using Manual credentials; it falls back to Auto when they fail. */
+/** [ProxyCredentialRules], the check `:bg` applies before using Manual credentials (it falls back to Auto). */
 internal fun credentialError(value: String): TunnelFieldError? =
-    when {
-        value.isEmpty() -> TunnelFieldError.Required
-        value.toByteArray(Charsets.UTF_8).size > RFC1929_FIELD_MAX_BYTES -> TunnelFieldError.TooLong
-        value.any { it.isISOControl() } -> TunnelFieldError.ControlCharacter
-        else -> null
+    when (ProxyCredentialRules.check(value)) {
+        null -> null
+        ProxyCredentialProblem.Empty -> TunnelFieldError.Required
+        ProxyCredentialProblem.TooLong -> TunnelFieldError.TooLong
+        ProxyCredentialProblem.ControlCharacter -> TunnelFieldError.ControlCharacter
     }
 
 /**

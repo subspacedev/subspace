@@ -34,6 +34,7 @@ import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.isGeoFileName
 import space.getsub.feature.settings.pages.TunnelDraft
 import space.getsub.feature.settings.pages.canSave
+import space.getsub.feature.settings.pages.effective
 import space.getsub.feature.settings.pages.forSave
 import javax.inject.Inject
 
@@ -299,7 +300,9 @@ constructor(
 
     /**
      * The Tunnel page's Save (M9-E). Writes the draft, then asks the service once to restart the
-     * session with it. Nothing is written, and nothing restarts, for a draft the page should not have
+     * session with it, when the save changes what the tunnel runs (including the sign-in: the restart
+     * starts a fresh session, which mints credentials from the saved setting). Nothing is written,
+     * and nothing restarts, for a draft the page should not have
      * offered to save. Whether a session exists to restart is the service's call (a save during
      * Connecting must still rebuild), the same rule per-app's Save follows.
      */
@@ -307,9 +310,11 @@ constructor(
         val stored = _state.value.tunnel
         if (!draft.canSave(stored)) return
         val toSave = draft.forSave(stored)
+        // A value saved under a switch that is off changes nothing the tunnel runs: no restart.
+        val restart = toSave.effective() != stored.effective()
         viewModelScope.launch {
             tunnelWrites.withLock { settingsSource.saveTunnelSettings(toSave) }
-            tunnelSessionSource.reapplyTuning()
+            if (restart) tunnelSessionSource.reapplyTuning()
         }
     }
 

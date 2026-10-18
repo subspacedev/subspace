@@ -79,7 +79,7 @@ internal fun TunnelPage(
         MuxSection(draft, provider?.mux, errors) { draft = it }
         MtuSection(draft, provider?.tunMtu, errors) { draft = it }
         RoutesSection(draft, provider?.excludedRoutes, errors) { draft = it }
-        ProxyAuthSection(draft, errors, state.sessionConnected) { draft = it }
+        ProxyAuthSection(draft, errors) { draft = it }
         SaveRow(
             enabled = draft.canSave(state.tunnel),
             restarts = state.sessionConnected,
@@ -254,7 +254,6 @@ private fun RoutesSection(
 private fun ProxyAuthSection(
     draft: TunnelDraft,
     errors: TunnelErrors,
-    connected: Boolean,
     edit: Edit,
 ) {
     val value = draft.proxyAuth
@@ -295,15 +294,6 @@ private fun ProxyAuthSection(
                 secret = true,
             ) { edit(draft.copy(proxyAuth = value.copy(manualPass = it))) }
         }
-    }
-    // A session keeps the sign-in it started with (SessionCredentials.kt), so a restart does not apply it.
-    if (connected) {
-        Text(
-            text = stringResource(R.string.settings_tunnel_proxy_next_connection),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 4.dp),
-        )
     }
 }
 

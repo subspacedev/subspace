@@ -241,7 +241,7 @@
     <string name="settings_tunnel_value_on">On</string>
     <string name="settings_tunnel_value_off">Off</string>
     <string name="settings_tunnel_value_none">None</string>
-    <string name="settings_tunnel_mux_value">On, TCP %1$d, XUDP %2$d, UDP 443 %3$s</string>
+    <string name="settings_tunnel_mux_value">On, TCP %1$d, XUDP %2$d. UDP 443: %3$s</string>
     <string name="settings_tunnel_sniffing_title">Sniffing</string>
     <string name="settings_tunnel_sniffing_label">Sniffing</string>
     <string name="settings_tunnel_sniffing_summary">Reads the domain name from each connection so domain rules can match.</string>
@@ -275,7 +275,6 @@
     <string name="settings_tunnel_proxy_pass">Password</string>
     <string name="settings_tunnel_proxy_show">Show</string>
     <string name="settings_tunnel_proxy_hide">Hide</string>
-    <string name="settings_tunnel_proxy_next_connection">Sign-in changes apply from your next connection.</string>
     <string name="settings_tunnel_error_number">%1$s must be a whole number</string>
     <string name="settings_tunnel_error_range">%1$s must be %2$d to %3$d</string>
     <string name="settings_tunnel_error_required">%1$s is required</string>
