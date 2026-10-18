@@ -456,7 +456,7 @@ private fun ProtocolFilterRow(
  * [ALL_PROTOCOLS_SENTINEL] is a comparison-only sentinel, never display text
  * (see its own KDoc) — this resolves it to the real, translatable string.
  * Every other [value] is already a real protocol name derived from what is
- * stored (`ServersViewModel`'s `toProtocolDisplayName`), so it is shown as-is
+ * stored (`protocolDisplayName` in :core:ui), so it is shown as-is
  * the same way a transport summary or a protocol badge is elsewhere on this
  * screen — a technical identifier, not a sentence needing localisation.
  */

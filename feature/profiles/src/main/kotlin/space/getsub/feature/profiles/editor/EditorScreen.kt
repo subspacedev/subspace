@@ -753,7 +753,7 @@ private fun EditorSecurityKind.icon(): Int =
 private fun EditorSecurityKind.displayLabel(): String =
     when (this) {
         // "Reality"/"TLS" are Xray's own technical transport names, not sentences — same
-        // un-resourced treatment ServersViewModel.toProtocolDisplayName() gives "VLESS"/"VMess".
+        // un-resourced treatment protocolDisplayName() gives "VLESS"/"VMess".
         EditorSecurityKind.None -> stringResource(R.string.editor_security_none)
         EditorSecurityKind.Reality -> "Reality"
         EditorSecurityKind.Tls -> "TLS"

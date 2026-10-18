@@ -38,6 +38,7 @@ import space.getsub.core.ui.component.ThroughputCard
 import space.getsub.core.ui.format.flagIn
 import space.getsub.core.ui.format.formatByteCount
 import space.getsub.core.ui.format.nameWithoutFlag
+import space.getsub.core.ui.format.protocolDisplayName
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
@@ -279,7 +280,7 @@ private fun ServerText(
                 text =
                 stringResource(
                     R.string.home_active_server_meta,
-                    profile.protocol.uppercase(),
+                    protocolDisplayName(profile.protocol),
                     profile.transport.uppercase(),
                 ),
                 style = MaterialTheme.typography.bodySmall.mono(),

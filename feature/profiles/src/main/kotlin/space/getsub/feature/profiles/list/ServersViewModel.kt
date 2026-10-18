@@ -32,6 +32,7 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.pingModeFrom
 import space.getsub.core.parser.directive.UserInfo
 import space.getsub.core.parser.directive.parseUserInfo
+import space.getsub.core.ui.format.protocolDisplayName
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.add.toUserMessage
 import javax.inject.Inject
@@ -535,7 +536,7 @@ private fun StoredProfile.toRow(
         id = id,
         name = name,
         protocol = protocol,
-        protocolDisplay = protocol.toProtocolDisplayName(),
+        protocolDisplay = protocolDisplayName(protocol),
         transport = transport,
         kind = kind,
         compatibilityMode = compatibilityMode,
@@ -549,27 +550,10 @@ private fun StoredProfile.toRow(
 
 private fun List<ProfileGroup>.availableProtocolLabels(): List<String> =
     listOf(ALL_PROTOCOLS_SENTINEL) +
-        flatMap { it.profiles }.map { it.protocol }.distinct().map { it.toProtocolDisplayName() }
+        flatMap { it.profiles }.map { it.protocol }.distinct().map { protocolDisplayName(it) }
 
 /**
- * The canonical protocol names [space.getsub.core.data.ProfileRepository]
- * stores, capitalised for display.
- */
-internal fun String.toProtocolDisplayName(): String =
-    when (this) {
-        "vless" -> "VLESS"
-        "vmess" -> "VMess"
-        "trojan" -> "Trojan"
-        "shadowsocks" -> "Shadowsocks"
-        "socks" -> "SOCKS"
-        "hysteria2" -> "Hysteria2"
-        "wireguard" -> "WireGuard"
-        "http" -> "HTTP"
-        else -> this
-    }
-
-/**
- * The inverse of [toProtocolDisplayName] — every mapping above is a case
+ * The inverse of [protocolDisplayName] — every mapping is a case
  * variant of the stored value with no other characters, so lowercasing a
  * display label always recovers the raw protocol string the DAO stores.
  */
