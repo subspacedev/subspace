@@ -22,8 +22,9 @@ private const val CUT_IOS = "Appendix D: iOS-only directive; this project is And
 private const val CUT_NO_ANDROID_EQUIVALENT =
     "Appendix D: exists for the iOS NetworkExtension memory limit; no Android equivalent."
 private const val CUT_BADVPN_ONLY =
-    "Appendix D: documented to work only with Happ's BadVPN tunnel, not Xray TUN. " +
-        "Revisit only if a concrete need appears."
+    "Appendix D: not built. On Android an IPv4 socket bound to the tunnel interface leaks into it, " +
+        "and blocking that needs a per-flow owner check inside hev. " +
+        "See docs/agent/research/2026-10-18-m9e-block-bind-research.md."
 
 /**
  * The allow-list, as data (spec D7).

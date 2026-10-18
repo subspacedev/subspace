@@ -620,7 +620,8 @@ branch below is taken:
 - `inbounds` replaced with the SOCKS + HTTP pair `socksInboundJson`/
   `httpInboundJson` already emit for a typed profile — moved into a shared
   `Inbounds.kt` so both paths call one definition rather than two that can
-  drift apart silently.
+  drift apart silently. Since M9-E both inbounds are authenticated; see
+  "Local inbound accounts" below.
 - `env` set to the resolved geo asset directory — Go cannot see a Java
   `setenv` (the geo-databases paragraph below still applies).
 - `log` forced to `access: "none"`, `loglevel: "warning"` (§5.6 — the device-
@@ -680,19 +681,65 @@ setting:**
   has no single reading once a second author's rules are interleaved into it,
   and `RoutingRuleSet`'s three-bucket model cannot express one anyway.
 
-**Sniffing is preserved, not defaulted, in the pure branch.** Traffic arrives
-from tun2socks addressed to an IP; without sniffing, a `domain`/`geosite:` rule
-in the config's own routing matches nothing, and replacing the inbounds would
-silently discard whatever sniffing settings made those rules work. So the
-config's own `sniffing` block is carried onto the injected SOCKS inbound
-verbatim when it has one; the app's default sniffing settings are used only
-when it has none. Not the reverse: injecting a wider `destOverride` than the
-config chose (adding `quic` to a config that sniffed only `http`/`tls`, say)
-would start matching rules the config's author never exercised, moving traffic
-the app was never asked to move — a leak in the other direction, introduced by
-us, with no error and no log line. In the override branch this does not apply:
-the app's rules are what runs, so the injected inbound takes the app's own
-sniffing defaults.
+**Sniffing is a switch (M9-E), and a raw config's own block is preserved unless
+the user overrides it.** Traffic arrives from tun2socks addressed to an IP;
+without sniffing, a `domain`/`geosite:` rule matches nothing. The effective value
+is resolved once per core start: the user's own setting, if they use one, beats a
+provider's `sniffing-enable`, which beats the default (on). One rule, `sniffingFor`
+in `Inbounds.kt`, builds the block for every path:
+
+- **On:** `{enabled: true, destOverride: [http, tls, quic]}`, plus `fakedns` when the DNS
+  plan uses FakeDNS.
+- **Off, with FakeDNS in the plan:** `{enabled: true, destOverride: ["fakedns"]}` and nothing
+  else. `fakedns` is what maps a fake address (198.18.0.0/15) back to a domain; without it nearly
+  every connection fails. This holds whoever turned sniffing off, so a provider's
+  `sniffing-enable=false` cannot take down a FakeDNS setup.
+- **Off, without FakeDNS:** no `sniffing` block.
+
+In the pure passthrough branch the config's own `sniffing` block is carried onto the injected
+SOCKS inbound verbatim when it has one, and stays unless the **user's own** setting is On; then
+the resolved value replaces it. A provider's value applies to a raw config only where it has no
+block of its own. Not the reverse: injecting a wider `destOverride` than the config chose (adding
+`quic` to a config that sniffed only `http`/`tls`, say) would start matching rules the config's
+author never exercised, moving traffic the app was never asked to move — a leak in the other
+direction, introduced by us, with no error and no log line. In the override branch the app's rules
+are what runs, so the injected inbound takes the resolved value. The `SniffingCannotServeOwnRules`
+advisory is judged against the block actually emitted.
+
+When the effective value is off and the active rule set has any domain or `geosite:` entry, the
+rule set screen and the Settings control warn that those rules will not match
+(`sniffingOffBreaksRules`). Only the user's own setting raises that warning; a provider's
+`sniffing-enable=false` gives none on the rule set screen. The tunnel runs exactly as chosen
+either way.
+
+**Mux (M9-E).** Off by default. The user's own setting beats a provider's `mux-*` directives. The
+generator emits an outbound `mux {enabled, concurrency, xudpConcurrency, xudpProxyUDP443}` (keys
+checked against Xray-core v26.10.10 `infra/conf/xray.go:106-128`) only where `MuxApplicability`
+(`:core:model`, a sibling of `ObfuscationApplicability`) says the core supports it: VLESS without a
+flow, VMess, Trojan and Shadowsocks, and never on an `xhttp` stream (it has its own `xmux`).
+Hysteria2, WireGuard, HTTP, SOCKS and VLESS with a flow are ineligible; the server details say mux
+is not used for that server and why. It is emitted on the outermost proxy outbound only; on a
+`dialerProxy` chain that is the wire-facing hop, never an inner hop. `xudpProxyUDP443` defaults to
+`reject`. In a raw config, `MuxDetection` makes the one decision and `MuxInjector` executes it: the
+config's own `mux` block stays unless the user's setting is On, which replaces it on the eligible
+outbounds (and, with mux off, removes it); a provider directive applies only where the config has
+none; an ineligible outbound is never touched.
+
+**Local inbound accounts (M9-E).** The loopback SOCKS and HTTP inbounds carry accounts, with
+credentials made per session and shared by hev (which dials the SOCKS inbound) and the core. In
+Auto mode they are random; in Manual mode they are the user's own, and a Manual field that fails
+the RFC 1929 limits falls back to Auto for that field. The credentials survive a retained-TUN
+rebuild, since it is the same session. The app's own fetches (subscriptions, geo files) send the
+HTTP account preemptively as `Proxy-Authorization: Basic`, and only on plain-http requests, never
+inside a CONNECT tunnel to the origin. A 407 after the credentials were sent is a failed fetch:
+no retry without the proxy and no direct fallback. The certificate probe's own inbound is
+authenticated the same way (§5.6). Credential-holding types print `<redacted>`.
+
+**Tunnel MTU and excluded routes (M9-E).** The TUN MTU defaults to 8500 and is accepted from 1280
+to 65535. Excluded routes are applied with `excludeRoute` on API 33+ and as the complement list of
+`addRoute` calls below that; a `/0` range is refused, and a range covering a session resolver
+address is skipped. Both are part of the planned TUN shape (§5.2). A provider's excluded routes
+apply only after the user allows them.
 
 **Eligibility is decided at import, against the real core**, not discovered at
 connect. `testXray` runs against the composed form — the same bytes with the
@@ -860,8 +907,9 @@ they are what the UI filters and sorts on.
 Shape:
 
 ```
-inbounds:  socks (127.0.0.1, loopback only) [+ optional http]
-outbounds: [proxy (from profile), direct (freedom), block (blackhole)
+inbounds:  socks (127.0.0.1, loopback only, accounts) [+ optional http, accounts]
+           sniffing block per the switch above
+outbounds: [proxy (from profile; mux where eligible), direct (freedom), block (blackhole)
             + dns-out (protocol "dns") when a DNS plan exists]
 routing:   [DNS rules, prepended] then rules referencing geoip.dat /
            geosite.dat, then user rules
@@ -995,7 +1043,7 @@ Rules:
   use.
 - The `[+ optional http]` inbound above is now used, not merely reserved:
   when a session allocates it a port, `TunnelProxyBinding` (`:app`) publishes
-  it through the `TunnelProxyLocator` interface, and `:core:data`'s
+  it, with the session's credentials (M9-E), through the `TunnelProxyLocator` interface, and `:core:data`'s
   `SubscriptionSyncer` dials subscription fetches through it while the tunnel
   is connected, instead of direct from the device. HTTP rather than a second
   SOCKS inbound: an HTTP `CONNECT` carries the target as `host:port` in
@@ -1049,6 +1097,11 @@ outbounds[]: {
 - **Obfuscation.** Salamander is `{"type":"salamander","settings":{"password"}}`
   (at least 4 characters). Gecko is the same mask type with `packetSize` as the
   **string `"min-max"`** (`0 < min`, `max <= 2048`); an object fails Build.
+- **User noise applies only to Hysteria2, WireGuard and mKCP servers (M9-E).** Those carry
+  their own UDP datagrams, so a UDP mask has something to wrap. It does not apply to
+  TCP-carried protocols (VLESS, VMess, Trojan, HTTP, and so on); Shadowsocks and SOCKS are also
+  left out by owner decision, even though their UDP relay could carry it. Server details no longer claim noise for a server it
+  does not reach, and a raw config's noise is gated by the same table (`ObfuscationApplicability`).
 - **Mask order in `finalmask.udp` is `[salamander|gecko, noise, udphop]`.** Any
   mask with `HandleDial()` (`udphop`, `xicmp`) must be last or the dial fails
   with `incorrect index`. The user's noise (M9-A) is applied to Hysteria2 and
@@ -1760,7 +1813,8 @@ fallback, but the source build is preferred so the tunnel is reproducible.
 
 ### 14.6 Finalmask exposure — RESOLVED
 
-Fragment and noise are exposed as Finalmask (`fragment` TCP mask, `noise` UDP mask), through two
+Fragment and noise are exposed as Finalmask (`fragment` TCP mask, `noise` UDP mask; since M9-E
+noise applies only to Hysteria2, WireGuard and mKCP servers, §6), through two
 global settings and the `fragmentation-*`/`noises-*` directives; the user's setting, when On,
 overrides every provider source. The server-paired masks (`header-custom`, `sudoku`, `salamander`,
 `xdns`, `xicmp`, `xmc`, `realm`, `mkcp-*`) are not offered: they only work when they match the
@@ -2176,8 +2230,8 @@ both Wi-Fi and mobile data, and both mandatory exit criteria — no query
 reaching the ISP's resolver on either network, and a demonstrated
 domestic/remote split — are recorded in
 `docs/agent/research/2026-08-24-m6.5-device-verification.md`. Row 7 (FakeDNS
-with sniffing off) is unreachable in this build, because sniffing has no user
-setting, and is recorded as not run rather than as a pass. The run cost one
+with sniffing off) was unreachable in that build, because sniffing had no user
+setting (it has one since M9-E, §6), and is recorded as not run rather than as a pass. The run cost one
 product defect, again invisible to a green build. Raw Xray JSON passthrough
 is M7 — built (§6), device checklist not yet run.
 
@@ -2299,8 +2353,9 @@ above cosmetic parity:
       `proxy-head` latency probes.
 - [ ] **Noises**: `noises-packet-type` (array/str/hex/base64), `-packet`,
       `-delay`, `-rand`, `-rand-range` — **M9-A implemented, not verified.**
-      Noise is a UDP mask; it now applies to Hysteria2 (M9-D1, after Salamander and
-      before port hopping, §6). Verified when the D1 device rows pass.
+      Noise is a UDP mask; it applies to Hysteria2 (M9-D1, after Salamander and
+      before port hopping, §6), WireGuard and mKCP only (M9-E; Shadowsocks and SOCKS are left out
+      by owner decision). Verified when the D1 device rows pass.
 - [x] **Subscription fronting**: connect to `visa.com` while sending
       `Host: mydomain.com`, via URL params `resolve-address` and `host`
       — M9-B, with fetch fragmentation (`fragment=` in the link, or the user's Fragmentation
@@ -2325,13 +2380,18 @@ above cosmetic parity:
 ### A.3.4 Tunnel and core tuning
 
 - [ ] `xray-tun-enable` — Xray's own TUN vs external tun2socks
-- [ ] `xray-tun-mtu` — 68–65535
-- [ ] `sniffing-enable` — protocol/SNI detection, on by default
-- [ ] `mux-enable`, `mux-tcp-connections`, `mux-xudp-connections`, `mux-quic`
-- [ ] `exclude-routes` — subnets that bypass the tunnel entirely
+- [ ] `xray-tun-mtu` — 68–65535 — M9-E: implemented, device rows pending (accepted
+      1280–65535, default 8500, §6)
+- [ ] `sniffing-enable` — protocol/SNI detection, on by default — M9-E: implemented,
+      device rows pending (§6)
+- [ ] `mux-enable`, `mux-tcp-connections`, `mux-xudp-connections`, `mux-quic` — M9-E:
+      implemented, device rows pending (§6)
+- [ ] `exclude-routes` — subnets that bypass the tunnel entirely — M9-E: implemented,
+      device rows pending (§6)
 - [ ] `block-bind-to-tunnel-enable` — reject sockets explicitly bound to the
-      tun interface (`curl --interface tun0`). Happ notes this only works
-      with their BadVPN tunnel, not with Xray TUN.
+      tun interface (`curl --interface tun0`). **Not built in M9-E**; the key stays
+      rejected (Appendix D). Happ's docs now say it works only with Xray TUN, not with their
+      hev tunnel (the earlier BadVPN reason no longer holds). See Appendix D.
 - [ ] Trimmed geo files — pass the core only the tag fragments actually
       referenced by active rules, instead of the whole database. **Expensive**:
       requires parsing and re-emitting the `.dat` protobuf. Late milestone.
@@ -2340,7 +2400,9 @@ above cosmetic parity:
       for any app holding a `VpnService` and cannot be suppressed. Do not
       promise this.
 - [ ] Local SOCKS/HTTP inbound with auth modes: `auto`, `manual`,
-      `from-json`, `disable`
+      `from-json`, `disable` — M9-E: implemented for Auto and Manual, device rows
+      pending (§6). `from-json` and `disable` are not built; the `socks-auth-*` and
+      `http-auth-*` directives are deliberately unconsumed.
 
 ### A.3.5 Behavior automation
 
@@ -2660,5 +2722,5 @@ in six months.
 | Desktop-only directives (`tun-mode`, `tun-type`, `custom-tunnel-config`, `proxy-enable`) | Android-only project |
 | iOS-only directives (`include-all-networks`, `exclude-apns`, themes, `proxy-ping-timeout`) | Android-only project |
 | `no-limit-enabled` / RAM ceiling tuning | Exists because of the iOS NetworkExtension memory limit; no Android equivalent |
-| `block-bind-to-tunnel-enable` | Happ documents it as working only with their BadVPN tunnel, not Xray TUN. Revisit only if a concrete need appears. |
+| `block-bind-to-tunnel-enable` | Not built in M9-E; the registry keeps rejecting the key. Happ's docs (read 2026-10-18) now say it is Xray-TUN-only, not BadVPN-only. On Android an IPv4 socket bound with `SO_BINDTODEVICE tun0` from an excluded app is not stopped by the platform and leaks into the TUN with source 10.7.0.1; neither the source address nor any `VpnService.Builder` option can tell it apart. Blocking it would need a patch to the vendored hev that calls `ConnectivityManager.getConnectionOwnerUid` per flow (API 29+), deferred as a possible addendum pending the owner's device probe. Source: `docs/agent/research/2026-10-18-m9e-block-bind-research.md` (R1, provisional). |
 | Kotlin Multiplatform | Out of scope by decision; see §1 non-goals |
