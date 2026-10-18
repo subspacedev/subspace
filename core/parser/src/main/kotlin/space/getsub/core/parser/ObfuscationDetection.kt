@@ -107,8 +107,9 @@ public object ObfuscationDetection {
      * outbound absent from the result is never touched. A null offer means no mask of that type.
      *
      * Cut first, then re-evaluate (ruling, fix round 1): when the user's mask of one type cuts a
-     * freedom-chain link, the config's chained mask of the *other* type goes with it, so a
-     * directive of that other type fills the gap, and without one nothing does.
+     * freedom-chain link, the config's chained mask of the *other* type goes with it. Fragment (TCP)
+     * and noise (UDP) are never both offered to one outbound (M9-E spec §7.2), so nothing fills that
+     * gap: the other type's chained mask is simply lost.
      */
     public fun plan(
         outbounds: List<JsonElement>,
@@ -123,13 +124,13 @@ public object ObfuscationDetection {
             // written in and reported as applied. Noise is a UDP mask offered only to the UDP-based
             // servers (Hysteria, WireGuard, mKCP), never to a TCP-carried one (M9-E spec §7.2). The
             // typed path asks the same table, `ObfuscationApplicability`.
-            val dials = outbound.dials()
+            val udpOnly = outbound.dials() == Dials.UdpOnly
             plan(
                 i,
                 outbound,
                 byTag,
-                fragment.takeUnless { dials == Dials.UdpOnly },
-                noise.takeIf { dials == Dials.UdpOnly },
+                fragment.takeUnless { udpOnly },
+                noise.takeIf { outbound.carriesNoise() },
             )
         }
     }
@@ -249,6 +250,19 @@ private fun JsonObject.dials(): Dials {
         protocol == "hysteria" || network.equals("hysteria", ignoreCase = true) -> Dials.UdpOnly
         protocol == "wireguard" || isKcpNetwork(network) -> Dials.UdpOnly
         else -> Dials.Both
+    }
+}
+
+/**
+ * Whether the user's noise runs on this outbound: the raw-config twin of
+ * `ObfuscationApplicability.noiseApplies`, kept equal to it by `ObfuscationDetectionTest`'s parity test.
+ */
+private fun JsonObject.carriesNoise(): Boolean {
+    val network = stream()?.string("network").orEmpty()
+    return when (protocol()) {
+        "hysteria", "wireguard" -> true
+        "vless", "vmess", "trojan" -> isKcpNetwork(network)
+        else -> network.equals("hysteria", ignoreCase = true)
     }
 }
 
