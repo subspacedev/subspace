@@ -76,4 +76,5 @@ public enum class DetailField {
     Keepalive,
     SecretKey,
     LocalAddress,
+    AllowedIps,
 }

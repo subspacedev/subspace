@@ -90,6 +90,21 @@ class ClashAndJsonWireGuardHttpTest {
         o.allowedIps shouldBe listOf("0.0.0.0/0", "::/0")
     }
 
+    // Ruling D2-R15: wireguard-go reads each allowed IP with netip.ParsePrefix when the tunnel starts.
+    @Test
+    fun `clash wireguard bare allowed ips get a host prefix and garbage is a typed failure`() {
+        fun entry(allowed: String) =
+            """
+            - {name: WG, type: wireguard, server: h.example, port: 2408, ip: 10.0.0.2,
+               private-key: "$sk", public-key: "$pk", allowed-ips: $allowed}
+            """
+        wg(entry("['10.1.2.3', 'fd00::1', '192.168.0.0/16']")).allowedIps shouldBe
+            listOf("10.1.2.3/32", "fd00::1/128", "192.168.0.0/16")
+        val failure = clash(entry("['10.0.0.0/8', 'example.com']")).failures.single()
+        failure.detail shouldBe FailureDetail.Malformed(DetailField.AllowedIps)
+        failure.reason shouldBe ParseFailureReason.MalformedYaml
+    }
+
     @Test
     fun `clash wireguard peers form with one peer`() {
         val o =
@@ -339,6 +354,21 @@ class ClashAndJsonWireGuardHttpTest {
             .notConnectableReason shouldBe WireGuardUnsupported.InvalidMtu
         rawWg("""{"secretKey":"$sk","address":["10.0.0.2"],"mtu":"abc",$peer}""")
             .notConnectableReason shouldBe WireGuardUnsupported.InvalidMtu
+    }
+
+    // Ruling D2-R15: the raw JSON runs as written, so a bare address (which the core would fail on at connect,
+    // not at `xray -test`) or garbage keeps the row, projected as given, but not connectable.
+    @Test
+    fun `raw wireguard allowed ip without a prefix is not connectable`() {
+        for (bad in listOf("10.1.2.3", "fd00::1", "example.com")) {
+            val o =
+                rawWg(
+                    """{"secretKey":"$sk","address":["10.0.0.2"],
+                    "peers":[{"publicKey":"$pk","endpoint":"a.example:1","allowedIPs":["0.0.0.0/0","$bad"]}]}""",
+                )
+            o.allowedIps shouldBe listOf("0.0.0.0/0", bad)
+            o.notConnectableReason shouldBe WireGuardUnsupported.InvalidAllowedIp
+        }
     }
 
     @Test

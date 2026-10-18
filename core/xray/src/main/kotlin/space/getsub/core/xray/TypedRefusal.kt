@@ -114,6 +114,7 @@ private fun WireGuardUnsupported.refusalName(): String =
         WireGuardUnsupported.InvalidReserved -> "WireGuard reserved"
         WireGuardUnsupported.UnsupportedMask -> "WireGuard mask"
         WireGuardUnsupported.InvalidMtu -> "WireGuard MTU"
+        WireGuardUnsupported.InvalidAllowedIp -> ALLOWED_IPS
     }
 
 private fun WireGuardOutbound.writtenRefusal(): String? {
@@ -126,11 +127,15 @@ private fun WireGuardOutbound.writtenRefusal(): String? {
     return when {
         !keysValid -> "WireGuard key"
         !reservedValid -> "WireGuard reserved"
+        // Ruling D2-R15: wireguard-go reads each entry with netip.ParsePrefix at connect (device/uapi.go:382),
+        // after `xray -test` has passed, so a bare address is refused here rather than failing silently there.
+        allowedIps.any { WireGuardRules.normaliseAllowedIp(it) != it } -> ALLOWED_IPS
         else -> null
     }
 }
 
 private const val BYTE_MAX = 255
+private const val ALLOWED_IPS = "WireGuard allowed IPs"
 
 // A row whose source carried a mask or congestion this build cannot write would connect to nothing if
 // generated without it (M9-D1 spec §1). A stored BBR profile outside BBR_PROFILES (an older row, an editor

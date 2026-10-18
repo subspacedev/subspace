@@ -49,6 +49,12 @@ import java.io.File
  * config back (ARCHITECTURE.md §5.6). Each test collects every failing label before asserting. Hosts
  * without TLS are private literals, which the core's plaintext rule allows.
  *
+ * What this cannot catch (ruling D2-R15): a WireGuard `allowedIPs` entry without a prefix. `core.New` stores
+ * the strings, and wireguard-go reads each one with `netip.ParsePrefix` (`device/uapi.go:382`) only when the
+ * outbound first dials (`proxy/wireguard/client.go:322`), so a bare address passes here and fails on connect.
+ * That rule is pinned by unit tests instead: `WireGuardRules.normaliseAllowedIp`, the parsers and
+ * `TypedRefusal`.
+ *
  * Camel-case names, no backticks: DEX 040 restricts synthetic class names in instrumented tests.
  */
 @RunWith(AndroidJUnit4::class)

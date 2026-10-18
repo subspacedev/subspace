@@ -204,6 +204,19 @@ class XrayConfigGeneratorD2Test {
         generate(wireGuard.copy(reserved = listOf(1, 2))).shouldBeInstanceOf<ConfigResult.Unsupported>()
     }
 
+    // Ruling D2-R15: an editor or stale row with a bare allowed IP would pass `xray -test` and fail on connect
+    // (wireguard-go's netip.ParsePrefix, device/uapi.go:382), so it is refused by name before the core sees it.
+    @Test fun `a wireguard allowed ip without a valid prefix is refused by a fixed name`() {
+        for (bad in listOf("10.1.2.3", "fd00::1", "example.com")) {
+            val result = generate(wireGuard.copy(allowedIps = listOf("0.0.0.0/0", bad)))
+            result.shouldBeInstanceOf<ConfigResult.Unsupported>()
+            result.protocol shouldBe "WireGuard allowed IPs"
+        }
+        generate(wireGuard.copy(notConnectableReason = WireGuardUnsupported.InvalidAllowedIp))
+            .shouldBeInstanceOf<ConfigResult.Unsupported>()
+            .protocol shouldBe "WireGuard allowed IPs"
+    }
+
     // ── HTTP goldens ────────────────────────────────────────────────────────
 
     @Test fun `http without auth or tls matches its golden`() {
@@ -412,10 +425,11 @@ class XrayConfigGeneratorD2Test {
             wireGuard.copy(
                 address = injection("host"),
                 localAddresses = listOf(injection("addr")),
-                allowedIps = listOf(injection("allowed")),
             )
-        // Keys are validated before writing, so an injected key never reaches the text at all.
+        // Keys and allowed IPs are validated before writing, so an injected one never reaches the text at all.
         generate(wireGuard.copy(secretKey = injection("sk"))).shouldBeInstanceOf<ConfigResult.Unsupported>()
+        val evilAllowed = wireGuard.copy(allowedIps = listOf(injection("allowed")))
+        generate(evilAllowed).shouldBeInstanceOf<ConfigResult.Unsupported>()
         val texts =
             listOf(
                 json(evilWg),

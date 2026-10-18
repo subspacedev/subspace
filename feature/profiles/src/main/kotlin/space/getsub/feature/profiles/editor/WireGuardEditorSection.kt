@@ -128,4 +128,5 @@ private fun WireGuardUnsupported.messageRes(): Int =
         WireGuardUnsupported.InvalidReserved -> R.string.editor_wireguard_invalid_reserved
         WireGuardUnsupported.UnsupportedMask -> R.string.editor_wireguard_unsupported_mask
         WireGuardUnsupported.InvalidMtu -> R.string.editor_wireguard_invalid_mtu
+        WireGuardUnsupported.InvalidAllowedIp -> R.string.editor_wireguard_invalid_allowed_ips
     }

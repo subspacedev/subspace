@@ -98,6 +98,17 @@ internal fun wireGuardFromClash(
     val keepAlive = boundedInt(proxy.text("persistent-keepalive"), 0, MAX_KEEPALIVE, DetailField.Keepalive)
     if (keepAlive is Step.Fail) return LinkResult.Bad(parseFailure(index, keepAlive.reason, keepAlive.detail))
 
+    // Ruling D2-R15: a bare address gets its host prefix; one the core cannot read fails the entry.
+    val allowed =
+        peer.listOrScalar("allowed-ips").orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.map {
+            WireGuardRules.normaliseAllowedIp(it)
+                ?: return clashFail(
+                    index,
+                    ParseFailureReason.MalformedYaml,
+                    FailureDetail.Malformed(DetailField.AllowedIps),
+                )
+        }
+
     val outbound =
         WireGuardOutbound(
             address = server,
@@ -109,7 +120,7 @@ internal fun wireGuardFromClash(
             mtu = (mtu as Step.Ok).value ?: WireGuardRules.DEFAULT_MTU,
             reserved = reserved,
             keepAlive = (keepAlive as Step.Ok).value?.takeIf { it > 0 },
-            allowedIps = peer.listOrScalar("allowed-ips").orEmpty().ifEmpty { listOf("0.0.0.0/0", "::/0") },
+            allowedIps = allowed.ifEmpty { listOf("0.0.0.0/0", "::/0") },
             notConnectableReason = unsupportedReason(peers),
         )
     val name = proxy.text("name") ?: server

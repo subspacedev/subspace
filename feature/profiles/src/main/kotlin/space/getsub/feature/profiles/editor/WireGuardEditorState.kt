@@ -31,8 +31,10 @@ private val DEFAULT_ALLOWED_IPS = listOf("0.0.0.0/0", "::/0")
  * never reach a log or an error string; [toString] redacts them and [WireGuardField] errors carry no content.
  *
  * [notConnectableReason] is a fact about the source. `MultiplePeers` and `UnsupportedMask` cannot be fixed
- * here, so they travel through a save; `InvalidKey`, `InvalidReserved` and `InvalidMtu` are dropped by
- * [toOutbound] once the user has changed that value (see [remainingReason]).
+ * here, so they travel through a save; `InvalidKey` and `InvalidAllowedIp` are dropped by [toOutbound] (save has
+ * validated them), `InvalidReserved` and `InvalidMtu` once the user has changed that value (see [remainingReason]).
+ * Allowed IPs are saved through [WireGuardRules.normaliseAllowedIp] (ruling D2-R15: a bare address gets `/32` or
+ * `/128`); interface addresses keep a bare address as typed.
  */
 internal data class WireGuardDraft(
     val secretKey: String = "",
@@ -76,7 +78,8 @@ internal data class WireGuardDraft(
             if (keepAlive.isNotBlank() && keepAlive.trim().toIntOrNull() !in 0..WireGuardInput.MAX_KEEPALIVE_SECONDS) {
                 add(WireGuardField.Keepalive)
             }
-            if (allowedIpTokens.any { !WireGuardInput.isAddress(it) }) add(WireGuardField.AllowedIps)
+            // Ruling D2-R15: a bare address is fine (saved with its host prefix); only garbage is an error.
+            if (allowedIpTokens.any { WireGuardRules.normaliseAllowedIp(it) == null }) add(WireGuardField.AllowedIps)
         }
 
     /** Total: text that [validate] would refuse falls back to empty/default, since save validates first. */
@@ -94,7 +97,10 @@ internal data class WireGuardDraft(
             mtu = mtu.trim().toIntOrNull() ?: WireGuardRules.DEFAULT_MTU,
             reserved = WireGuardRules.parseReserved(reserved).orEmpty(),
             keepAlive = keepAlive.trim().toIntOrNull()?.takeIf { it > 0 },
-            allowedIps = allowedIpTokens.ifEmpty { if (loadedAllowedEmpty) emptyList() else DEFAULT_ALLOWED_IPS },
+            allowedIps =
+            allowedIpTokens
+                .mapNotNull(WireGuardRules::normaliseAllowedIp)
+                .ifEmpty { if (loadedAllowedEmpty) emptyList() else DEFAULT_ALLOWED_IPS },
             notConnectableReason = remainingReason(),
         )
 
@@ -105,7 +111,8 @@ internal data class WireGuardDraft(
      */
     private fun remainingReason(): WireGuardUnsupported? =
         when (notConnectableReason) {
-            WireGuardUnsupported.InvalidKey -> null
+            // Save validated every key and normalised every allowed IP, so neither reason can still hold.
+            WireGuardUnsupported.InvalidKey, WireGuardUnsupported.InvalidAllowedIp -> null
             WireGuardUnsupported.InvalidMtu -> notConnectableReason.takeIf { mtu.trim() == loadedMtu.trim() }
             WireGuardUnsupported.InvalidReserved ->
                 notConnectableReason.takeIf { reserved.trim() == loadedReserved.trim() }

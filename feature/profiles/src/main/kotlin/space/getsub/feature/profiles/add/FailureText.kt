@@ -104,4 +104,5 @@ internal fun DetailField.labelRes(): Int =
         DetailField.Keepalive -> R.string.import_detail_field_keepalive
         DetailField.SecretKey -> R.string.import_detail_field_secret_key
         DetailField.LocalAddress -> R.string.import_detail_field_local_address
+        DetailField.AllowedIps -> R.string.import_detail_field_allowed_ips
     }

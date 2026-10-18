@@ -193,6 +193,17 @@ class WireGuardLinkTest {
         }
     }
 
+    // Ruling D2-R15: wireguard-go reads each allowed IP with netip.ParsePrefix when the tunnel starts.
+    @Test
+    fun `bare allowed ips get a host prefix and garbage is a typed failure`() {
+        fun link(a: String) = "wg://h.example:1?pk=${enc(sk)}&pub=${enc(pk)}&ip=10.0.0.2&allowedips=${enc(a)}"
+        ok(link("10.1.2.3,fd00::1,192.168.0.0/16")).second.allowedIps shouldBe
+            listOf("10.1.2.3/32", "fd00::1/128", "192.168.0.0/16")
+        for (a in listOf("0.0.0.0/0,example.com", "10.0.0.0/33", "01.2.3.4")) {
+            bad(link(a)).detail shouldBe FailureDetail.Malformed(DetailField.AllowedIps)
+        }
+    }
+
     @Test
     fun `a missing port is an invalid port`() {
         val base = "?pk=${enc(sk)}&pub=${enc(pk)}&ip=10.0.0.2"

@@ -101,12 +101,16 @@ private fun buildWireGuard(raw: String): Step<Pair<WireGuardOutbound, String>> {
     if (mtu is Step.Fail) return mtu
     val keepAlive = boundedInt(query["keepalive"], 0, MAX_KEEPALIVE, DetailField.Keepalive)
     if (keepAlive is Step.Fail) return keepAlive
+    // Ruling D2-R15: a bare address gets its host prefix; one the core cannot read fails the link.
     val allowed =
         query["allowedips"]
             .orEmpty()
             .split(',')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+            .map {
+                WireGuardRules.normaliseAllowedIp(it) ?: return uriFail(FailureDetail.Malformed(DetailField.AllowedIps))
+            }
     val mask = fmCarriesMasks(query["fm"])
     if (mask is Step.Fail) return mask
 

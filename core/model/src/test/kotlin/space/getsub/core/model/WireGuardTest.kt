@@ -71,6 +71,53 @@ class WireGuardTest {
         for (b in bad) WireGuardRules.parseReserved(b) shouldBe null
     }
 
+    // Ruling D2-R15. Expected values checked against Go's netip.ParsePrefix (go1.26), which wireguard-go
+    // applies to each allowed_ip (device/uapi.go:382) when the tunnel starts, after `xray -test` has passed.
+    @Test
+    fun allowedIpKeepsAValidCidrAsGiven() {
+        val valid =
+            listOf("10.0.0.0/8", "1.2.3.4/24", "1.2.3.4/0", "0.0.0.0/0", "::/0", "FD00::/8", "1:2:3:4:5:6:7:8/64")
+        for (cidr in valid) {
+            WireGuardRules.normaliseAllowedIp(cidr) shouldBe cidr
+        }
+        WireGuardRules.normaliseAllowedIp("::ffff:1.2.3.4/128") shouldBe "::ffff:1.2.3.4/128"
+    }
+
+    @Test
+    fun allowedIpGivesABareAddressAHostPrefix() {
+        WireGuardRules.normaliseAllowedIp("1.2.3.4") shouldBe "1.2.3.4/32"
+        WireGuardRules.normaliseAllowedIp("fd00::1") shouldBe "fd00::1/128"
+        WireGuardRules.normaliseAllowedIp("::") shouldBe "::/128"
+    }
+
+    @Test
+    fun allowedIpRefusesWhatParsePrefixRefuses() {
+        val bad =
+            listOf(
+                "",
+                " ",
+                "example.com",
+                "01.2.3.4/32",
+                "1.2.3.4/08",
+                "1.2.3.4/33",
+                "::/129",
+                "fe80::1%eth0/64",
+                "1.2.3.4/",
+                "/24",
+                " 1.2.3.4/32",
+                "1.2.3.4/32 ",
+                "-1.2.3.4/32",
+                "1.2.3.4/+8",
+                "1::2::3/64",
+                "1.2.3",
+                "256.1.1.1",
+                "1.2.3.4/24/8",
+                "1:2:3:4:5:6:7:8:9",
+                "12345::/16",
+            )
+        for (text in bad) WireGuardRules.normaliseAllowedIp(text) shouldBe null
+    }
+
     @Test
     fun toStringHidesEveryKeyAndTheAddress() {
         val rendered =

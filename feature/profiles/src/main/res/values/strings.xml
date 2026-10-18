@@ -162,6 +162,7 @@
     <string name="import_detail_field_keepalive">Keepalive</string>
     <string name="import_detail_field_secret_key">Secret key</string>
     <string name="import_detail_field_local_address">Local address</string>
+    <string name="import_detail_field_allowed_ips">Allowed IPs</string>
 
     <!-- Task 13 / M8.6 Part 3 Task 7b: the subscription outcome of the add-server sheet's one
          input box. ARCHITECTURE.md §5.6 applies here
@@ -294,7 +295,7 @@
     <string name="editor_wireguard_local_addresses_hint">At least one, such as 10.0.0.2/32.</string>
     <string name="editor_wireguard_local_addresses_error">Enter at least one valid IPv4 or IPv6 address, with an optional prefix.</string>
     <string name="editor_wireguard_allowed_ips_label">Allowed IPs (blank = everything)</string>
-    <string name="editor_wireguard_allowed_ips_error">Each entry must be an IPv4 or IPv6 address, with an optional prefix.</string>
+    <string name="editor_wireguard_allowed_ips_error">Each entry must be an IPv4 or IPv6 range such as 10.0.0.0/8, or a single address.</string>
     <string name="editor_wireguard_mtu_label">MTU (blank = 1420)</string>
     <string name="editor_wireguard_mtu_error">The MTU must be a whole number from 1 to 65535.</string>
     <string name="editor_wireguard_reserved_label">Reserved bytes (optional, e.g. 1,2,3)</string>
@@ -306,6 +307,7 @@
     <string name="editor_wireguard_invalid_reserved">This server\'s reserved bytes are not valid, so it can\'t connect. Re-enter them.</string>
     <string name="editor_wireguard_unsupported_mask">This server\'s source uses an obfuscation Subspace can\'t run yet, so it can\'t connect.</string>
     <string name="editor_wireguard_invalid_mtu">This server\'s MTU is not valid, so it can\'t connect. Re-enter it.</string>
+    <string name="editor_wireguard_invalid_allowed_ips">This server\'s allowed IPs are not valid, so it can\'t connect. Re-enter them.</string>
     <string name="editor_http_tcp_only">This server type carries TCP only — UDP and QUIC sites fall back or fail.</string>
     <string name="editor_http_tls_label">TLS</string>
     <string name="editor_http_reality_error">An HTTP proxy can\'t use REALITY. Turn TLS on or off.</string>

@@ -57,7 +57,8 @@ private fun splitPlain(text: String): Pair<String, String>? {
  * A raw Xray `protocol: "wireguard"` outbound as a typed [WireGuardOutbound].
  *
  * `settings {secretKey, address[], peers[0] {publicKey, preSharedKey, endpoint "host:port", keepAlive,
- * allowedIPs}, mtu, reserved}`. Several peers, an unusable key or a bad `reserved` keep the row but make
+ * allowedIPs}, mtu, reserved}`. Several peers, an unusable key, a bad `reserved` or an `allowedIPs` entry
+ * without a valid prefix (ruling D2-R15) keep the row but make
  * it not connectable; a missing secret key, public key, endpoint, a non-IP `address` item or an
  * unreadable shape is a typed failure. The row's [Profile.rawJson] stays the connect source; this is
  * the projection that gives it latency handling and details. Never puts a key in a failure.
@@ -126,6 +127,9 @@ internal fun parseWireGuardOutbound(
             keyBad -> WireGuardUnsupported.InvalidKey
             reserved == null -> WireGuardUnsupported.InvalidReserved
             mtuBad -> WireGuardUnsupported.InvalidMtu
+            // Ruling D2-R15: the raw JSON is what runs, and wireguard-go needs a prefix on every entry
+            // (`netip.ParsePrefix`, device/uapi.go:382) — a bare address passes `xray -test` and fails on connect.
+            allowedIpBad(peer) -> WireGuardUnsupported.InvalidAllowedIp
             else -> null
         }
     val result =
@@ -205,3 +209,10 @@ internal fun parseHttpOutbound(
         ),
     )
 }
+
+/** An `allowedIPs` entry, exactly as written, that is not a prefix `netip.ParsePrefix` reads (ruling D2-R15). */
+private fun allowedIpBad(peer: JsonObject): Boolean =
+    (peer["allowedIPs"] as? JsonArray)?.any { element ->
+        val text = (element as? JsonPrimitive)?.takeIf { it.isString }?.content
+        text == null || WireGuardRules.normaliseAllowedIp(text) != text
+    } == true

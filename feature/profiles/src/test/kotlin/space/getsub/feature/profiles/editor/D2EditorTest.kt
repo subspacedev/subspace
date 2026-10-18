@@ -211,6 +211,21 @@ class D2EditorTest {
             (source.lastUpdate as WireGuardOutbound).allowedIps shouldBe listOf("0.0.0.0/0", "::/0")
         }
 
+    // Ruling D2-R15: wireguard-go needs a prefix on every allowed IP (netip.ParsePrefix at connect).
+    @Test
+    fun `a bare allowed IP is saved with its host prefix and clears an allowed-IP reason`() =
+        runTest {
+            val row = wg.copy(notConnectableReason = WireGuardUnsupported.InvalidAllowedIp)
+            val (viewModel, source) = loaded(row)
+            advanceUntilIdle()
+            viewModel.editWg { it.copy(allowedIps = " 10.1.2.3\nfd00::1, 192.168.0.0/16 ") }
+            viewModel.save()
+            advanceUntilIdle()
+            viewModel.state.value.wireGuardErrors shouldBe emptySet()
+            val normalised = listOf("10.1.2.3/32", "fd00::1/128", "192.168.0.0/16")
+            source.lastUpdate shouldBe wg.copy(allowedIps = normalised, notConnectableReason = null)
+        }
+
     @Test
     fun `an HTTP username and password are saved verbatim, and only empty means none`() =
         runTest {
@@ -305,6 +320,8 @@ class D2EditorTest {
         assertWgRejected(WireGuardField.Keepalive) { it.copy(keepAlive = "-1") }
         assertWgRejected(WireGuardField.Keepalive) { it.copy(keepAlive = "70000") }
         assertWgRejected(WireGuardField.AllowedIps) { it.copy(allowedIps = "0.0.0.0/0, example.com") }
+        assertWgRejected(WireGuardField.AllowedIps) { it.copy(allowedIps = "01.2.3.4") }
+        assertWgRejected(WireGuardField.AllowedIps) { it.copy(allowedIps = "10.0.0.0/08") }
     }
 
     @Test
