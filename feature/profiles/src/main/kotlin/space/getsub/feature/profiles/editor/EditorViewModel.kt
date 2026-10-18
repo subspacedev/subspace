@@ -19,6 +19,7 @@ import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.PendingRoutingConversion
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.StoredProfile
+import space.getsub.core.data.TuningReport
 import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Rules
@@ -96,6 +97,8 @@ internal data class EditorState(
     val loading: Boolean = true,
     /** Where this server's fragmentation and noise come from; `null` until [EditorViewModel.load] resolves it. */
     val obfuscation: ObfuscationReport? = null,
+    /** Where this server's sniffing and mux come from; `null` until [EditorViewModel.load] resolves it. */
+    val tuning: TuningReport? = null,
     /** `false` only once [EditorViewModel.load] resolves a `null` profile — an id that names no real row. */
     val exists: Boolean = true,
     val id: Long = 0L,
@@ -358,6 +361,7 @@ constructor(
                         profile.toEditorState(groups).copy(
                             routingOverridesThisConfig = routingOverridesThisConfig,
                             obfuscation = profileSource.obfuscationReport(profileId),
+                            tuning = profileSource.tuningReport(profileId),
                         )
                     // Off Main: convertibleRouting() and analysePassthrough() each do a full JSON
                     // parse of the pasted config, and load() otherwise runs on Main.immediate — a

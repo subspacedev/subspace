@@ -28,6 +28,7 @@ import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningReport
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.Hysteria2Congestion
 import space.getsub.core.model.Hysteria2Obfuscation
@@ -180,6 +181,8 @@ class Hysteria2EditorTest {
         ) = Unit
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun tuningReport(id: Long): TuningReport? = null
 
         override suspend fun sniffingDecision(id: Long): SniffingDecision =
             SniffingDecision(enabled = true, replacesOwn = false)

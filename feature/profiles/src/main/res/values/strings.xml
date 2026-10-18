@@ -562,6 +562,14 @@
     <string name="obfuscation_origin_config">from config</string>
     <string name="obfuscation_origin_none">none</string>
     <string name="obfuscation_origin_none_ignored">none (subscription value ignored: %1$s)</string>
+    <!-- M9-E: where sniffing and mux come from. %1$s = "on"/"off", %2$s = an origin label. -->
+    <string name="editor_sniffing_line">Sniffing: %1$s</string>
+    <string name="editor_mux_line">Mux: %1$s</string>
+    <string name="editor_mux_not_used">Mux isn\'t used for this server</string>
+    <string name="tuning_value_with_origin">%1$s, %2$s</string>
+    <string name="tuning_value_on">on</string>
+    <string name="tuning_value_off">off</string>
+    <string name="tuning_origin_default">default</string>
     <string name="subscription_fragment_ignored">Fragmentation directive ignored: %1$s</string>
     <string name="subscription_noise_ignored">Noise directive ignored: %1$s</string>
 

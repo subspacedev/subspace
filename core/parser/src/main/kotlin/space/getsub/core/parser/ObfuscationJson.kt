@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.parser
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -48,3 +49,36 @@ internal fun JsonObject.carriesNoise(): Boolean {
 
 /** A string-typed JSON primitive under [key], else null. */
 internal fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+/**
+ * Whether mux.cool can serve this outbound (M9-E research R2.6): the raw-config twin of
+ * `MuxApplicability.applies`, kept equal to it by `MuxDetectionTest`'s parity test.
+ *
+ * One rule the typed table cannot state: a Shadowsocks outbound on XHTTP is not eligible either, as
+ * for every other protocol. The typed model gives Shadowsocks no stream, so the two never disagree on
+ * a row both can describe.
+ */
+internal fun JsonObject.carriesMux(): Boolean {
+    val network = stream()?.string("network").orEmpty().lowercase()
+    if (network == "xhttp" || network == "splithttp") return false
+    return when (protocol()) {
+        "vless" -> vlessFlows().all { it.isBlank() }
+        "vmess", "trojan", "shadowsocks" -> true
+        else -> false
+    }
+}
+
+/**
+ * Every `flow` a VLESS outbound names, in either settings shape Xray-core v26.10.10 reads
+ * (`infra/conf/vless.go:245-300`): flat `settings.flow`, or `settings.vnext[].users[].flow`.
+ * Both are read, so a flow in either one makes the outbound ineligible.
+ */
+private fun JsonObject.vlessFlows(): List<String> {
+    val settings = this["settings"] as? JsonObject ?: return emptyList()
+    val users =
+        (settings["vnext"] as? JsonArray)
+            .orEmpty()
+            .flatMap { ((it as? JsonObject)?.get("users") as? JsonArray).orEmpty() }
+            .mapNotNull { (it as? JsonObject)?.string("flow") }
+    return listOfNotNull(settings.string("flow")) + users
+}

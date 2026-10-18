@@ -64,7 +64,6 @@ import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.TrojanOutbound
-import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.UdpCarriage
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
@@ -2123,8 +2122,8 @@ class TunnelService : VpnService() {
             TunnelSettings(
                 socksPort = socksPort,
                 dnsServer = DNS_SERVER,
+                // Sniffing and mux, with whether each replaces a raw config's own, come from withTuning below.
                 enableSniffing = tuning.sniffing.value,
-                sniffingReplacesOwn = tuning.sniffing.origin == TuningOrigin.Yours,
                 proxyCredentials = sessionCredentialsFor(gen) ?: return null,
                 routing = (routing as? RoutingResolution.Active)?.ruleSet,
                 httpPort = httpPort,
@@ -2142,7 +2141,7 @@ class TunnelService : VpnService() {
                     routingAssetDir = (routing as? RoutingResolution.Active)?.assetDir,
                     flatRoot = geoAssetRepository.geoDirectory(),
                 ),
-            )
+            ).withTuning(tuning)
         // §10.4/failStart's cleanup applies here too, not just to the try/catch
         // below: an early return that only published a state (skipping
         // stopForeground/stopSelf/controller = null) would leave a stuck

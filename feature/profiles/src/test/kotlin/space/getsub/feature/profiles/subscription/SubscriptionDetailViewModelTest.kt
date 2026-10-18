@@ -31,6 +31,7 @@ import space.getsub.core.data.RouteExclusionStatus
 import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningReport
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SyncResult
@@ -163,6 +164,8 @@ class SubscriptionDetailViewModelTest {
 
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun tuningReport(id: Long): TuningReport? = null
 
         override suspend fun sniffingDecision(id: Long): SniffingDecision =
             SniffingDecision(enabled = true, replacesOwn = false)

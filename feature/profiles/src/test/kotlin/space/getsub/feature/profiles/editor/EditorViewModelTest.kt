@@ -29,13 +29,18 @@ import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningReport
+import space.getsub.core.data.TuningValue
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.MuxSpec
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
 import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.Udp443Mode
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
@@ -323,6 +328,10 @@ class EditorViewModelTest {
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationReports[id]
 
+        val tuningReports = mutableMapOf<Long, TuningReport>()
+
+        override suspend fun tuningReport(id: Long): TuningReport? = tuningReports[id]
+
         val sniffingDecisions = mutableMapOf<Long, SniffingDecision>()
 
         override suspend fun sniffingDecision(id: Long): SniffingDecision =
@@ -389,6 +398,25 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.obfuscation shouldBe report
+        }
+
+    @Test
+    fun `load carries the tuning report`() =
+        runTest {
+            val report =
+                TuningReport(
+                    sniffing = TuningValue(true, TuningOrigin.Default),
+                    mux = TuningValue(MuxSpec(8, 16, Udp443Mode.Reject), TuningOrigin.Yours),
+                    muxUsed = false,
+                )
+            val source = FakeProfileSource(listOf(typedProfile))
+            source.tuningReports[typedProfile.id] = report
+            val viewModel = editorViewModel(source)
+
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.tuning shouldBe report
         }
 
     @Test

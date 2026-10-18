@@ -37,6 +37,13 @@ internal constructor(
     }
 
     /**
+     * What server details show for [rowId] (M9-E spec §1, §3): [forConfig]'s values, with a raw row
+     * that runs as written read from its stored bytes ([tuningReport]), so a config's own kept block
+     * reads as [space.getsub.core.model.TuningOrigin.Config] and mux reads as used only where it runs.
+     */
+    public suspend fun report(rowId: Long): TuningReport = tuningReport(profiles.profile(rowId), forConfig(rowId))
+
+    /**
      * [forConfig] for a session about to start or rebuild, with every excluded range that covers one
      * of [dnsAddresses] dropped for this session ([dropRangesCoveringDns]).
      */

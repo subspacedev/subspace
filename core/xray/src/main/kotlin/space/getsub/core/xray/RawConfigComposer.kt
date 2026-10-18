@@ -134,10 +134,13 @@ public object RawConfigComposer {
         // override's direct/block/dns-out extras are never eligible. The legacy udpHop and kcp rewrites
         // run first so injected noise lands before the `udphop` mask one produces, never after it, and
         // after the `mkcp-legacy` masks the other produces: noise must be the entry nearest the wire
-        // there (M9-D2 research §3.3).
+        // there (M9-D2 research §3.3). Mux (M9-E spec §3) goes on the same outermost outbounds, both branches.
         val ownOutbounds =
             AddressPinInjector.apply(
-                ObfuscationInjector.apply(LegacyKcp.apply(LegacyUdpHop.apply(outbounds)), settings.obfuscation),
+                MuxInjector.apply(
+                    ObfuscationInjector.apply(LegacyKcp.apply(LegacyUdpHop.apply(outbounds)), settings.obfuscation),
+                    settings.mux,
+                ),
                 settings.addressPin,
             )
 

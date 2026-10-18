@@ -23,6 +23,7 @@ import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.SubscriptionRepository
+import space.getsub.core.data.TuningReport
 import space.getsub.core.data.TuningResolver
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
@@ -264,6 +265,12 @@ internal interface ProfileSource {
      * see [ObfuscationResolver.report]. Origins and ignore reasons only, never directive values.
      */
     suspend fun obfuscationReport(id: Long): ObfuscationReport?
+
+    /**
+     * Where [id]'s sniffing and mux come from and whether mux is used for it — see
+     * [TuningResolver.report]. Nullable so a fake can leave it out; the real source always answers.
+     */
+    suspend fun tuningReport(id: Long): TuningReport?
 
     /**
      * [id]'s resolved sniffing as the tunnel applies it ([TuningResolver.forConfig]; M9-E spec §2),
@@ -535,6 +542,8 @@ constructor(
     ) = subscriptionRepository.setUserAgentOverride(id, userAgent)
 
     override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationResolver.report(id)
+
+    override suspend fun tuningReport(id: Long): TuningReport? = tuningResolver.report(id)
 
     override suspend fun sniffingDecision(id: Long): SniffingDecision =
         tuningResolver.forConfig(id).sniffing.let { SniffingDecision(it.value, it.origin == TuningOrigin.Yours) }

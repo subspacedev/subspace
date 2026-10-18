@@ -2,11 +2,14 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.xray
 
+import space.getsub.core.model.Applied
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.KcpRules
+import space.getsub.core.model.MuxApplicability
+import space.getsub.core.model.MuxSpec
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
@@ -114,6 +117,14 @@ public data class TunnelSettings(
      * override branches always emit the resolved value.
      */
     val sniffingReplacesOwn: Boolean = false,
+    /**
+     * The resolved mux (M9-E spec §3), or null when nothing sets it. Written on the proxy outbound
+     * only where `MuxApplicability` says the core can use it. A null spec is your switch On with mux
+     * off: the typed path writes nothing, and the raw path removes a config's own block ([MuxInjector]).
+     * [Applied.replaceOwn] is true exactly for your own setting. Null emits nothing, so the output is
+     * byte-identical to a build from before mux existed.
+     */
+    val mux: Applied<MuxSpec?>? = null,
 )
 
 /**
@@ -398,6 +409,7 @@ public object XrayConfigGenerator {
             appendWireGuard(sb, out, address, obfuscation)
         } else {
             appendProtocolSettings(sb, out, address)
+            appendMux(sb, out, settings.mux?.spec)
             appendStream(sb, out, obfuscation, pinDomain)
         }
         sb.appendLine("""    },""")
@@ -413,6 +425,25 @@ public object XrayConfigGenerator {
             sb.appendLine("""    $DNS_OUT_OUTBOUND_JSON""")
         }
         sb.appendLine("""  ],""")
+    }
+
+    /**
+     * M9-E spec §3: `mux` on the proxy outbound, only where [MuxApplicability] says the core can use
+     * it, so the report (which asks the same table) never claims mux the tunnel does not run. Between
+     * `settings` and `streamSettings`, both always present here, so it always ends with a comma.
+     * Keys per Xray-core v26.10.10 `infra/conf/xray.go:106-128` (`MuxConfig`); WireGuard never
+     * reaches here and is not eligible anyway.
+     */
+    private fun appendMux(
+        sb: StringBuilder,
+        out: Outbound,
+        spec: MuxSpec?,
+    ) {
+        if (spec == null || !MuxApplicability.applies(out)) return
+        sb.appendLine(
+            """      "mux": {"enabled": true, "concurrency": ${spec.concurrency}, """ +
+                """"xudpConcurrency": ${spec.xudpConcurrency}, "xudpProxyUDP443": ${jsonString(spec.udp443.wire)}},""",
+        )
     }
 
     private fun appendStream(
