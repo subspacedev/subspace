@@ -117,6 +117,11 @@ public class GeoFileFetcher private constructor(
                 // tries to hand the download to plaintext http gets a 3xx back
                 // instead, which maps to ClientError, so geo data can never be
                 // fetched over a downgraded connection.
+                //
+                // Through the tunnel it also keeps the proxy account in place: a plain-http request
+                // carries `Proxy-Authorization` (LocalProxyAuth.kt), and OkHttp keeps that header on
+                // a redirect. Flipping this to true would carry it across a redirect to https, where
+                // request headers go through the tunnel to the origin.
                 .followRedirects(true)
                 .followSslRedirects(false)
                 .build(),

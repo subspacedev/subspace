@@ -19,6 +19,7 @@ private const val PROXY_AUTHORIZATION = "Proxy-Authorization"
 /** The challenge scheme OkHttp puts on the synthetic 407 it sends to the authenticator before a `CONNECT`. */
 private const val PREEMPTIVE_SCHEME = "OkHttp-Preemptive"
 private const val BASIC_SCHEME = "Basic"
+private const val CONNECT = "CONNECT"
 
 /**
  * Routes this client through the tunnel's loopback HTTP inbound, authenticating with the session's
@@ -48,12 +49,19 @@ internal fun OkHttpClient.Builder.throughLocalProxy(local: LocalProxy): OkHttpCl
 }
 
 /**
- * Answers the preemptive `CONNECT` question and a real `Basic` challenge with [header], once.
+ * Answers the proxy's own questions with [header], once: the preemptive `CONNECT` question and a
+ * real `Basic` challenge on a `CONNECT` or a plain-http request.
+ *
+ * OkHttp 5.2.1 hands the proxy authenticator *every* 407 on an HTTP-proxy route
+ * (`RetryAndFollowUpInterceptor.followUpRequest`), including one an https origin sends back
+ * through an established `CONNECT` tunnel. That 407 is the origin's, not the proxy's, and answering
+ * it would send the session's account inside TLS to the origin. So an https request that is not
+ * the `CONNECT` itself never gets an answer.
  *
  * [header] is the encoded credential. It is held, never printed: the class has no `toString`
  * override that would show it and the default prints only the class name and identity hash.
  */
-private class LocalProxyAuthenticator(
+internal class LocalProxyAuthenticator(
     private val header: String,
 ) : Authenticator {
     override fun authenticate(
@@ -61,16 +69,19 @@ private class LocalProxyAuthenticator(
         response: Response,
     ): Request? {
         val request = response.request
+        // The proxy sees the CONNECT, and a plain-http request in absolute form; nothing else.
+        val forTheProxy = request.method == CONNECT || !request.url.isHttps
         val answerable =
             response.challenges().any { challenge ->
                 challenge.scheme.equals(BASIC_SCHEME, ignoreCase = true) ||
                     challenge.scheme.equals(PREEMPTIVE_SCHEME, ignoreCase = true)
             }
         // Already sent: the proxy refused this account, and asking again would only repeat it.
-        return if (!answerable || request.header(PROXY_AUTHORIZATION) != null) {
-            null
-        } else {
+        val alreadySent = request.header(PROXY_AUTHORIZATION) != null
+        return if (forTheProxy && answerable && !alreadySent) {
             request.newBuilder().header(PROXY_AUTHORIZATION, header).build()
+        } else {
+            null
         }
     }
 }
