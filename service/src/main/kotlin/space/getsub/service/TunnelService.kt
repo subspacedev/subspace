@@ -59,7 +59,12 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Retryability
 import space.getsub.core.model.StartupStage
+import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrafficSample
+import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
 import space.getsub.core.model.failure
 import space.getsub.core.model.refusedWithoutTransportSecurity
 import space.getsub.core.model.retryability
@@ -567,11 +572,23 @@ internal fun balancerLatencyRefusal(rawJson: String?): LatencyOutcome? =
     LatencyOutcome.UNSUPPORTED.takeIf { rawJson != null && analysePassthrough(rawJson).isBalancer }
 
 /**
- * Whether a TCP connect says nothing about this server, because it speaks QUIC over UDP. The one rule
+ * Whether a TCP connect says nothing about this server, because it speaks UDP (QUIC, WireGuard, mKCP). The one rule
  * both [planLatency] (no TCP-mode number) and `preResolve` (no TCP race) follow. A raw `hysteria` row
  * qualifies through its typed projection, which is what a stored row's [Outbound] is.
  */
-internal fun isUdpServer(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound
+internal fun isUdpServer(outbound: Outbound?): Boolean =
+    when (outbound) {
+        is Hysteria2Outbound, is WireGuardOutbound -> true
+        is VlessOutbound -> outbound.stream.isKcp()
+        is VmessOutbound -> outbound.stream.isKcp()
+        is TrojanOutbound -> outbound.stream.isKcp()
+        else -> false
+    }
+
+private fun StreamSettings.isKcp(): Boolean = network.equals("kcp", true) || network.equals("mkcp", true)
+
+/** Whether `:ping` may certificate-probe this server. Hysteria2 only: WireGuard and mKCP have no certificate. */
+internal fun certProbeEligible(outbound: Outbound?): Boolean = outbound is Hysteria2Outbound
 
 /**
  * The guards every measurement passes before any batching, then the mode.
@@ -610,7 +627,7 @@ internal suspend fun planLatency(
                     LatencyPlan.Batched(
                         it,
                         PingGroup(options.timeoutSeconds, options.checkUrl),
-                        certProbe = isUdpServer(outbound),
+                        certProbe = certProbeEligible(outbound),
                     )
                 }
                 ?: unsupported
