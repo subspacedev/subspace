@@ -16,6 +16,7 @@ import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentialsFactory
 import java.io.File
 
 /**
@@ -75,6 +76,7 @@ class CertificateProbeXrayTest {
                             rowConfig(outbound),
                             loopbackFreePort(),
                             File(dir, "v.log").absolutePath,
+                            ProxyCredentialsFactory.random(),
                         )
                     @Suppress("TooGenericExceptionCaught", "SwallowedException")
                     try {

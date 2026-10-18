@@ -484,11 +484,13 @@ only within these bounds:
 - It lives only in `:ping`'s `cacheDir/cert-probe` (app-private; the core creates
   it mode 0600, `common/log/logger.go`), never in `filesDir`, never in logcat.
   `access: none`, so no access log exists at all.
-- It is meant to hold the probe's own traffic: one `CONNECT` to the check host
-  through the row's own outbound. It is not guaranteed to: the loopback inbound is
-  unauthenticated, so another app on the device that connects to it during the
-  probe's few-second window would have its `CONNECT` logged there too. The file
-  stays private (0600, `:ping`'s cache dir) and is deleted as below.
+- It holds the probe's own traffic: one `CONNECT` to the check host through the
+  row's own outbound. The loopback inbound is authenticated per probe (one random
+  account made for that probe alone, sent as `Proxy-Authorization: Basic`; without
+  it the inbound answers 407 and closes), so another app on the device that
+  connects to it during the probe's few-second window is refused before anything
+  reaches the log. The file stays private (0600, `:ping`'s cache dir) and is
+  deleted as below.
 - Its text is read into local variables, classified to a Boolean, and never
   returned, stored or logged.
 - It is deleted on every path, and the directory is swept (a) when `:ping`
