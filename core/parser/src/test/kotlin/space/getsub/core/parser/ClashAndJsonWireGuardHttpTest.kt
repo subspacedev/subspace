@@ -149,15 +149,18 @@ class ClashAndJsonWireGuardHttpTest {
     }
 
     @Test
-    fun `clash wireguard amnezia option keeps the row not connectable`() {
-        val o =
-            wg(
+    fun `clash wireguard amnezia option is an unsupported protocol failure, not a row`() {
+        val outcome =
+            clash(
                 """
                 - {name: WG, type: wireguard, server: h.example, port: 1, ip: 10.0.0.2,
                    private-key: "$sk", public-key: "$pk", amnezia-wg-option: {jc: 4}}
                 """,
             )
-        o.notConnectableReason shouldBe WireGuardUnsupported.UnsupportedMask
+        outcome.profiles.size shouldBe 0
+        val failure = outcome.failures.single()
+        failure.reason shouldBe ParseFailureReason.UnknownScheme
+        failure.detail shouldBe FailureDetail.Unsupported(DetailField.Scheme)
     }
 
     // ---------------------------------------------------------------- Clash HTTP

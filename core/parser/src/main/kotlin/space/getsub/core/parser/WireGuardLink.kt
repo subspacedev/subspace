@@ -20,6 +20,9 @@ internal const val MAX_KEEPALIVE = 65_535
 private val SECRET_KEY_NAMES = listOf("privatekey", "pk")
 private val PEER_KEY_NAMES = listOf("publickey", "peerpublickey", "pub", "peerpub", "peerpk")
 private val PSK_NAMES = listOf("presharedkey", "psk")
+
+/** AmneziaWG obfuscation parameters, as normalised query names (D2-R13). */
+private val AWG_PARAMETER_NAMES = listOf("jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4")
 private val ADDRESS_NAMES = listOf("address", "ip", "localaddress")
 
 private data class Pieces(
@@ -36,7 +39,8 @@ private data class Pieces(
  * `wireguard://<secretKey>@host:port?publickey=&presharedkey=&address=&reserved=&mtu=&keepalive=#name`, or
  * `wg://host:port/?pk=&peer_pk=&...`: query names are matched case-insensitively with `_`/`-` removed, so
  * the aliases of both dialects resolve. The secret key is the userinfo or, failing that, `privatekey`/`pk`.
- * Values are trimmed (D2-R7). `dns` is ignored. `fm=` is ignored unless it carries masks, in which case the
+ * Values are trimmed (D2-R7). `dns` is ignored. A link with AmneziaWG parameters (`jc`, `jmin`, `jmax`, `s1`, `s2`,
+ * `h1`-`h4`) is an unsupported-protocol failure (D2-R13). `fm=` is ignored unless it carries masks, in which case the
  * row imports not connectable: WireGuard noise is a user setting, not a link field.
  *
  * Failures name a field, never a value (ARCHITECTURE.md §5.6).
@@ -69,6 +73,11 @@ private fun buildWireGuard(raw: String): Step<Pair<WireGuardOutbound, String>> {
     validatePort(port)?.let { return Step.Fail(ParseFailureReason.InvalidPort, it) }
 
     val query = pieces.query
+    // Ruling D2-R13: AmneziaWG is future work (M9 covers Xray-core only). Its parameters change the handshake,
+    // so a link carrying any of them is unsupported, never a WireGuard row the server cannot answer.
+    if (AWG_PARAMETER_NAMES.any { it in query }) {
+        return Step.Fail(ParseFailureReason.UnknownScheme, FailureDetail.Unsupported(DetailField.Scheme))
+    }
     val secret = pieces.userInfo.trim().ifEmpty { first(query, SECRET_KEY_NAMES) }
     val peer = first(query, PEER_KEY_NAMES)
     val psk = first(query, PSK_NAMES)

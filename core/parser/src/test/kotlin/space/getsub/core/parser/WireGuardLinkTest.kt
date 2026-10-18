@@ -114,6 +114,18 @@ class WireGuardLinkTest {
     }
 
     @Test
+    fun `a link carrying AmneziaWG parameters is an unsupported protocol failure`() {
+        val base = "wireguard://${enc(sk)}@h.example:1?publickey=${enc(pk)}&address=10.0.0.2"
+        listOf("jc=4", "Jmin=40", "jmax=70", "s1=15", "s2=18", "h1=1", "h2=2", "h3=3", "h4=4", "J_c=4").forEach { awg ->
+            val failure = bad("$base&$awg")
+            failure.reason shouldBe ParseFailureReason.UnknownScheme
+            failure.detail shouldBe FailureDetail.Unsupported(DetailField.Scheme)
+        }
+        bad("wg://h.example:1/?pk=${enc(sk)}&peer_pk=${enc(pk)}&ip=10.0.0.2&jc=4").reason shouldBe
+            ParseFailureReason.UnknownScheme
+    }
+
+    @Test
     fun `fm carrying masks makes the row not connectable`() {
         val fm = enc("""{"udp":[{"type":"noise","settings":{}}]}""")
         val (_, o) = ok("wireguard://${enc(sk)}@h.example:1?publickey=${enc(pk)}&address=10.0.0.2&fm=$fm")
