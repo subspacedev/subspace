@@ -8,18 +8,12 @@ import space.getsub.core.model.ProfileDns
 /**
  * Maps a typed profile DNS block to its visible state.
  *
- * [sniffingEnabled] separates a working FakeDNS request from one the tunnel
- * must refuse. It is `true` for current UI callers: sniffing is not yet a
- * configurable setting (R12), while this pure mapper preserves the future
- * refusal behavior without duplicating it in the routing list and review sheet.
+ * FakeDNS is never refused for want of sniffing: with sniffing off the tunnel keeps a
+ * `fakedns`-only sniffing block (M9-E spec §2), so a FakeDNS request is simply applied.
  */
-internal fun dnsStateOf(
-    dns: ProfileDns?,
-    sniffingEnabled: Boolean,
-): DnsState =
+internal fun dnsStateOf(dns: ProfileDns?): DnsState =
     when {
         dns == null -> DnsState.None
         dns.isInvalid -> DnsState.Invalid
-        dns.fakeDns == true && !sniffingEnabled -> DnsState.NeedsSniffing
         else -> DnsState.Applied
     }

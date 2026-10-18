@@ -62,7 +62,6 @@
 
     <string name="routing_dns_applied">Sets DNS</string>
     <string name="routing_dns_invalid">DNS block not understood — using your DNS setting</string>
-    <string name="routing_dns_needs_sniffing">Needs sniffing on for FakeDNS</string>
 
     <!-- Imported profiles are read-only; editing means editing a copy (M6 spec §4.2). -->
     <string name="routing_duplicate_label">Duplicate</string>
@@ -222,7 +221,6 @@
     <string name="import_review_dns_domestic">Domestic DNS: %1$s %2$s</string>
     <string name="import_review_dns_invalid">This profile\'s DNS settings could not be read. Your own DNS setting will be used.</string>
     <string name="import_review_dns_fakedns">Uses FakeDNS</string>
-    <string name="import_review_dns_fakedns_needs_sniffing">Asks for FakeDNS, which needs sniffing enabled in Settings</string>
     <plurals name="import_review_dns_hosts">
         <item quantity="one">%1$d custom host mapping</item>
         <item quantity="other">%1$d custom host mappings</item>

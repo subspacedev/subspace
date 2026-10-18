@@ -17,7 +17,4 @@ public enum class DnsState {
 
     /** The block was present but not understood, so the app-level DNS setting applies. */
     Invalid,
-
-    /** The block requests FakeDNS, but sniffing is disabled so FakeDNS is refused. */
-    NeedsSniffing,
 }

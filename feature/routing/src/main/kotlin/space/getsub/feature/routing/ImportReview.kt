@@ -354,14 +354,8 @@ private fun DnsReviewRows(
         )
     }
     if (dns.fakeDns == true) {
-        val fakeDnsMessage =
-            if (dnsState == DnsState.NeedsSniffing) {
-                R.string.import_review_dns_fakedns_needs_sniffing
-            } else {
-                R.string.import_review_dns_fakedns
-            }
         Text(
-            text = stringResource(fakeDnsMessage),
+            text = stringResource(R.string.import_review_dns_fakedns),
             style = MaterialTheme.typography.bodyMedium,
         )
     }

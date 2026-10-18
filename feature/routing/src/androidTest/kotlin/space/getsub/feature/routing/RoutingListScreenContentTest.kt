@@ -178,19 +178,11 @@ class RoutingListScreenContentTest {
     }
 
     @Test
-    fun aProfileWithFakeDnsAndNoSniffingSaysItNeedsSniffing() {
-        setContent(RoutingState(ruleSets = listOf(providerRow.copy(dnsState = DnsState.NeedsSniffing))))
-
-        composeRule.onNodeWithText("Needs sniffing on for FakeDNS").assertIsDisplayed()
-    }
-
-    @Test
     fun aProfileWithoutDnsShowsNoDnsBadge() {
         setContent(RoutingState(ruleSets = listOf(providerRow.copy(dnsState = DnsState.None))))
 
         composeRule.onNodeWithText("Sets DNS").assertDoesNotExist()
         composeRule.onNodeWithText("DNS block not understood — using your DNS setting").assertDoesNotExist()
-        composeRule.onNodeWithText("Needs sniffing on for FakeDNS").assertDoesNotExist()
     }
 
     // Three independent axes. A downloading row is not a failed one, and a

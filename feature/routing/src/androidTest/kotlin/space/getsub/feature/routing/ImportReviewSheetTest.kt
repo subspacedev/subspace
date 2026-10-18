@@ -150,20 +150,6 @@ class ImportReviewSheetTest {
     }
 
     @Test
-    fun aFakeDnsDisclosureWithoutSniffingNamesTheRequirement() {
-        setContent(
-            reviewingState.copy(
-                dns = ProfileDns(fakeDns = true),
-                dnsState = DnsState.NeedsSniffing,
-            ),
-        )
-
-        composeRule
-            .onNodeWithText("Asks for FakeDNS, which needs sniffing enabled in Settings")
-            .assertIsDisplayed()
-    }
-
-    @Test
     fun aProfileWithoutDnsShowsNoDnsDisclosure() {
         setContent(reviewingState.copy(dns = null, dnsState = DnsState.None))
 
