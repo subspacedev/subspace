@@ -22,13 +22,44 @@ class DirectiveRegistryTest {
                 "PlatformHardening",
                 "CensorshipResistance",
                 "Release",
+                "Tuning",
                 "None",
             )
     }
 
     @Test
-    fun sniffingIsConsumedByPlatformHardening() {
-        DirectiveRegistry.spec("sniffing-enable")?.consumer shouldBe Consumer.PlatformHardening
+    fun tuningKeysAreConsumedByTuning() {
+        DirectiveRegistry.specs.values
+            .filter { it.consumer == Consumer.Tuning }
+            .map { it.key }
+            .toSet() shouldBe
+            setOf(
+                "sniffing-enable",
+                "mux-enable",
+                "mux-tcp-connections",
+                "mux-xudp-connections",
+                "mux-quic",
+                "xray-tun-mtu",
+                "exclude-routes",
+                "exclude-routes-set",
+            )
+    }
+
+    @Test
+    fun localAuthAndXrayTunEnableStayUnconsumed() {
+        // M9-E spec §5.4: a provider never sets the local inbound's credentials. xray-tun-enable is
+        // deferred by the owner.
+        listOf(
+            "socks-auth-mode",
+            "socks-auth-user",
+            "socks-auth-password",
+            "http-auth-mode",
+            "http-auth-user",
+            "http-auth-password",
+            "xray-tun-enable",
+        ).forEach { key ->
+            DirectiveRegistry.spec(key)?.consumer shouldBe Consumer.None
+        }
     }
 
     @Test
@@ -139,6 +170,8 @@ class DirectiveRegistryTest {
      * without the user approving it, in a UI that shows them what they are
      * approving. `routing` earns it through M6's import review sheet (M6 spec §6). The three
      * `server-address-resolve-*` keys earn it through M9-C's per-subscription resolver card (M9-C spec §1.3).
+     * `exclude-routes` and `exclude-routes-set` earn it through M9-E's excluded-routes card, which names
+     * every range and is bound to the list's fingerprint (M9-E spec §4).
      */
     @Suppress("VariableNaming", "ktlint:standard:property-naming")
     private val CONFIRMED_DANGEROUS_KEYS =
@@ -147,6 +180,8 @@ class DirectiveRegistryTest {
             "server-address-resolve-enable",
             "server-address-resolve-dns-domain",
             "server-address-resolve-dns-ip",
+            "exclude-routes",
+            "exclude-routes-set",
         )
 
     @Test
@@ -172,6 +207,8 @@ class DirectiveRegistryTest {
                 "server-address-resolve-enable",
                 "server-address-resolve-dns-domain",
                 "server-address-resolve-dns-ip",
+                "exclude-routes",
+                "exclude-routes-set",
             )
         DirectiveRegistry.specs.values
             .filter { it.danger == Danger.Dangerous && it.consumer != Consumer.None }

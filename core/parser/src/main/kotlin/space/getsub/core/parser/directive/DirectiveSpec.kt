@@ -79,6 +79,9 @@ public enum class Consumer {
     /** Localisation, metadata surface, distribution (was M9). */
     Release,
 
+    /** Sniffing, mux, TUN MTU and excluded routes (M9-E), read by `TuningResolver`. */
+    Tuning,
+
     /** Stored and validated, acted on by nobody. */
     None,
 }

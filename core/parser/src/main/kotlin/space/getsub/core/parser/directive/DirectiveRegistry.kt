@@ -95,6 +95,8 @@ public object DirectiveRegistry {
                 CUT_DESKTOP,
                 kind = DirectiveKind.Text(4096, base64Allowed = true),
             ),
+            // Stored, never applied (M9-E spec §5.4, an owner-approved divergence under ARCHITECTURE.md
+            // §A.5): the local inbound's credentials are the user's or random, never a provider's.
             accept("socks-auth-mode", authMode(), Danger.Sensitive, Consumer.None),
             accept("socks-auth-user", textNoBase64(256), Danger.Sensitive, Consumer.None),
             accept("socks-auth-password", textNoBase64(256), Danger.Sensitive, Consumer.None),
@@ -224,28 +226,32 @@ public object DirectiveRegistry {
             accept("per-app-proxy-list", DirectiveKind.Csv, Danger.Dangerous, Consumer.None),
             accept("per-app-proxy-list-invert", DirectiveKind.Csv, Danger.Dangerous, Consumer.None),
             accept("per-app-proxy-list-set", DirectiveKind.Csv, Danger.Dangerous, Consumer.None),
-            accept("exclude-routes", DirectiveKind.Csv, Danger.Dangerous, Consumer.None),
-            accept("exclude-routes-set", DirectiveKind.Csv, Danger.Dangerous, Consumer.None),
-            accept("sniffing-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.PlatformHardening),
-            accept("xray-tun-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.CensorshipResistance),
-            accept("xray-tun-mtu", DirectiveKind.Integer(68, 65_535), Danger.Sensitive, Consumer.CensorshipResistance),
+            // Applied only after the user allows the exact list on the excluded-routes card (M9-E spec §4);
+            // -set replaces exclude-routes when both are sent (research R3).
+            accept("exclude-routes", DirectiveKind.Csv, Danger.Dangerous, Consumer.Tuning),
+            accept("exclude-routes-set", DirectiveKind.Csv, Danger.Dangerous, Consumer.Tuning),
+            accept("sniffing-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.Tuning),
+            // Deferred by the owner (M9-E): stored, acted on by nobody.
+            accept("xray-tun-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.None),
+            // Parse range as Happ documents it; the resolver applies the 1280 floor (M9-E spec §7.1).
+            accept("xray-tun-mtu", DirectiveKind.Integer(68, 65_535), Danger.Sensitive, Consumer.Tuning),
             accept("inbound-http-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.CensorshipResistance),
             accept("dns-from-json-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.CensorshipResistance),
             reject("proxy-ping-mode", CUT_DESKTOP),
-            accept("mux-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.CensorshipResistance),
+            accept("mux-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.Tuning),
             accept(
                 "mux-tcp-connections",
                 DirectiveKind.Integer(-1, 1024),
                 Danger.Sensitive,
-                Consumer.CensorshipResistance,
+                Consumer.Tuning,
             ),
             accept(
                 "mux-xudp-connections",
                 DirectiveKind.Integer(-1, 1024),
                 Danger.Sensitive,
-                Consumer.CensorshipResistance,
+                Consumer.Tuning,
             ),
-            accept("mux-quic", textNoBase64(32), Danger.Sensitive, Consumer.CensorshipResistance),
+            accept("mux-quic", textNoBase64(32), Danger.Sensitive, Consumer.Tuning),
             accept("app-auto-start", DirectiveKind.Bool, Danger.Sensitive, Consumer.PlatformHardening),
             accept(
                 "user-agent-geo-files",
