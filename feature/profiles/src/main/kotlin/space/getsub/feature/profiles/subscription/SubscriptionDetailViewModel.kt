@@ -26,6 +26,8 @@ import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TUNING_DIRECTIVE_KEYS
+import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.Checked
 import space.getsub.core.parser.LinkFragment
@@ -60,25 +62,42 @@ private const val DEFAULT_AUTO_UPDATE = "true"
 
 private val NO_DIRECTIVE_ISSUES = ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
 
+/** Why the subscription's obfuscation (M9-A) and tuning (M9-E) directives are not applied. */
+private data class DirectiveIssues(
+    val obfuscation: ResolvedObfuscation = NO_DIRECTIVE_ISSUES,
+    val tuning: TuningDirectiveIssues = TuningDirectiveIssues.NONE,
+)
+
 /**
- * The subscription's obfuscation directive issues, re-read whenever any obfuscation directive's
- * effective value changes — a sync, a pin or an unpin — and on every [refreshes] emission, so the
- * "directive ignored" lines never go stale (M9-A spec §2.4).
+ * The subscription's directive issues, re-read whenever any obfuscation or tuning directive's
+ * effective value changes — a sync, a pin or an unpin — when the answer to its excluded routes
+ * changes, and on every [refreshes] emission, so the "directive ignored" lines never go stale
+ * (M9-A spec §2.4, M9-E spec §3, §4, §7.1).
  */
 private fun ProfileSource.observeDirectiveIssues(
     id: Long,
     refreshes: Flow<Int>,
-): Flow<ResolvedObfuscation> {
+): Flow<DirectiveIssues> {
+    val keys = OBFUSCATION_DIRECTIVE_KEYS + TUNING_DIRECTIVE_KEYS
     val directives =
-        combine(OBFUSCATION_DIRECTIVE_KEYS.map { observeEffective(id, it, null) }) { it.toList() }
+        combine(keys.map { observeEffective(id, it, null) }) { it.toList() }
             .distinctUntilChanged()
-    return combine(directives, refreshes) { _, _ ->
+    return combine(directives, observeRouteExclusionStatus(id), refreshes) { _, _, _ ->
         // A failed read shows no "ignored" line; it must never end the combine that drives the screen.
-        runCatching { obfuscationDirectiveIssues(id) }
-            .onFailure { if (it is CancellationException) throw it }
-            .getOrDefault(NO_DIRECTIVE_ISSUES)
+        DirectiveIssues(
+            obfuscation = readOrDefault(NO_DIRECTIVE_ISSUES) { obfuscationDirectiveIssues(id) },
+            tuning = readOrDefault(TuningDirectiveIssues.NONE) { tuningDirectiveIssues(id) },
+        )
     }
 }
+
+private suspend fun <T> readOrDefault(
+    default: T,
+    read: suspend () -> T,
+): T =
+    runCatching { read() }
+        .onFailure { if (it is CancellationException) throw it }
+        .getOrDefault(default)
 
 private fun canonicalUserAgent(raw: String): String? {
     val canonical =
@@ -258,8 +277,8 @@ constructor(
             isRefreshing = inputs.ephemeral.isRefreshing,
             refreshResult = inputs.ephemeral.refreshResult,
             deleted = inputs.ephemeral.deleted,
-            fragmentIgnored = (inputs.issues.fragment as? MaskResolution.Ignored)?.problem,
-            noiseIgnored = (inputs.issues.noise as? MaskResolution.Ignored)?.problem,
+            fragmentIgnored = (inputs.issues.obfuscation.fragment as? MaskResolution.Ignored)?.problem,
+            noiseIgnored = (inputs.issues.obfuscation.noise as? MaskResolution.Ignored)?.problem,
             redirectTrust = subscription.redirectTrust,
             redirectTargetHosts = inputs.reach.redirect.targetHosts,
             redirectIssues = inputs.reach.redirect.issues,
@@ -277,6 +296,7 @@ constructor(
             resolverTrust = inputs.reach.resolver.trust,
             userPreResolveOn = inputs.reach.userPreResolveOn,
             routeExclusionRequest = inputs.reach.routeExclusionRequest,
+            tuningIssues = inputs.issues.tuning,
         )
     }
 
@@ -288,7 +308,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
-        val issues: ResolvedObfuscation,
+        val issues: DirectiveIssues,
         val reach: Reach,
         val ephemeral: Ephemeral,
     )
@@ -297,7 +317,7 @@ constructor(
         val rows: List<DirectiveRow>,
         val providerUserAgent: String?,
         val globalHwidEnabled: Boolean,
-        val issues: ResolvedObfuscation,
+        val issues: DirectiveIssues,
         val reach: Reach,
     )
 

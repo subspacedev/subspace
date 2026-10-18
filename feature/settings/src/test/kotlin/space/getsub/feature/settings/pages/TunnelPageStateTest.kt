@@ -5,11 +5,16 @@ package space.getsub.feature.settings.pages
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.Test
+import space.getsub.core.data.TuningValue
+import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ExcludeRoutesUserSetting
 import space.getsub.core.model.MuxUserSettings
 import space.getsub.core.model.ProxyAuthMode
 import space.getsub.core.model.ProxyAuthSettings
 import space.getsub.core.model.TunMtuUserSetting
+import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.TuningProblem
+import space.getsub.feature.settings.R
 
 class TunnelPageStateTest {
     private val stored = TunnelDraft()
@@ -148,5 +153,30 @@ class TunnelPageStateTest {
         val autoWithNames = stored.copy(proxyAuth = ProxyAuthSettings(ProxyAuthMode.Auto, "alice", "secret"))
         autoWithNames.effective() shouldBe stored.effective()
         manual("alice", "secret").effective() shouldBe manual("alice", "secret")
+    }
+
+    // ---- the provider line under a switch that is off (M9-E spec §3, §4, §7.1) ----
+
+    @Test
+    fun `the provider line says nothing was ignored when nothing was`() {
+        providerLineParts(null) shouldBe ProviderLineParts(R.string.settings_tunnel_no_server)
+        providerLineParts(TuningValue(1400, TuningOrigin.Subscription)) shouldBe
+            ProviderLineParts(R.string.settings_tunnel_from_subscription)
+        providerLineParts(TuningValue(8500, TuningOrigin.Default)) shouldBe
+            ProviderLineParts(R.string.settings_tunnel_default_value)
+    }
+
+    @Test
+    fun `an ignored provider value gives the default with the reason`() {
+        val outOfRange = TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu")
+        providerLineParts(TuningValue(8500, TuningOrigin.Default, outOfRange)) shouldBe
+            ProviderLineParts(R.string.settings_tunnel_default_ignored, outOfRange, partial = false)
+    }
+
+    @Test
+    fun `a partly applied provider list names the dropped part`() {
+        val tooWide = TuningProblem.RangeTooWide(0)
+        providerLineParts(TuningValue(emptyList<CidrRange>(), TuningOrigin.Subscription, tooWide)) shouldBe
+            ProviderLineParts(R.string.settings_tunnel_from_subscription_ignored, tooWide, partial = true)
     }
 }

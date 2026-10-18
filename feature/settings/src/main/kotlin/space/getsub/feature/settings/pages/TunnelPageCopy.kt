@@ -8,24 +8,30 @@ import androidx.compose.ui.res.stringResource
 import space.getsub.core.data.TuningValue
 import space.getsub.core.model.CidrRange
 import space.getsub.core.model.MuxSpec
-import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.Udp443Mode
+import space.getsub.core.ui.subscriptionValueIgnoredText
 import space.getsub.feature.settings.R
 
 // The Tunnel page's text, rendered from TunnelPageState.kt's values and the resolved provider values.
 
-/** What applies with your switch off: the active server's subscription, else the default. */
+/**
+ * What applies with your switch off: the active server's subscription, else the default. When the
+ * subscription's value was ignored, the reason follows in [subscriptionValueIgnoredText]'s words,
+ * the ones subscription details use (M9-E spec §3, §4, §7.1).
+ */
 @Composable
 internal fun <T> providerLine(
     value: TuningValue<T>?,
     format: @Composable (T) -> String,
-): String =
-    when {
-        value == null -> stringResource(R.string.settings_tunnel_no_server)
-        value.origin == TuningOrigin.Subscription ->
-            stringResource(R.string.settings_tunnel_from_subscription, format(value.value))
-        else -> stringResource(R.string.settings_tunnel_default_value, format(value.value))
+): String {
+    val parts = providerLineParts(value)
+    val ignored = parts.ignored
+    return when {
+        value == null -> stringResource(parts.res)
+        ignored == null -> stringResource(parts.res, format(value.value))
+        else -> stringResource(parts.res, format(value.value), subscriptionValueIgnoredText(ignored, parts.partial))
     }
+}
 
 @Composable
 internal fun onOff(on: Boolean): String =

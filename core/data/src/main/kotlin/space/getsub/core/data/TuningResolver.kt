@@ -52,6 +52,13 @@ internal constructor(
             ),
         )
 
+    /**
+     * Why [subscriptionId]'s own tuning directives are not applied, for subscription details
+     * ([tuningDirectiveIssues]; M9-E spec §3, §4, §7.1).
+     */
+    public suspend fun directiveIssues(subscriptionId: Long): TuningDirectiveIssues =
+        tuningDirectiveIssues(directives(subscriptionId), subscriptions.routeExclusionStatus(subscriptionId).first())
+
     private suspend fun resolve(
         rowId: Long,
         user: TuningUserInputs,

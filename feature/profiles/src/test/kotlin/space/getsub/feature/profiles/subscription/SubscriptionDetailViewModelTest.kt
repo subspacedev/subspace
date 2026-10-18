@@ -31,6 +31,8 @@ import space.getsub.core.data.RouteExclusionStatus
 import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningDirectiveIssue
+import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.TuningReport
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
@@ -39,6 +41,7 @@ import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.TuningProblem
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.RouteExclusionRequest
@@ -183,6 +186,16 @@ class SubscriptionDetailViewModelTest {
         var issuesFromPins: ((Map<String, String>) -> ResolvedObfuscation)? = null
         var issuesFailure: Exception? = null
 
+        var tuningIssues = TuningDirectiveIssues.NONE
+
+        /** When set, the tuning issues follow the pins, as the real resolver follows `effective`. */
+        var tuningIssuesFromPins: ((Map<String, String>) -> TuningDirectiveIssues)? = null
+
+        override suspend fun tuningDirectiveIssues(subscriptionId: Long): TuningDirectiveIssues {
+            issuesFailure?.let { throw it }
+            return tuningIssuesFromPins?.invoke(pins.value) ?: tuningIssues
+        }
+
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation {
             issuesFailure?.let { throw it }
             return issuesFromPins?.invoke(pins.value)
@@ -217,6 +230,56 @@ class SubscriptionDetailViewModelTest {
 
             viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.LengthFromZero
             viewModel.state.value.noiseIgnored shouldBe null
+        }
+
+    @Test
+    fun `ignored provider tuning directives surface with their reasons`() =
+        runTest {
+            val issues =
+                TuningDirectiveIssues(
+                    mux = TuningDirectiveIssue("mux-quic", TuningProblem.BadValue("mux-quic")),
+                    tunMtu =
+                    TuningDirectiveIssue("xray-tun-mtu", TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu")),
+                    excludedRoutes = TuningDirectiveIssue("exclude-routes", TuningProblem.NeedsConsent),
+                )
+            source.tuningIssues = issues
+
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.tuningIssues shouldBe issues
+        }
+
+    @Test
+    fun `a pin that fixes a tuning directive clears its reason without a refresh`() =
+        runTest {
+            val mtu = TuningDirectiveIssue("xray-tun-mtu", TuningProblem.BadValue("xray-tun-mtu"))
+            val bad = TuningDirectiveIssues(tunMtu = mtu)
+            source.tuningIssuesFromPins = { pins ->
+                if (pins["xray-tun-mtu"] == null) bad else TuningDirectiveIssues.NONE
+            }
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.state.value.tuningIssues shouldBe bad
+
+            viewModel.onPinRow("xray-tun-mtu", "1400")
+            advanceUntilIdle()
+            viewModel.state.value.tuningIssues shouldBe TuningDirectiveIssues.NONE
+        }
+
+    @Test
+    fun `tuning issues follow the route answer`() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            val declined =
+                TuningDirectiveIssues(excludedRoutes = TuningDirectiveIssue("exclude-routes", TuningProblem.Declined))
+            source.tuningIssues = declined
+            source.routeStatus.value =
+                RouteExclusionStatus(RouteExclusionTrust.Denied, "fp", listOf(CidrRange("172.16.0.0", 12, false)))
+            advanceUntilIdle()
+
+            viewModel.state.value.tuningIssues shouldBe declined
         }
 
     @Test

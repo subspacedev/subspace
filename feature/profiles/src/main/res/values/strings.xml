@@ -565,7 +565,7 @@
     <!-- M9-E: where sniffing and mux come from. %1$s = "on"/"off", %2$s = an origin label. -->
     <string name="editor_sniffing_line">Sniffing: %1$s</string>
     <string name="editor_mux_line">Mux: %1$s</string>
-    <string name="editor_mux_not_used">Mux isn\'t used for this server</string>
+    <string name="editor_mux_not_used">Mux isn\'t used for this server: the core can\'t use mux with its protocol, flow or transport</string>
     <string name="tuning_value_with_origin">%1$s, %2$s</string>
     <string name="tuning_value_on">on</string>
     <string name="tuning_value_off">off</string>
@@ -614,6 +614,7 @@
     <!-- M9-E: the provider's exclude-routes. %1$s is the comma-separated list of address ranges. -->
     <string name="subscription_route_exclusion_title">Provider wants to bypass the VPN</string>
     <string name="subscription_route_exclusion_body">Traffic to these addresses would go out directly, outside the VPN: %1$s</string>
+    <string name="subscription_route_exclusion_applies">Your provider\'s excluded routes apply. Any of them that covers the DNS server in use is skipped when you connect, so DNS stays inside the VPN.</string>
     <string name="subscription_route_exclusion_dns_note">Any of these that covers the DNS server in use is skipped when you connect, so DNS stays inside the VPN.</string>
     <!-- Today only /0 ranges land here: each covers every address of its kind. -->
     <string name="subscription_route_exclusion_refused">Won\'t be applied, because each covers every address: %1$s</string>

@@ -23,6 +23,7 @@ import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.SubscriptionRepository
+import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.TuningReport
 import space.getsub.core.data.TuningResolver
 import space.getsub.core.data.preresolve.ProviderResolver
@@ -284,6 +285,12 @@ internal interface ProfileSource {
      * detail screen can say why one was ignored — see [ObfuscationResolver.directiveIssues].
      */
     suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation
+
+    /**
+     * Why [subscriptionId]'s mux, TUN MTU and excluded-routes directives are not applied, for the
+     * same screen — see [TuningResolver.directiveIssues]. Defaulted, like [observeRedirectStatus].
+     */
+    suspend fun tuningDirectiveIssues(subscriptionId: Long): TuningDirectiveIssues = TuningDirectiveIssues.NONE
 
     /**
      * The hosts a redirect-trust request names and the redirect keys that would be ignored, for
@@ -562,6 +569,9 @@ constructor(
 
     override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
         obfuscationResolver.directiveIssues(subscriptionId)
+
+    override suspend fun tuningDirectiveIssues(subscriptionId: Long): TuningDirectiveIssues =
+        tuningResolver.directiveIssues(subscriptionId)
 
     override fun observeRedirectStatus(id: Long): Flow<RedirectStatus> =
         subscriptionRepository.observeRedirectStatus(id)

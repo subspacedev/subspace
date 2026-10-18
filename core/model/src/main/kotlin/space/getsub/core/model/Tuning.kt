@@ -46,8 +46,10 @@ public enum class ProxyCredentialProblem { Empty, TooLong, ControlCharacter, Col
 public object ProxyCredentialRules {
     public const val MAX_BYTES: Int = 255
 
-    public fun checkUser(value: String): ProxyCredentialProblem? =
-        common(value) ?: ProxyCredentialProblem.Colon.takeIf { ':' in value }
+    public fun checkUser(value: String): ProxyCredentialProblem? {
+        val colon = ProxyCredentialProblem.Colon.takeIf { ':' in value }
+        return common(value) ?: colon
+    }
 
     public fun checkPass(value: String): ProxyCredentialProblem? = common(value)
 
@@ -112,9 +114,11 @@ public data class ExcludeRoutesUserSetting(
 public enum class TuningOrigin { Yours, Subscription, Config, Default }
 
 public sealed interface TuningProblem {
+    /** [key] names the provider directive that is out of range, when the value came from one. */
     public data class OutOfRange(
         val min: Int,
         val max: Int,
+        val key: String? = null,
     ) : TuningProblem
 
     public data class BadValue(
@@ -129,7 +133,11 @@ public sealed interface TuningProblem {
         val index: Int,
     ) : TuningProblem
 
+    /** The provider's excluded routes wait for the user's answer on the approval card. */
     public data object NeedsConsent : TuningProblem
+
+    /** The user answered the provider's excluded routes with Don't allow. */
+    public data object Declined : TuningProblem
 }
 
 /**

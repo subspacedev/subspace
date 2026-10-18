@@ -9,6 +9,7 @@ import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.sync.SubscriptionSyncFailure
@@ -205,6 +206,8 @@ internal data class SubscriptionDetailState(
     val userPreResolveOn: Boolean = false,
     // M9-E spec §4: the provider's excluded routes, while unanswered for the current list.
     val routeExclusionRequest: RouteExclusionRequest? = null,
+    /** M9-E spec §3, §4, §7.1: why this subscription's mux, MTU and excluded-routes directives don't apply. */
+    val tuningIssues: TuningDirectiveIssues = TuningDirectiveIssues.NONE,
 ) {
     /** The provider's DoH host, only while its resolver directives are valid (M9-C spec §1.2). */
     val resolverHost: String?

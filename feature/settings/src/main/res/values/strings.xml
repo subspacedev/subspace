@@ -237,6 +237,8 @@
     <string name="settings_tunnel_override_on">Overrides your subscription.</string>
     <string name="settings_tunnel_from_subscription">From your subscription: %1$s</string>
     <string name="settings_tunnel_default_value">Your subscription doesn\'t set this. Default: %1$s</string>
+    <string name="settings_tunnel_from_subscription_ignored">From your subscription: %1$s (%2$s)</string>
+    <string name="settings_tunnel_default_ignored">Default: %1$s (%2$s)</string>
     <string name="settings_tunnel_no_server">Off: your subscription\'s settings apply</string>
     <string name="settings_tunnel_value_on">On</string>
     <string name="settings_tunnel_value_off">Off</string>

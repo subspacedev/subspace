@@ -48,11 +48,11 @@ public data class TuningUserInputs(
 )
 
 private const val SNIFFING_ENABLE = "sniffing-enable"
-private const val MUX_ENABLE = "mux-enable"
+internal const val MUX_ENABLE = "mux-enable"
 private const val MUX_TCP = "mux-tcp-connections"
 private const val MUX_XUDP = "mux-xudp-connections"
 private const val MUX_QUIC = "mux-quic"
-private const val TUN_MTU = "xray-tun-mtu"
+internal const val TUN_MTU = "xray-tun-mtu"
 
 /**
  * Every directive key this file reads; the resolver fetches exactly these. The provider's ranges
@@ -80,7 +80,8 @@ public val TUNING_DIRECTIVE_KEYS: List<String> =
  *
  * The provider's excluded ranges come from [routeTrust]: they apply only when the user allowed the
  * current list ([RouteExclusionStatus.trust] already reads Unasked for an answer given to an older
- * list), otherwise nothing applies and [TuningProblem.NeedsConsent] says why.
+ * list), otherwise nothing applies and [TuningProblem.NeedsConsent] (unanswered) or
+ * [TuningProblem.Declined] (Don't allow) says why.
  *
  * Problem indices: [TuningProblem.RangeTooWide] indexes the parsed user list or
  * [RouteExclusionStatus.offered]. The DNS check is not done here; see [dropRangesCoveringDns] in TuningResolver.kt.
@@ -123,11 +124,11 @@ private fun mux(
             val tcp = d[MUX_TCP].orDefault(defaults.tcpConnections)
             val xudp = d[MUX_XUDP].orDefault(defaults.xudpConnections)
             val quic = d[MUX_QUIC].orDefault(defaults.quic).trim()
-            // MuxRules checks tcp, then xudp, then quic, so the first field that is not a number is the bad one.
+            // MuxRules checks tcp, then xudp, then quic, so the first field that fails on its own is the bad one.
             val badKey =
                 when {
-                    tcp.trim().toIntOrNull() == null -> MUX_TCP
-                    xudp.trim().toIntOrNull() == null -> MUX_XUDP
+                    MuxRules.check(tcp, defaults.xudpConnections, defaults.quic) is TuningChecked.Invalid -> MUX_TCP
+                    MuxRules.check(defaults.tcpConnections, xudp, defaults.quic) is TuningChecked.Invalid -> MUX_XUDP
                     else -> MUX_QUIC
                 }
             checkedValue(MuxRules.check(tcp, xudp, quic), TuningOrigin.Subscription, null, badKey)
@@ -165,6 +166,7 @@ private fun excludedRoutes(
             TuningValue(none, TuningOrigin.Default, key?.let { TuningProblem.BadValue(it) })
         }
         status.applicable.isEmpty() -> TuningValue(none, TuningOrigin.Default, firstTooWide(status.offered))
+        status.trust == RouteExclusionTrust.Denied -> TuningValue(none, TuningOrigin.Default, TuningProblem.Declined)
         status.trust != RouteExclusionTrust.Allowed ->
             TuningValue(none, TuningOrigin.Default, TuningProblem.NeedsConsent)
         else -> TuningValue(status.applicable, TuningOrigin.Subscription, firstTooWide(status.offered))
@@ -183,8 +185,9 @@ private fun firstTooWide(ranges: List<CidrRange>): TuningProblem? =
 
 /**
  * [checked] as a value from [origin], or [fallback] from [TuningOrigin.Default] with the reason.
- * With [directive] set, a [TuningProblem.BadValue] names that directive, so subscription details
- * point at the key the provider can fix rather than the model's field name.
+ * With [directive] set, a [TuningProblem.BadValue] or [TuningProblem.OutOfRange] names that
+ * directive, so subscription details point at the key the provider can fix rather than the model's
+ * field name.
  */
 private fun <T> checkedValue(
     checked: TuningChecked<T>,
@@ -197,10 +200,11 @@ private fun <T> checkedValue(
         is TuningChecked.Invalid -> {
             val problem = checked.problem
             val shown =
-                if (directive != null && problem is TuningProblem.BadValue) {
-                    TuningProblem.BadValue(directive)
-                } else {
-                    problem
+                when {
+                    directive == null -> problem
+                    problem is TuningProblem.BadValue -> TuningProblem.BadValue(directive)
+                    problem is TuningProblem.OutOfRange -> problem.copy(key = directive)
+                    else -> problem
                 }
             TuningValue(fallback, TuningOrigin.Default, shown)
         }

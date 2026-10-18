@@ -26,6 +26,7 @@ import space.getsub.core.data.GeoInstallResult
 import space.getsub.core.data.InstalledGeoAsset
 import space.getsub.core.data.ResolvedTuning
 import space.getsub.core.data.ThemePreference
+import space.getsub.core.data.TuningValue
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
@@ -37,6 +38,8 @@ import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.TunMtuUserSetting
+import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.TuningProblem
 import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
@@ -257,7 +260,7 @@ class SettingsViewModelTest {
             tunnel.value = draft
         }
 
-        override val tunnelWithoutYourOverrides: Flow<ResolvedTuning?> = MutableStateFlow(null)
+        override val tunnelWithoutYourOverrides: MutableStateFlow<ResolvedTuning?> = MutableStateFlow(null)
         override val activeRuleSetHasDomainRules: Flow<Boolean> = MutableStateFlow(false)
 
         var ignoringBatteryOptimizations: Boolean = false
@@ -1076,6 +1079,26 @@ class SettingsViewModelTest {
         source.tunnelSaves shouldBe listOf(draft)
         session.reapplyTuningCount shouldBe 1
         model.state.value.tunnel shouldBe draft
+    }
+
+    @Test
+    fun `the provider's tuning reaches the state with the reason a value was ignored`() = runTest {
+        val source = FakeSettingsSource()
+        val provider =
+            ResolvedTuning(
+                sniffing = TuningValue(true, TuningOrigin.Default),
+                mux = TuningValue(null, TuningOrigin.Default, TuningProblem.BadValue("mux-quic")),
+                tunMtu =
+                TuningValue(8500, TuningOrigin.Default, TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu")),
+                excludedRoutes = TuningValue(emptyList(), TuningOrigin.Default, TuningProblem.NeedsConsent),
+            )
+        source.tunnelWithoutYourOverrides.value = provider
+        val model = SettingsViewModel(source, FakeXraySource(), FakeAppVersionSource(), FakeGeoAssetSource())
+        advanceUntilIdle()
+
+        model.state.value.tunnelWithoutYourOverrides?.tunMtu?.ignored shouldBe
+            TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu")
+        model.state.value.tunnelWithoutYourOverrides?.excludedRoutes?.ignored shouldBe TuningProblem.NeedsConsent
     }
 
     @Test

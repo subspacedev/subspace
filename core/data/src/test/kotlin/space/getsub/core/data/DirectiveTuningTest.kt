@@ -101,7 +101,7 @@ class DirectiveTuningTest {
 
     @Test fun `a provider MTU under 1280 is ignored for the default`() {
         resolve(mapOf("xray-tun-mtu" to "1000")).tunMtu shouldBe
-            TuningValue(8500, TuningOrigin.Default, TuningProblem.OutOfRange(1280, 65_535))
+            TuningValue(8500, TuningOrigin.Default, TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu"))
     }
 
     @Test fun `a provider MTU that is not a number names the directive`() {
@@ -150,7 +150,9 @@ class DirectiveTuningTest {
 
     @Test fun `mux-enable with an out-of-range count leaves mux off with the reason`() {
         resolve(mapOf("mux-enable" to "true", "mux-tcp-connections" to "5000")).mux shouldBe
-            TuningValue(null, TuningOrigin.Default, TuningProblem.OutOfRange(-1, 1024))
+            TuningValue(null, TuningOrigin.Default, TuningProblem.OutOfRange(-1, 1024, "mux-tcp-connections"))
+        resolve(mapOf("mux-enable" to "true", "mux-xudp-connections" to "-2")).mux shouldBe
+            TuningValue(null, TuningOrigin.Default, TuningProblem.OutOfRange(-1, 1024, "mux-xudp-connections"))
     }
 
     @Test fun `mux-enable with a bad value names the directive`() {
@@ -179,7 +181,7 @@ class DirectiveTuningTest {
         resolve(routes = status(RouteExclusionTrust.Unasked, lan)).excludedRoutes shouldBe
             TuningValue(emptyList(), TuningOrigin.Default, TuningProblem.NeedsConsent)
         resolve(routes = status(RouteExclusionTrust.Denied, lan)).excludedRoutes shouldBe
-            TuningValue(emptyList(), TuningOrigin.Default, TuningProblem.NeedsConsent)
+            TuningValue(emptyList(), TuningOrigin.Default, TuningProblem.Declined)
     }
 
     @Test fun `provider ranges allowed for the current list apply`() {
@@ -257,5 +259,55 @@ class DirectiveTuningTest {
     @Test fun `the DNS check leaves everything else alone`() {
         val resolved = resolve(mapOf("xray-tun-mtu" to "1500"), routes = status(RouteExclusionTrust.Allowed, lan))
         dropRangesCoveringDns(resolved, listOf("1.1.1.1", "dns.google")) shouldBe resolved
+    }
+
+    // ---- what subscription details say (M9-E spec §3, §4, §7.1) ----
+
+    private fun issues(
+        directives: Map<String, String?> = emptyMap(),
+        routes: RouteExclusionStatus = RouteExclusionStatus.NONE,
+    ) = tuningDirectiveIssues(directives, routes)
+
+    @Test fun `a subscription with valid or no tuning directives has no issues`() {
+        issues() shouldBe TuningDirectiveIssues.NONE
+        issues(mapOf("xray-tun-mtu" to "1400", "mux-enable" to "1")) shouldBe TuningDirectiveIssues.NONE
+    }
+
+    @Test fun `issues name the directive the provider can fix`() {
+        val found =
+            issues(mapOf("xray-tun-mtu" to "1000", "mux-enable" to "1", "mux-quic" to "drop", "exclude-routes" to "x"))
+        found.tunMtu shouldBe
+            TuningDirectiveIssue("xray-tun-mtu", TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu"))
+        found.mux shouldBe TuningDirectiveIssue("mux-quic", TuningProblem.BadValue("mux-quic"))
+        found.excludedRoutes shouldBe TuningDirectiveIssue("exclude-routes", TuningProblem.BadValue("exclude-routes"))
+        found.excludedRoutesApply shouldBe false
+    }
+
+    @Test fun `issues ignore your overrides, which subscription details do not describe`() {
+        // The resolver core runs with every switch of yours off, so a provider's bad value still shows.
+        issues(mapOf("xray-tun-mtu" to "abc")).tunMtu shouldBe
+            TuningDirectiveIssue("xray-tun-mtu", TuningProblem.BadValue("xray-tun-mtu"))
+    }
+
+    @Test fun `provider routes awaiting an answer or declined are not applied, under the key that sent them`() {
+        val offered = mapOf("exclude-routes-set" to "172.16.0.0/12")
+        issues(offered, status(RouteExclusionTrust.Unasked, lan)).excludedRoutes shouldBe
+            TuningDirectiveIssue("exclude-routes-set", TuningProblem.NeedsConsent)
+        issues(offered, status(RouteExclusionTrust.Denied, lan)).excludedRoutes shouldBe
+            TuningDirectiveIssue("exclude-routes-set", TuningProblem.Declined)
+    }
+
+    @Test fun `allowed provider routes apply, with a dropped whole-family range as a partial issue`() {
+        val allowed = issues(mapOf("exclude-routes" to "x"), status(RouteExclusionTrust.Allowed, lan))
+        allowed.excludedRoutes shouldBe null
+        allowed.excludedRoutesApply shouldBe true
+        val partly =
+            issues(
+                mapOf("exclude-routes" to "x"),
+                status(RouteExclusionTrust.Allowed, ranges("0.0.0.0/0,172.16.0.0/12")),
+            )
+        partly.excludedRoutes shouldBe
+            TuningDirectiveIssue("exclude-routes", TuningProblem.RangeTooWide(0), partial = true)
+        partly.excludedRoutesApply shouldBe true
     }
 }
