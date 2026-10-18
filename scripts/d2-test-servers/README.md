@@ -6,6 +6,8 @@ One Xray v26.10.10 process on the Mac with four inbounds, for the device rows in
 
 | Inbound | Port | Link / import |
 |---|---|---|
+| **VMess** over mKCP (seed + `wechat`), LAN device row | udp 9605 | `vmess://…` (net kcp, path = seed, type wechat-video) |
+| **VMess** over HTTPUpgrade (`/d2up`), LAN device row | tcp 9606 | `vmess://…` (net httpupgrade) |
 | VLESS over mKCP, `mkcp-legacy` seed mask + `wechat` header mask, plaintext | udp 9601 | `vless://…?type=kcp&seed=…&headerType=wechat-video` |
 | VLESS over HTTPUpgrade (`/d2up`), plaintext | tcp 9602 | `vless://…?type=httpupgrade&path=%2Fd2up` |
 | HTTP proxy, user `d2user` + generated password | tcp 9603 | Clash YAML `type: http` |
@@ -30,11 +32,13 @@ Ports: `--kcp-port`, `--upgrade-port`, `--http-port`, `--wg-port`.
 
 ## The plaintext rule and the Mac's LAN address
 
-The mKCP and HTTPUpgrade links are VLESS with no TLS. Xray v26.10.10 refuses that at build time unless the
+The VMess links are the ones to use over the LAN: VMess encrypts itself, and the core's plaintext rule
+refuses only VLESS and Trojan (`refusedWithoutTransportSecurity`). The VLESS mKCP and HTTPUpgrade links are
+for loopback or a private network, because they are VLESS with no TLS. Xray v26.10.10 refuses that at build time unless the
 server address is private (ARCHITECTURE.md §14.10). "Private" means RFC 1918, loopback or link-local, so
 **a LAN such as `172.100.14.x` (outside 172.16/12) is public to the core** and the phone gets
-`CoreRefusesPlaintextTransport` for both links; `run.sh` prints a warning when `--host` is not private.
-The HTTP proxy and WireGuard rows are not affected. For the plaintext rows:
+`CoreRefusesPlaintextTransport` for both VLESS links; `run.sh` prints a warning when `--host` is not private.
+The VMess, HTTP proxy and WireGuard rows are not affected. For the VLESS plaintext rows:
 
 - HTTPUpgrade (TCP): `adb reverse tcp:9602 tcp:9602`, run with `--host 127.0.0.1`, and edit the link's
   host to `127.0.0.1`.
@@ -58,7 +62,9 @@ The HTTP proxy and WireGuard rows are not affected. For the plaintext rows:
 ./smoke.sh
 ```
 
-Starts the servers in a scratch run dir on `127.0.0.1` (private for the core), connects a local Xray client
+Starts the servers in a scratch run dir, bound to every address,, connects a local Xray client
 to each of the four and fetches `https://example.com` with `curl --socks5-hostname` and the proxy
-environment variables unset, then checks that a client with the wrong mKCP seed is refused. Passing
-`--host` forwards to `run.sh`.
+environment variables unset, then checks that a client with the wrong mKCP seed is refused. The VMess, HTTP and
+WireGuard clients dial the Mac LAN address (`ipconfig getifaddr en0`, or `--host`), which is public to the
+core, so VMess passing there is the check that the plaintext rule does not apply. The VLESS clients dial
+loopback. Wrong-seed clients (VLESS and VMess mKCP) must be refused. Other flags forward to `run.sh`.

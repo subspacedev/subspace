@@ -14,13 +14,18 @@ xray_bin="${XRAY_BIN:-/private/tmp/claude-501/xray-26.10.10}"
 url="${SMOKE_URL:-https://example.com}"
 work="$(mktemp -d)"
 pids=()
+prev_arg=""
 trap 'kill "${pids[@]:-}" 2>/dev/null || true; [ -n "${KEEP:-}" ] || rm -rf "$work"' EXIT
 
 # The system proxy must not carry the check: it would pass whether or not the tunnel works.
 unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
 
-# Loopback is private for the core's plaintext rule; the Mac LAN address (172.100.x) is not. Override with --host.
-D2_RUN_DIR="$work/run" "$here/run.sh" --host 127.0.0.1 "$@" >"$work/server.out" 2>&1 &
+# The server binds every address. The plaintext VLESS rows dial loopback (private for the core's plaintext
+# rule); VMess, HTTP and WireGuard dial the Mac LAN address (172.100.x is public to the core), or --host.
+lan="$(ipconfig getifaddr en0 2>/dev/null || true)"
+for a in "$@"; do [ "$prev_arg" = "--host" ] && lan="$a"; prev_arg="$a"; done
+[ -n "$lan" ] || { echo "no LAN address on en0; pass --host IP" >&2; exit 1; }
+D2_RUN_DIR="$work/run" "$here/run.sh" --host "$lan" --listen 0.0.0.0 "$@" >"$work/server.out" 2>&1 &
 pids+=($!)
 for _ in $(seq 1 50); do
   grep -q "Starting Xray" "$work/server.out" 2>/dev/null && break
@@ -32,7 +37,9 @@ sleep 1.5
 # shellcheck disable=SC1091
 . "$work/run/secrets.env"
 host="$(awk '/^Listening:/{print $2}' "$work/server.out")"
+loop=127.0.0.1
 port() { awk -v k="$1" '/^Listening:/{for(i=1;i<=NF;i++) if($i==k) {split($(i+1),a,"/"); print a[2]}}' "$work/server.out"; }
+vmess_kcp_port="$(port vmess-kcp)"; vmess_upgrade_port="$(port vmess-httpupgrade)"
 kcp_port="$(port kcp)"; upgrade_port="$(port httpupgrade)"; http_port="$(port http)"; wg_port="$(port wireguard)"
 
 socks=18080
@@ -64,7 +71,7 @@ expect_ok() {
 kcp_out() {
   cat <<JSON
 { "tag": "proxy", "protocol": "vless",
-  "settings": { "vnext": [ { "address": "$host", "port": $kcp_port, "users": [ { "id": "$UUID", "encryption": "none" } ] } ] },
+  "settings": { "vnext": [ { "address": "$loop", "port": $kcp_port, "users": [ { "id": "$UUID", "encryption": "none" } ] } ] },
   "streamSettings": { "network": "kcp", "security": "none", "kcpSettings": {},
     "finalmask": { "udp": [
       { "type": "mkcp-legacy", "settings": { "value": "$1" } },
@@ -76,7 +83,7 @@ client kcp "$(kcp_out "$SEED")"
 expect_ok "mKCP seed + wechat" "$client_port"
 
 client upgrade "{ \"tag\": \"proxy\", \"protocol\": \"vless\",
-  \"settings\": { \"vnext\": [ { \"address\": \"$host\", \"port\": $upgrade_port, \"users\": [ { \"id\": \"$UUID\", \"encryption\": \"none\" } ] } ] },
+  \"settings\": { \"vnext\": [ { \"address\": \"$loop\", \"port\": $upgrade_port, \"users\": [ { \"id\": \"$UUID\", \"encryption\": \"none\" } ] } ] },
   \"streamSettings\": { \"network\": \"httpupgrade\", \"security\": \"none\", \"httpupgradeSettings\": { \"host\": \"\", \"path\": \"/d2up\" } } }"
 expect_ok "HTTPUpgrade" "$client_port"
 
@@ -88,6 +95,30 @@ client wg "{ \"tag\": \"proxy\", \"protocol\": \"wireguard\",
   \"settings\": { \"secretKey\": \"$WG_CLIENT_PRIV\", \"address\": [\"10.9.0.2/32\"], \"mtu\": 1420, \"noKernelTun\": true,
     \"peers\": [ { \"publicKey\": \"$WG_SERVER_PUB\", \"endpoint\": \"$host:$wg_port\", \"keepAlive\": 25 } ] } }"
 expect_ok "WireGuard" "$client_port"
+
+vmess_kcp_out() {
+  cat <<JSON
+{ "tag": "proxy", "protocol": "vmess",
+  "settings": { "vnext": [ { "address": "$host", "port": $vmess_kcp_port, "users": [ { "id": "$UUID", "security": "auto" } ] } ] },
+  "streamSettings": { "network": "kcp", "security": "none", "kcpSettings": {},
+    "finalmask": { "udp": [
+      { "type": "mkcp-legacy", "settings": { "value": "$1" } },
+      { "type": "mkcp-legacy", "settings": { "header": "wechat" } } ] } } }
+JSON
+}
+
+client vmesskcp "$(vmess_kcp_out "$SEED")"
+expect_ok "VMess mKCP seed + wechat (LAN $host)" "$client_port"
+
+client vmessupgrade "{ \"tag\": \"proxy\", \"protocol\": \"vmess\",
+  \"settings\": { \"vnext\": [ { \"address\": \"$host\", \"port\": $vmess_upgrade_port, \"users\": [ { \"id\": \"$UUID\", \"security\": \"auto\" } ] } ] },
+  \"streamSettings\": { \"network\": \"httpupgrade\", \"security\": \"none\", \"httpupgradeSettings\": { \"host\": \"\", \"path\": \"/d2up\" } } }"
+expect_ok "VMess HTTPUpgrade (LAN $host)" "$client_port"
+
+client vmesswrong "$(vmess_kcp_out "wrong-$SEED")"
+code="$(fetch "$client_port" 8)"
+if [ "$code" = "200" ]; then echo "FAIL  VMess mKCP with the WRONG seed fetched the page"; fail=1
+else echo "PASS  VMess mKCP with the WRONG seed is refused (got '${code:-none}')"; fi
 
 client kcpwrong "$(kcp_out "wrong-$SEED")"
 code="$(fetch "$client_port" 8)"

@@ -10,6 +10,10 @@
 #   (b) VLESS over HTTPUpgrade, plaintext                        tcp  UPGRADE_PORT
 #   (c) HTTP proxy with user/pass                                tcp  HTTP_PORT
 #   (d) WireGuard                                                udp  WG_PORT
+#   (e) VMess over mKCP, seed + wechat header masks              udp  VMESS_KCP_PORT
+#   (f) VMess over HTTPUpgrade                                   tcp  VMESS_UPGRADE_PORT
+# (e) and (f) are for the LAN device rows: VMess encrypts itself, so the core's plaintext rule (which only
+# refuses VLESS and Trojan) lets them through to a public-range LAN address such as 172.100.x.x.
 #
 # Nothing secret is committed: the UUID, seed, keys and password are generated at run time into .run/
 # (gitignored) and reused on later starts, so links stay valid across restarts; --fresh mints new ones.
@@ -24,6 +28,9 @@ kcp_port=9601
 upgrade_port=9602
 http_port=9603
 wg_port=9604
+vmess_kcp_port=9605
+vmess_upgrade_port=9606
+listen=""
 egress="127.0.0.1:10808"
 fresh=0
 config_only=0
@@ -36,6 +43,9 @@ Usage: run.sh [options]
   --upgrade-port N       HTTPUpgrade TCP port (default $upgrade_port)
   --http-port N          HTTP proxy TCP port (default $http_port)
   --wg-port N            WireGuard UDP port (default $wg_port)
+  --vmess-kcp-port N     VMess mKCP UDP port (default $vmess_kcp_port)
+  --vmess-upgrade-port N VMess HTTPUpgrade TCP port (default $vmess_upgrade_port)
+  --listen ADDR          bind address if different from --host (e.g. 0.0.0.0; smoke.sh uses it)
   --egress HOST:PORT     HTTP proxy that carries the server's outgoing TCP (default $egress)
   --fresh                generate new secrets (new UUID, seed, keys, password)
   --config-only          write the config, links and Clash snippet, but do not start Xray
@@ -50,6 +60,9 @@ while [ $# -gt 0 ]; do
     --upgrade-port) upgrade_port="$2"; shift 2 ;;
     --http-port) http_port="$2"; shift 2 ;;
     --wg-port) wg_port="$2"; shift 2 ;;
+    --vmess-kcp-port) vmess_kcp_port="$2"; shift 2 ;;
+    --vmess-upgrade-port) vmess_upgrade_port="$2"; shift 2 ;;
+    --listen) listen="$2"; shift 2 ;;
     --egress) egress="$2"; shift 2 ;;
     --fresh) fresh=1; shift ;;
     --config-only) config_only=1; shift ;;
@@ -71,6 +84,8 @@ case "$host" in
   10.*|127.*|192.168.*|169.254.*) private_host=1 ;;
   172.1[6-9].*|172.2[0-9].*|172.3[01].*) private_host=1 ;;
 esac
+
+[ -n "$listen" ] || listen="$host"
 
 mkdir -p "$run_dir"
 chmod 700 "$run_dir"
@@ -110,7 +125,7 @@ cat > "$config" <<JSON
   "inbounds": [
     {
       "tag": "kcp-in",
-      "listen": "$host",
+      "listen": "$listen",
       "port": $kcp_port,
       "protocol": "vless",
       "settings": { "clients": [ { "id": "$UUID", "email": "kcp@d2.local" } ], "decryption": "none" },
@@ -128,7 +143,7 @@ cat > "$config" <<JSON
     },
     {
       "tag": "upgrade-in",
-      "listen": "$host",
+      "listen": "$listen",
       "port": $upgrade_port,
       "protocol": "vless",
       "settings": { "clients": [ { "id": "$UUID", "email": "upgrade@d2.local" } ], "decryption": "none" },
@@ -139,15 +154,45 @@ cat > "$config" <<JSON
       }
     },
     {
+      "tag": "vmess-kcp-in",
+      "listen": "$listen",
+      "port": $vmess_kcp_port,
+      "protocol": "vmess",
+      "settings": { "clients": [ { "id": "$UUID", "email": "vmess-kcp@d2.local" } ] },
+      "streamSettings": {
+        "network": "kcp",
+        "kcpSettings": {},
+        "security": "none",
+        "finalmask": {
+          "udp": [
+            { "type": "mkcp-legacy", "settings": { "value": "$SEED" } },
+            { "type": "mkcp-legacy", "settings": { "header": "wechat" } }
+          ]
+        }
+      }
+    },
+    {
+      "tag": "vmess-upgrade-in",
+      "listen": "$listen",
+      "port": $vmess_upgrade_port,
+      "protocol": "vmess",
+      "settings": { "clients": [ { "id": "$UUID", "email": "vmess-upgrade@d2.local" } ] },
+      "streamSettings": {
+        "network": "httpupgrade",
+        "httpupgradeSettings": { "path": "$upgrade_path" },
+        "security": "none"
+      }
+    },
+    {
       "tag": "http-in",
-      "listen": "$host",
+      "listen": "$listen",
       "port": $http_port,
       "protocol": "http",
       "settings": { "accounts": [ { "user": "$HTTP_USER", "pass": "$HTTP_PASS" } ] }
     },
     {
       "tag": "wg-in",
-      "listen": "$host",
+      "listen": "$listen",
       "port": $wg_port,
       "protocol": "wireguard",
       "settings": {
@@ -184,6 +229,16 @@ link_kcp="vless://$UUID@$host:$kcp_port?type=kcp&security=none&encryption=none&s
 link_upgrade="vless://$UUID@$host:$upgrade_port?type=httpupgrade&security=none&encryption=none&path=%2Fd2up#d2-vless-httpupgrade"
 link_wg="wireguard://$(urlenc "$WG_CLIENT_PRIV")@$host:$wg_port?publickey=$(urlenc "$WG_SERVER_PUB")&address=10.9.0.2%2F32&mtu=1420#d2-wireguard"
 
+vmess_link() { # NET PORT TYPE PATH NAME
+  python3 -I -c 'import base64, json, sys
+net, port, typ, path, name, host, uuid = sys.argv[1:8]
+o = {"v": "2", "ps": name, "add": host, "port": port, "id": uuid, "aid": "0", "scy": "auto",
+     "net": net, "type": typ, "host": "", "path": path, "tls": ""}
+print("vmess://" + base64.b64encode(json.dumps(o).encode()).decode())' "$1" "$2" "$3" "$4" "$5" "$host" "$UUID"
+}
+link_vmess_kcp="$(vmess_link kcp "$vmess_kcp_port" wechat-video "$SEED" d2-vmess-kcp)"
+link_vmess_upgrade="$(vmess_link httpupgrade "$vmess_upgrade_port" none "$upgrade_path" d2-vmess-httpupgrade)"
+
 clash="$run_dir/d2-clash.yaml"
 cat > "$clash" <<YAML
 proxies:
@@ -192,17 +247,24 @@ proxies:
 YAML
 
 echo "Xray:      $("$xray_bin" version | head -1)"
-echo "Listening: $host  kcp udp/$kcp_port  httpupgrade tcp/$upgrade_port  http tcp/$http_port  wireguard udp/$wg_port"
+echo "Listening: $host  vmess-kcp udp/$vmess_kcp_port  vmess-httpupgrade tcp/$vmess_upgrade_port  kcp udp/$kcp_port  httpupgrade tcp/$upgrade_port  http tcp/$http_port  wireguard udp/$wg_port"
 echo "Egress:    HTTP proxy $egress_host:$egress_port (+ DoH https://1.1.1.1/dns-query for UDP 53)"
 echo "Secrets:   $secrets (gitignored)"
 if [ "$private_host" = 0 ]; then
   echo
-  echo "WARNING:   $host is not a private address. The core refuses the plaintext mKCP and HTTPUpgrade links below"
-  echo "           ('vless without TLS or other encryption is prohibited'); Subspace shows that refusal. The HTTP"
-  echo "           proxy (Clash) and WireGuard rows are not affected. For the plaintext rows use a private --host"
+  echo "WARNING:   $host is not a private address. The core refuses the plaintext VLESS mKCP and HTTPUpgrade links below"
+  echo "           ('vless without TLS or other encryption is prohibited'); Subspace shows that refusal. The VMess,"
+  echo "           HTTP proxy (Clash) and WireGuard rows are not affected. For the plaintext rows use a private --host"
   echo "           (see README: adb reverse for HTTPUpgrade, a private LAN for mKCP)."
 fi
 echo
+echo "LAN device rows (VMess, not refused by the plaintext rule):"
+echo "  mKCP seed + wechat header:"
+echo "    $link_vmess_kcp"
+echo "  HTTPUpgrade:"
+echo "    $link_vmess_upgrade"
+echo
+echo "VLESS (loopback / private --host only):"
 echo "mKCP (seed + wechat header masks):"
 echo "  $link_kcp"
 echo "HTTPUpgrade:"
