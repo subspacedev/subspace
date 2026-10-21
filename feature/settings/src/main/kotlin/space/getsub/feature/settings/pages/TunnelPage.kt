@@ -22,8 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDataType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -32,6 +35,7 @@ import space.getsub.core.data.TuningValue
 import space.getsub.core.model.CidrRange
 import space.getsub.core.model.MuxSpec
 import space.getsub.core.model.ProxyAuthMode
+import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.core.model.Udp443Mode
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.ModeTile
@@ -75,7 +79,7 @@ internal fun TunnelPage(
         onBack = { if (dirty) asking = true else onBack() },
         modifier = modifier,
     ) {
-        SniffingSection(draft, provider?.sniffing, state.activeRuleSetHasDomainRules) { draft = it }
+        SniffingSection(draft, provider?.sniffing, state.sniffingOffWarning) { draft = it }
         MuxSection(draft, provider?.mux, errors) { draft = it }
         MtuSection(draft, provider?.tunMtu, errors) { draft = it }
         RoutesSection(draft, provider?.excludedRoutes, errors) { draft = it }
@@ -109,7 +113,7 @@ private typealias Edit = (TunnelDraft) -> Unit
 private fun SniffingSection(
     draft: TunnelDraft,
     provider: TuningValue<Boolean>?,
-    ruleSetHasDomainRules: Boolean,
+    offWarning: SniffingRuleWarning,
     edit: Edit,
 ) {
     val value = draft.sniffing
@@ -135,10 +139,16 @@ private fun SniffingSection(
             modifier = Modifier.padding(vertical = 4.dp),
         )
     }
-    if (!effective && ruleSetHasDomainRules) {
+    val warning =
+        when (offWarning.takeUnless { effective }) {
+            SniffingRuleWarning.DomainRulesStop -> R.string.settings_tunnel_sniffing_warning
+            SniffingRuleWarning.FakeDnsLookupsOnly -> R.string.settings_tunnel_sniffing_warning_fakedns
+            SniffingRuleWarning.None, null -> null
+        }
+    if (warning != null) {
         TonalBanner(
             icon = SubspaceIcons.Warning,
-            text = stringResource(R.string.settings_tunnel_sniffing_warning),
+            text = stringResource(warning),
             tone = BannerTone.Warning,
             modifier = Modifier.padding(vertical = 4.dp),
         )
@@ -368,7 +378,15 @@ private fun TunnelField(
                 else -> KeyboardType.Text
             },
         ),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("field-$label"),
+        // Not autofillable: these are this app's own settings, and the sign-in fields are the local
+        // proxy's account, not a website login a password manager should offer to save
+        // (device run 2026-10-22).
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .testTag("field-$label")
+            .semantics { contentDataType = ContentDataType.None },
     )
 }
 

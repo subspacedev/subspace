@@ -22,6 +22,7 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.ProxyAuthMode
 import space.getsub.core.model.ProxyAuthSettings
+import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningOrigin
@@ -183,7 +184,7 @@ class SettingsPagesSnapshotTest {
                     tunMtu = TuningValue(8500, TuningOrigin.Default),
                     excludedRoutes = TuningValue(emptyList(), TuningOrigin.Default),
                 ),
-                activeRuleSetHasDomainRules = true,
+                sniffingOffWarning = SniffingRuleWarning.DomainRulesStop,
             ),
         )
     }

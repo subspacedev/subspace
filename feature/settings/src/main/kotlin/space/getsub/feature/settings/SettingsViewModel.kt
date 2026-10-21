@@ -189,8 +189,8 @@ constructor(
             .onEach { value -> _state.update { it.copy(tunnelWithoutYourOverrides = value) } }
             .launchIn(viewModelScope)
 
-        settingsSource.activeRuleSetHasDomainRules
-            .onEach { value -> _state.update { it.copy(activeRuleSetHasDomainRules = value) } }
+        settingsSource.activeRuleSetSniffingOffWarning
+            .onEach { value -> _state.update { it.copy(sniffingOffWarning = value) } }
             .launchIn(viewModelScope)
 
         // Ruling R43 (revises F2 / ruling R39): mirrors ConnectionState (ARCHITECTURE.md §5.5)

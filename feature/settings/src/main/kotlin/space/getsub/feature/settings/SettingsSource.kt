@@ -26,7 +26,9 @@ import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.ProfileDns
-import space.getsub.core.model.sniffingOffBreaksRules
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.sniffingRuleWarning
+import space.getsub.core.model.usesFakeDns
 import space.getsub.feature.settings.pages.TunnelDraft
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -182,8 +184,11 @@ internal interface SettingsSource {
      */
     val tunnelWithoutYourOverrides: Flow<ResolvedTuning?>
 
-    /** Whether the active rule set has rules that need sniffing (domains, `geosite:`). */
-    val activeRuleSetHasDomainRules: Flow<Boolean>
+    /**
+     * What turning sniffing off would do to the active rule set's domain rules: nothing, stop them,
+     * or (when its DNS block turns FakeDNS on) leave them matching only FakeDNS lookups.
+     */
+    val activeRuleSetSniffingOffWarning: Flow<SniffingRuleWarning>
 
     /**
      * A fresh platform read of whether Android already exempts this app from battery
@@ -332,9 +337,10 @@ constructor(
             .mapLatest { id -> id?.let { tuningResolver.withoutYourOverrides(it) } }
             .distinctUntilChanged()
 
-    override val activeRuleSetHasDomainRules: Flow<Boolean> =
-        combine(settingsRepository.activeRoutingRuleSetId, routingRepository.observeAll()) { id, sets ->
-            sniffingOffBreaksRules(sniffing = false, ruleSet = sets.firstOrNull { it.id == id })
+    override val activeRuleSetSniffingOffWarning: Flow<SniffingRuleWarning> =
+        combine(settingsRepository.activeRoutingRuleSetId, routingRepository.observeAllStored()) { id, sets ->
+            val active = sets.firstOrNull { it.ruleSet.id == id }
+            sniffingRuleWarning(sniffing = false, ruleSet = active?.ruleSet, fakeDns = active?.dns.usesFakeDns())
         }.distinctUntilChanged()
 
     override suspend fun isIgnoringBatteryOptimizations(): Boolean =

@@ -247,8 +247,9 @@
     <string name="settings_tunnel_sniffing_title">Sniffing</string>
     <string name="settings_tunnel_sniffing_label">Sniffing</string>
     <string name="settings_tunnel_sniffing_summary">Reads the domain name from each connection so domain rules can match.</string>
-    <string name="settings_tunnel_sniffing_fakedns_note">With FakeDNS, sniffing stays on for fake addresses only, so browsing keeps working. Domain rules still stop matching.</string>
+    <string name="settings_tunnel_sniffing_fakedns_note">With FakeDNS, sniffing stays on for fake addresses, so browsing keeps working and domain rules still match names looked up through FakeDNS.</string>
     <string name="settings_tunnel_sniffing_warning">Sniffing is off, so the domain rules in your rule set can\'t match.</string>
+    <string name="settings_tunnel_sniffing_warning_fakedns">Sniffing is off. Your rule set uses FakeDNS, so its domain rules match only names looked up through FakeDNS, not apps that use their own DNS.</string>
     <string name="settings_tunnel_mux_title">Mux</string>
     <string name="settings_tunnel_mux_label">Mux</string>
     <string name="settings_tunnel_mux_summary">Carries several connections over one. Used on VMess, Trojan, Shadowsocks and VLESS without flow.</string>

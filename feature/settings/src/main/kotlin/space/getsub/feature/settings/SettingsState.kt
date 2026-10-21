@@ -15,6 +15,7 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
@@ -127,8 +128,11 @@ internal data class SettingsState(
     val tunnel: TunnelDraft = TunnelDraft(),
     /** The active server's values with your overrides off, for "From your subscription". Null with none. */
     val tunnelWithoutYourOverrides: ResolvedTuning? = null,
-    /** Whether the active rule set has domain rules, which stop matching while sniffing is off. */
-    val activeRuleSetHasDomainRules: Boolean = false,
+    /**
+     * What sniffing off does to the active rule set's domain rules.
+     * See [SettingsSource.activeRuleSetSniffingOffWarning].
+     */
+    val sniffingOffWarning: SniffingRuleWarning = SniffingRuleWarning.None,
 ) {
     /** One row per install filename. See [geoRowsFor]'s KDoc for exactly how ground truth is chosen. */
     val geoRows: List<GeoRow>

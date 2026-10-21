@@ -88,6 +88,7 @@ import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.EntryProblem
 import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingEntries
+import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
@@ -316,10 +317,16 @@ private fun EditorForm(
         val enabled = !state.saving
 
         // M9-E spec §2 "warn but obey": the tunnel runs as chosen, this only says what it costs.
-        if (state.showSniffingWarning) {
+        val sniffingWarning =
+            when (state.sniffingWarning) {
+                SniffingRuleWarning.DomainRulesStop -> R.string.rule_set_editor_sniffing_off_warning
+                SniffingRuleWarning.FakeDnsLookupsOnly -> R.string.rule_set_editor_sniffing_off_warning_fakedns
+                SniffingRuleWarning.None -> null
+            }
+        if (sniffingWarning != null) {
             TonalBanner(
                 icon = SubspaceIcons.Warning,
-                text = stringResource(R.string.rule_set_editor_sniffing_off_warning),
+                text = stringResource(sniffingWarning),
                 tone = BannerTone.Warning,
             )
         }

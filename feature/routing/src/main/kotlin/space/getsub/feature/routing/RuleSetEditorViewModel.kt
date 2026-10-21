@@ -17,7 +17,8 @@ import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingEntries
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.RuleBucket
-import space.getsub.core.model.sniffingOffBreaksRules
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.sniffingRuleWarning
 import javax.inject.Inject
 
 /**
@@ -82,6 +83,7 @@ internal sealed interface SaveProblem {
  *   it cannot add; the screen focuses and scrolls to that field, then calls
  *   [RuleSetEditorViewModel.revealHandled]. Transient, so it never counts toward [isDirty].
  * @param userSniffingOff your sniffing override is on with sniffing off ([RoutingSource.sniffing]).
+ * @param ruleSetFakeDns the stored set's DNS block turns FakeDNS on ([RoutingSource.ruleSetUsesFakeDns]).
  *   Not an edit, so it never counts toward [isDirty].
  */
 internal data class RuleSetEditorState(
@@ -101,15 +103,17 @@ internal data class RuleSetEditorState(
     val baseline: RuleSetEdits = RuleSetEdits(),
     val revealRequest: RevealRequest? = null,
     val userSniffingOff: Boolean = false,
+    val ruleSetFakeDns: Boolean = false,
 ) {
     /**
      * M9-E spec §2 "warn but obey": your sniffing override is off and the draft has entries that
      * need it. Only your own setting counts ([userSniffingOff]); the tunnel still runs as chosen.
      */
-    val showSniffingWarning: Boolean
+    val sniffingWarning: SniffingRuleWarning
         get() =
-            sniffingOffBreaksRules(
+            sniffingRuleWarning(
                 sniffing = !userSniffingOff,
+                fakeDns = ruleSetFakeDns,
                 ruleSet = RoutingRuleSet(name = name, buckets = buckets, order = order),
             )
 
@@ -238,6 +242,7 @@ constructor(
         if (!current.loading && current.id == id) return
         viewModelScope.launch {
             val existing = source.ruleSet(id)
+            val fakeDns = source.ruleSetUsesFakeDns(id)
             val siteCategories = source.categoriesFor(BucketField.SITES)
             val ipCategories = source.categoriesFor(BucketField.IPS)
             val loaded = existing?.toEditorState() ?: RuleSetEditorState(loading = false, id = id)
@@ -248,6 +253,7 @@ constructor(
                     ipCategories = ipCategories,
                     baseline = loaded.edits,
                     userSniffingOff = current.userSniffingOff,
+                    ruleSetFakeDns = fakeDns,
                 )
             }
         }

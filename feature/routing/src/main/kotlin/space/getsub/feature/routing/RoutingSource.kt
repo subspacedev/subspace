@@ -27,6 +27,7 @@ import space.getsub.core.model.BucketField
 import space.getsub.core.model.RoutingEntries
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.SniffingUserSetting
+import space.getsub.core.model.usesFakeDns
 import space.getsub.core.parser.routing.ImportResult
 import space.getsub.core.parser.routing.RoutingConversion
 import space.getsub.core.parser.routing.RoutingProfileImport
@@ -285,6 +286,13 @@ internal interface RoutingSource {
     suspend fun ruleSet(id: Long): RoutingRuleSet? = null
 
     /**
+     * Whether the stored set [id]'s DNS block turns FakeDNS on ([usesFakeDns], the planner's test).
+     * A set made here has no DNS block; a provider's, or a duplicate of one, may. Defaults to false
+     * for the same reason [ruleSet] defaults to null.
+     */
+    suspend fun ruleSetUsesFakeDns(id: Long): Boolean = false
+
+    /**
      * The rule set already named [name], or `null`. See
      * [RoutingRepository.ruleSetNamed] — the editor's save-time collision
      * check (fix round 1, Finding 8).
@@ -504,6 +512,8 @@ constructor(
     ): Long? = importer.duplicate(id, name)
 
     override suspend fun ruleSet(id: Long): RoutingRuleSet? = routingRepository.ruleSet(id)
+
+    override suspend fun ruleSetUsesFakeDns(id: Long): Boolean = routingRepository.stored(id)?.dns.usesFakeDns()
 
     override suspend fun ruleSetNamed(name: String): RoutingRuleSet? = routingRepository.ruleSetNamed(name)
 

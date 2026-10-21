@@ -37,6 +37,7 @@ import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.TuningProblem
@@ -261,7 +262,8 @@ class SettingsViewModelTest {
         }
 
         override val tunnelWithoutYourOverrides: MutableStateFlow<ResolvedTuning?> = MutableStateFlow(null)
-        override val activeRuleSetHasDomainRules: Flow<Boolean> = MutableStateFlow(false)
+        override val activeRuleSetSniffingOffWarning: Flow<SniffingRuleWarning> =
+            MutableStateFlow(SniffingRuleWarning.None)
 
         var ignoringBatteryOptimizations: Boolean = false
 

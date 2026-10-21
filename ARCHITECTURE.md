@@ -708,7 +708,11 @@ are what runs, so the injected inbound takes the resolved value. The `SniffingCa
 advisory is judged against the block actually emitted.
 
 When sniffing is off and the active rule set has any domain or `geosite:` entry, a warning says
-those rules will not match (`sniffingOffBreaksRules`). The Settings → Tunnel control warns on the
+what that costs (`sniffingRuleWarning`). Without FakeDNS those rules match nothing. With FakeDNS
+(the rule set's DNS block turns it on, the same test `DnsPlanner` applies) the `fakedns`-only
+block still maps fake addresses back to names, so the rules keep matching names looked up through
+FakeDNS; only connections to a real IP, from an app with its own DNS or one that dials an address,
+go unmatched (device run 2026-10-22). The Settings → Tunnel control warns on the
 effective value, so a provider's `sniffing-enable=false` under a switch that is off warns there
 too. The rule set screen warns only for the user's own setting; a provider's off gives no warning
 there. The tunnel runs exactly as chosen either way.
