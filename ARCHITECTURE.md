@@ -2375,8 +2375,8 @@ your DNS setting"* while the profile's routing rules still apply.
       and hides the info banner (M10-B spec §3.1).
 - [x] `support-url`, `profile-web-page-url` — support and account buttons
       (tap-only, `https`/`http` only)
-- [x] `serverDescription` — per-server caption, base64, appended after
-      `title` with a `?` separator in the share link, max 30 chars
+- [x] `serverDescription` — per-server caption, base64, appended to
+      the link's fragment as `title?serverDescription=<base64>`, max 30 chars
 - [x] Flag emoji rendering from server names
 
 ### A.3.3 Censorship-resistance features
@@ -2411,8 +2411,10 @@ above cosmetic parity:
       DoH server before connecting, pick the lowest-latency IP
       — M9-C: implemented (user switch, or the provider's resolver after consent); verified on
       device before ticking.
-- [x] **User-Agent override** for subscription fetch and for geo file
-      downloads (`safari-mac`, `chrome-win`, `chrome-android`, ...)
+- [x] **User-Agent override** for subscription fetch (per subscription, free
+      text) — M10-B spec §3.5.
+- [ ] User-Agent override for geo file downloads (`user-agent-geo-files` is
+      accepted but not yet read).
 - [x] **Configurable request timeout** (Happ: 5–15s, default 9) — both now
       sit under "Sent to the provider" in the subscription details (M10-B
       spec §3.5).
