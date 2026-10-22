@@ -96,6 +96,8 @@
     <string name="import_sheet_title">Add server</string>
     <string name="import_paste_placeholder">Link, subscription URL or Xray JSON</string>
     <string name="import_button">Add</string>
+    <string name="import_hwid_label">Device ID (HWID)</string>
+    <string name="import_hwid_hint">Paste the ID from a previous install to keep your device slot.</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
          same import(raw) path this whole sheet already uses. -->

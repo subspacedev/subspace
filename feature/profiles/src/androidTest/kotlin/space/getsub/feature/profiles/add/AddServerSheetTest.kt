@@ -69,6 +69,7 @@ class AddServerSheetTest {
                     actions =
                     ImportActions(
                         onInputChanged = onInputChanged,
+                        onSubscriptionHwidChanged = {},
                         onImportClick = onImportClick,
                         onImportFromFileClick = onImportFromFileClick,
                         onScanClick = onScanClick,

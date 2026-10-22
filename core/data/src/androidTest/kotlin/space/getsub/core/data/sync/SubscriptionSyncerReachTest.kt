@@ -27,6 +27,7 @@ import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.XrayRange
 import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
 import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
@@ -122,13 +123,13 @@ class SubscriptionSyncerReachTest {
     }
 
     private suspend fun addSubscription() =
-        subscriptions.add("https://example.com/sub", name = "Provider").id
+        subscriptions.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
     private fun ok(headers: Map<String, String> = emptyMap()) = FetchOutcome.Success(link("Tokyo"), headers)
 
     @Test
     fun theRouteCarriesTheRowsFrontingAndTheLinkFragment() = runTest {
-        val id = subscriptions.add(FRONTED_LINK, "p").id
+        val id = subscriptions.add(FRONTED_LINK, "p", hwid = Hwid.random()).id
         response = ok()
 
         syncer().sync(id)
@@ -143,7 +144,12 @@ class SubscriptionSyncerReachTest {
     @Test
     fun theUsersFragmentationSwitchWinsInTheRoute() = runTest {
         settings.setFragmentSettings(FragmentSettings.DEFAULT.copy(enabled = true, length = "60-90"))
-        val id = subscriptions.add("https://example.com/sub#T?fragment=80-250,10-100,tlshello", "p").id
+        val id =
+            subscriptions.add(
+                "https://example.com/sub#T?fragment=80-250,10-100,tlshello",
+                "p",
+                hwid = Hwid.random(),
+            ).id
         response = ok()
 
         syncer().sync(id)
@@ -152,7 +158,7 @@ class SubscriptionSyncerReachTest {
     }
 
     private suspend fun allowedWithFallback(link: String = "https://example.com/sub"): Long {
-        val id = subscriptions.add(link, "Provider").id
+        val id = subscriptions.add(link, "Provider", hwid = Hwid.random()).id
         subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
         response = ok(mapOf("fallback-url" to "https://backup.example/s"))
         syncer().sync(id)
@@ -194,7 +200,7 @@ class SubscriptionSyncerReachTest {
     @Test
     fun aMovedSubscriptionKeepsItsIdentity() = runTest {
         // M10-B spec §3.5, "New URLs": a new-url move changes the URL, not who the device says it is.
-        val id = subscriptions.add("https://example.com/sub", "Provider").id
+        val id = subscriptions.add("https://example.com/sub", "Provider", hwid = Hwid.random()).id
         subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
         customiseIdentity(id)
         response = ok(mapOf("new-url" to "https://moved.example/sub"))
@@ -369,7 +375,7 @@ class SubscriptionSyncerReachTest {
     @Test
     fun aMoveOntoAnotherSubscriptionsUrlIsSkipped() = runTest {
         val id = addSubscription()
-        subscriptions.add("https://taken.example/sub", "other")
+        subscriptions.add("https://taken.example/sub", "other", hwid = Hwid.random())
         subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
         response = ok(mapOf("new-url" to "https://taken.example/sub"))
 
@@ -442,7 +448,7 @@ class SubscriptionSyncerReachTest {
 
     @Test
     fun aMoveClearsTheFrontingButKeepsTheLinkFragment() = runTest {
-        val id = subscriptions.add(FRONTED_LINK, "p").id
+        val id = subscriptions.add(FRONTED_LINK, "p", hwid = Hwid.random()).id
         subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
         response = ok(mapOf("new-domain" to "moved.example"))
 

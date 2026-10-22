@@ -40,6 +40,7 @@ import space.getsub.core.model.RoutingSourceKind
 import space.getsub.core.model.RuleBucket
 import space.getsub.core.model.RuleSetAssetFailure
 import space.getsub.core.model.RuleSetAssetState
+import space.getsub.core.model.identity.Hwid
 
 class RoutingRepositoryTest {
     private lateinit var stack: InMemoryRoutingStack
@@ -440,6 +441,7 @@ class RoutingRepositoryTest {
             stack.subscriptionRepository.add(
                 url = "https://provider.example/subscription",
                 name = "Provider",
+                hwid = Hwid.random(),
             )
         val laterCollision =
             initial.copy(
@@ -706,6 +708,7 @@ class RoutingRepositoryTest {
             stack.subscriptionRepository.add(
                 url = "https://subscription.example/config",
                 name = "Provider",
+                hwid = Hwid.random(),
             )
         stack.repository.upsertProfile(sampleProfile(), RoutingSourceKind.Header, subscription.id)
         stack.repository.observeAllStored().first() shouldHaveSize 1

@@ -27,6 +27,7 @@ import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
 import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
@@ -220,7 +221,7 @@ class SubscriptionSyncerTest {
     }
 
     private suspend fun addSubscription() =
-        subscriptions.add("https://example.com/sub", name = "Provider").id
+        subscriptions.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
     // M6 Task 16. The `routing` header is the channel §A.1's threat model is
     // written about: whoever controls the subscription URL can use it to change

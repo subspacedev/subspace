@@ -199,6 +199,7 @@ internal interface ProfileSource {
     suspend fun addSubscription(
         url: String,
         name: String,
+        hwid: String,
     ): AddedSubscription
 
     /** Runs one sync of [id] — see [SubscriptionSyncer.sync]. */
@@ -478,7 +479,8 @@ constructor(
     override suspend fun addSubscription(
         url: String,
         name: String,
-    ): AddedSubscription = subscriptionRepository.add(url, name)
+        hwid: String,
+    ): AddedSubscription = subscriptionRepository.add(url, name, hwid)
 
     /**
      * Syncs, then runs the same core-eligibility pass [import] does over the subscription's

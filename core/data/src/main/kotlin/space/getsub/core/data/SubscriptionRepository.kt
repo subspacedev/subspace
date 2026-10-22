@@ -223,12 +223,13 @@ internal constructor(
      *
      * [hwid] is stored as this subscription's own identity and never derived again (M10-B spec
      * §3.5). The add flow passes the value it generated once per URL, so every retry of a failed
-     * first fetch sends the same one; the default is for callers that have none to keep.
+     * first fetch sends the same one. It has no default on purpose: a caller that could omit it could
+     * mint a fresh one per attempt. It is ignored when [url] is already stored (`created = false`).
      */
     public suspend fun add(
         url: String,
         name: String,
-        hwid: String = Hwid.random(),
+        hwid: String,
     ): AddedSubscription =
         addMutex.withLock {
             // One transaction, not two committed writes. The group insert and the subscription

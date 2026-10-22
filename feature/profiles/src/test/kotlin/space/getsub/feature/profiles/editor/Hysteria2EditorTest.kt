@@ -148,6 +148,7 @@ class Hysteria2EditorTest {
         override suspend fun addSubscription(
             url: String,
             name: String,
+            hwid: String,
         ) = AddedSubscription(0L, created = true)
 
         override suspend fun syncSubscription(id: Long): SyncResult = SyncResult.Synced(0, 0, 0, 0, 0)

@@ -13,6 +13,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.model.identity.Hwid
 import space.getsub.core.network.HwidProvider
 import java.io.File
 
@@ -53,6 +54,7 @@ class SubscriptionRepositoryLinkTest {
             repo.add(
                 "https://visa.com/123#MyVPN?resolve-address=visa.com&host=my.example&insecure",
                 name = "visa.com",
+                hwid = Hwid.random(),
             )
 
         val stored = repo.observeSubscriptions().first().single { it.id == added.id }
@@ -66,8 +68,8 @@ class SubscriptionRepositoryLinkTest {
 
     @Test
     fun reAddingTheSamePlainUrlReturnsTheExistingRowUnchanged() = runTest {
-        val first = repo.add("https://a.example/s#One?host=one.example", name = "a")
-        val second = repo.add("https://a.example/s#Two?host=two.example", name = "a")
+        val first = repo.add("https://a.example/s#One?host=one.example", name = "a", hwid = Hwid.random())
+        val second = repo.add("https://a.example/s#Two?host=two.example", name = "a", hwid = Hwid.random())
 
         second.id shouldBe first.id
         second.created shouldBe false
@@ -76,7 +78,7 @@ class SubscriptionRepositoryLinkTest {
 
     @Test
     fun settersWriteOnlyTheirColumnsAndBlankClears() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
 
         repo.setRedirectTrust(id, RedirectTrust.Allowed)
         repo.setFronting(id, resolveAddress = "front.example", hostHeader = " ")

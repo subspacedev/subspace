@@ -19,6 +19,7 @@ import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.identity.Hwid
 
 class ObfuscationResolverTest {
     private lateinit var db: SubspaceDatabase
@@ -56,7 +57,7 @@ class ObfuscationResolverTest {
     @Test
     fun aSubscriptionDirectiveAppliesUntilTheUserTurnsTheSettingOn() =
         runTest {
-            val id = subscriptions.add("https://example.com/sub", name = "Provider").id
+            val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
             db.subscriptionDao().putDirectives(
                 listOf(SubscriptionDirectiveEntity(id, "fragmentation-enable", "1", 0)),
             )
@@ -84,7 +85,7 @@ class ObfuscationResolverTest {
         directives: Map<String, String>,
         runsAsWritten: Boolean = true,
     ): Long {
-        val id = subscriptions.add("https://example.com/sub", name = "Provider").id
+        val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         db.subscriptionDao().putDirectives(
             directives.entries.mapIndexed { i, (key, value) ->
                 SubscriptionDirectiveEntity(id, key, value, receivedAt = i.toLong())

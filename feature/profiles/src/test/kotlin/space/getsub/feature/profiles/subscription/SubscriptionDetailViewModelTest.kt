@@ -91,7 +91,7 @@ class SubscriptionDetailViewModelTest {
         override suspend fun rename(id: Long, name: String) = Unit
         override suspend fun move(id: Long, toGroupId: Long): Boolean = true
         override suspend fun update(id: Long, name: String, outbound: Outbound): Boolean = true
-        override suspend fun addSubscription(url: String, name: String): AddedSubscription =
+        override suspend fun addSubscription(url: String, name: String, hwid: String): AddedSubscription =
             AddedSubscription(SUBSCRIPTION_ID, created = true)
         override suspend fun syncSubscription(id: Long): SyncResult {
             syncCalls++

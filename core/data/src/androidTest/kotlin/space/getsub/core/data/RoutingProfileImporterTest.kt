@@ -36,6 +36,7 @@ import space.getsub.core.model.RoutingSourceKind
 import space.getsub.core.model.RuleBucket
 import space.getsub.core.model.RuleSetAssetFailure
 import space.getsub.core.model.RuleSetAssetState
+import space.getsub.core.model.identity.Hwid
 import space.getsub.core.parser.routing.RoutingVerb
 import java.io.File
 import java.io.IOException
@@ -1298,7 +1299,7 @@ class RoutingProfileImporterTest {
                 deletion,
             )
         val subscription =
-            subscriptions.add("https://subscription.example/config", "Provider")
+            subscriptions.add("https://subscription.example/config", "Provider", hwid = Hwid.random())
         val id =
             importer
                 .apply(
@@ -1327,7 +1328,12 @@ class RoutingProfileImporterTest {
                     database,
                     deletion,
                 )
-            val subscription = subscriptions.add("https://subscription.example/race", "Race provider")
+            val subscription =
+                subscriptions.add(
+                    "https://subscription.example/race",
+                    "Race provider",
+                    hwid = Hwid.random(),
+                )
             val firstEntered = CompletableDeferred<Unit>()
             val releaseFirst = CompletableDeferred<Unit>()
             beforeDownload = { url, _ ->
@@ -1513,7 +1519,7 @@ class RoutingProfileImporterTest {
             ProfileRepository(database.profileDao()),
             database,
             deletion,
-        ).add(url, "Provider")
+        ).add(url, "Provider", hwid = Hwid.random())
 
     private fun sampleProfile(): RoutingProfile =
         RoutingProfile(
