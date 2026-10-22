@@ -112,7 +112,7 @@ class RoutingProfileImporterTest {
                 .build()
         root = File(context.cacheDir, "routing-importer-${System.nanoTime()}").apply { mkdirs() }
         repository = RoutingRepository(database.routingRuleSetDao())
-        settings = SettingsRepository(database.settingDao()) { "test-hwid" }
+        settings = SettingsRepository(database.settingDao())
         assets = RuleSetAssets(root)
         geoAssets =
             GeoAssetRepository(

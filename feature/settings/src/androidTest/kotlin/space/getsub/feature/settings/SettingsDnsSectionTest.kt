@@ -56,7 +56,6 @@ class SettingsDnsSectionTest {
     private val actions =
         SettingsActions(
             onThemeChanged = { _: ThemePreference -> },
-            onHwidEnabledChanged = {},
             onPingModeChanged = { _: PingMode -> },
             onPingCheckUrlChanged = {},
             onPingTimeoutChanged = {},

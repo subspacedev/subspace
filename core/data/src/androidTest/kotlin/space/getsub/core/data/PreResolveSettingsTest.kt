@@ -22,7 +22,7 @@ class PreResolveSettingsTest {
     fun setUp() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         db = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
-        settings = SettingsRepository(db.settingDao()) { "test-hwid" }
+        settings = SettingsRepository(db.settingDao())
     }
 
     @After

@@ -85,10 +85,6 @@ constructor(
             .onEach { theme -> _state.update { it.copy(theme = theme) } }
             .launchIn(viewModelScope)
 
-        settingsSource.hwidEnabled
-            .onEach { enabled -> _state.update { it.copy(hwidEnabled = enabled, hwid = settingsSource.hwid) } }
-            .launchIn(viewModelScope)
-
         settingsSource.pingMode
             .onEach { mode -> _state.update { it.copy(pingMode = mode) } }
             .launchIn(viewModelScope)
@@ -222,10 +218,6 @@ constructor(
 
     fun onThemeChanged(preference: ThemePreference) {
         viewModelScope.launch { settingsSource.setTheme(preference) }
-    }
-
-    fun onHwidEnabledChanged(enabled: Boolean) {
-        viewModelScope.launch { settingsSource.setHwidEnabled(enabled) }
     }
 
     fun onBootAutostartChanged(enabled: Boolean) {

@@ -26,8 +26,6 @@ internal data class SettingsState(
     val theme: ThemePreference = ThemePreference.System,
     val appVersion: String = "",
     val xrayVersion: XrayVersionState = XrayVersionState.Loading,
-    val hwidEnabled: Boolean = true,
-    val hwid: String = "",
     /**
      * How latency is measured.
      *
@@ -172,10 +170,10 @@ internal data class SettingsState(
     val perTagBreakdownSessionNoticeVisible: Boolean
         get() = sessionConnected
 
-    /** Keep the provider-facing identifier visible in the UI, never in diagnostic output (ARCHITECTURE.md §5.6). */
+    /** DNS endpoints stay out of diagnostic output (ARCHITECTURE.md §5.6). */
     override fun toString(): String =
         "SettingsState(theme=$theme, appVersion=$appVersion, xrayVersion=$xrayVersion, " +
-            "hwidEnabled=$hwidEnabled, hwid=<redacted>, dns=<redacted>)"
+            "dns=<redacted>)"
 }
 
 /**

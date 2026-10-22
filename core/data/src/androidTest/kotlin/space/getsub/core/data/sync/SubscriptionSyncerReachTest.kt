@@ -31,7 +31,6 @@ import space.getsub.core.model.identity.Hwid
 import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
-import space.getsub.core.network.HwidProvider
 import space.getsub.core.network.SubscriptionRequest
 import space.getsub.core.network.SubscriptionSource
 import java.io.File
@@ -95,7 +94,7 @@ class SubscriptionSyncerReachTest {
             SubspaceDatabase::class.java,
         ).build()
         profiles = ProfileRepository(db.profileDao())
-        settings = SettingsRepository(db.settingDao(), HwidProvider { "test-hwid" })
+        settings = SettingsRepository(db.settingDao())
         root =
             File(
                 InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,

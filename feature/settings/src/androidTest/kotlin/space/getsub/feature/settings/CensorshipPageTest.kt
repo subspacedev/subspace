@@ -45,7 +45,6 @@ class CensorshipPageTest {
     private val actions =
         SettingsActions(
             onThemeChanged = {},
-            onHwidEnabledChanged = {},
             onPingModeChanged = {},
             onPingCheckUrlChanged = {},
             onPingTimeoutChanged = {},

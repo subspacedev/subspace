@@ -54,17 +54,8 @@ internal interface SettingsSource {
     /** The current theme preference. See [SettingsRepository.theme]. */
     val theme: Flow<ThemePreference>
 
-    /** Whether Device ID headers are globally permitted. See [SettingsRepository.hwidEnabled]. */
-    val hwidEnabled: Flow<Boolean>
-
-    /** The hashed Device ID providers see. See [SettingsRepository.hwid]. */
-    val hwid: String
-
     /** Persists the theme preference. See [SettingsRepository.setTheme]. */
     suspend fun setTheme(preference: ThemePreference)
-
-    /** Persists the global Device ID gate. See [SettingsRepository.setHwidEnabled]. */
-    suspend fun setHwidEnabled(enabled: Boolean)
 
     /** How latency is measured. See [SettingsRepository.pingMode]. */
     val pingMode: Flow<PingMode>
@@ -193,8 +184,8 @@ internal interface SettingsSource {
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
-     * moment a survival setting is switched on), the same one-shot shape [hwid] already uses for
-     * a value nothing here needs to observe changing.
+     * moment a survival setting is switched on), a one-shot read of a value nothing here needs to
+     * observe changing.
      *
      * `suspend`, and not a plain property, because the implementation is a binder round trip to
      * `PowerManager` — §5.3 keeps those off the Main dispatcher, and the dispatcher belongs to
@@ -219,12 +210,8 @@ constructor(
     @param:ApplicationContext private val context: Context,
 ) : SettingsSource {
     override val theme: Flow<ThemePreference> = settingsRepository.theme
-    override val hwidEnabled: Flow<Boolean> = settingsRepository.hwidEnabled
-    override val hwid: String = settingsRepository.hwid()
 
     override suspend fun setTheme(preference: ThemePreference) = settingsRepository.setTheme(preference)
-
-    override suspend fun setHwidEnabled(enabled: Boolean) = settingsRepository.setHwidEnabled(enabled)
 
     override val pingMode: Flow<PingMode> = settingsRepository.pingMode
     override val pingCheckUrl: Flow<String> = settingsRepository.pingCheckUrl

@@ -31,7 +31,6 @@ import space.getsub.core.model.identity.Hwid
 import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
-import space.getsub.core.network.HwidProvider
 import space.getsub.core.network.SubscriptionRequest
 import space.getsub.core.network.SubscriptionSource
 import space.getsub.core.parser.PassthroughRejection
@@ -196,7 +195,7 @@ class SubscriptionSyncerTest {
             SubspaceDatabase::class.java,
         ).build()
         profiles = ProfileRepository(db.profileDao())
-        settings = SettingsRepository(db.settingDao(), HwidProvider { "test-hwid" })
+        settings = SettingsRepository(db.settingDao())
         root =
             File(
                 InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
@@ -330,18 +329,6 @@ class SubscriptionSyncerTest {
         syncer().sync(id)
 
         lastRequest!!.hwid shouldBe null
-    }
-
-    // M10-B spec §3.5: the global switch goes away; migration 8 to 9 carried its "off" into every
-    // row. The setting still exists until a later task removes it, and must no longer gate a fetch.
-    @Test
-    fun theGlobalHwidSettingNoLongerGatesTheRequest() = runTest {
-        val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
-        settings.setHwidEnabled(false)
-
-        syncer().sync(id)
-
-        lastRequest!!.hwid shouldBe "abcDEF1234"
     }
 
     @Test

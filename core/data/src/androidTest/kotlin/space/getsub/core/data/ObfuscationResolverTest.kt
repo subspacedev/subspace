@@ -34,7 +34,7 @@ class ObfuscationResolverTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         db = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
         profiles = ProfileRepository(db.profileDao())
-        settings = SettingsRepository(db.settingDao()) { "test-hwid" }
+        settings = SettingsRepository(db.settingDao())
         root = java.io.File(context.cacheDir, "obfuscation-resolver-${System.nanoTime()}").apply { mkdirs() }
         val deletion =
             RoutingProfileDeletion(

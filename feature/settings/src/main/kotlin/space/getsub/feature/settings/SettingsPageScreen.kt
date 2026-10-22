@@ -17,7 +17,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.feature.settings.pages.AboutPage
 import space.getsub.feature.settings.pages.AppearancePage
 import space.getsub.feature.settings.pages.CensorshipPage
-import space.getsub.feature.settings.pages.DeviceIdPage
 import space.getsub.feature.settings.pages.DnsPage
 import space.getsub.feature.settings.pages.GeoPage
 import space.getsub.feature.settings.pages.LatencyPage
@@ -34,7 +33,6 @@ enum class SettingsPageId(
     @param:StringRes internal val titleRes: Int,
 ) {
     Appearance(R.string.settings_section_appearance),
-    DeviceId(R.string.settings_section_device_id),
     Latency(R.string.settings_latency_section),
     Dns(R.string.settings_dns_title),
     Censorship(R.string.settings_censorship_title),
@@ -75,7 +73,6 @@ internal fun SettingsPageContent(
 ) {
     when (page) {
         SettingsPageId.Appearance -> AppearancePage(state, actions, onBack, modifier)
-        SettingsPageId.DeviceId -> DeviceIdPage(state, actions, onBack, modifier)
         SettingsPageId.Latency -> LatencyPage(state, actions, onBack, modifier)
         SettingsPageId.Dns -> DnsPage(state, actions, onBack, modifier)
         SettingsPageId.Censorship -> CensorshipPage(state, actions, onBack, modifier)

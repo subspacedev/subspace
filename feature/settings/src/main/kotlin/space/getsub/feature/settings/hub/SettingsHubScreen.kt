@@ -117,7 +117,6 @@ internal fun SettingsHubContent(
         HubSection(R.string.settings_section_you, SubspaceShapeTokens.card) {
             val theme = stringResource(state.appearanceValue().labelRes())
             PageRow(SubspaceIcons.Palette, SettingsPageId.Appearance, theme, open)
-            PageRow(SubspaceIcons.Fingerprint, SettingsPageId.DeviceId, deviceIdText(state), open)
         }
 
         HubSection(R.string.settings_section_traffic, SubspaceShapeTokens.cardLead) {

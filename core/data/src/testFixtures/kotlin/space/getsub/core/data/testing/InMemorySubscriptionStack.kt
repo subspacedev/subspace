@@ -15,7 +15,6 @@ import space.getsub.core.data.sync.SubscriptionSyncer
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.network.EmptyDeviceInfo
 import space.getsub.core.network.FetchOutcome
-import space.getsub.core.network.HwidProvider
 import space.getsub.core.network.SubscriptionSource
 import java.io.File
 
@@ -48,7 +47,7 @@ public class InMemorySubscriptionStack(
 ) : AutoCloseable {
     private val db: SubspaceDatabase = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
     private val profiles = ProfileRepository(db.profileDao())
-    private val settings = SettingsRepository(db.settingDao(), HwidProvider { "test-hwid" })
+    private val settings = SettingsRepository(db.settingDao())
     private val root = File(context.cacheDir, "subscription-stack-${System.nanoTime()}").apply(File::mkdirs)
     private val routing = RoutingRepository(db.routingRuleSetDao())
     private val deletion = RoutingProfileDeletion(db, routing, RuleSetAssets(root), settings, profiles)

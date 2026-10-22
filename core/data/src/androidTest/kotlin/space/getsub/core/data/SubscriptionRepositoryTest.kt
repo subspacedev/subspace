@@ -43,7 +43,7 @@ class SubscriptionRepositoryTest {
             SubspaceDatabase::class.java,
         ).build()
         val profiles = ProfileRepository(db.profileDao())
-        val settings = SettingsRepository(db.settingDao()) { "test-hwid" }
+        val settings = SettingsRepository(db.settingDao())
         root = java.io.File(context.cacheDir, "subscription-repository-${System.nanoTime()}").apply { mkdirs() }
         val deletion =
             RoutingProfileDeletion(

@@ -39,9 +39,6 @@ internal fun SettingsState.perAppValue(): HubValue =
 
 internal fun SettingsState.appearanceValue(): ThemePreference = theme
 
-/** True when the Device ID is sent to the provider. */
-internal fun SettingsState.deviceIdValue(): Boolean = hwidEnabled
-
 internal fun SettingsState.latencyValue(): Pair<PingMode, Int> = pingMode to pingTimeoutSeconds
 
 internal fun SettingsState.dnsValue(): Pair<DnsTransport, String> = dnsTransport to dnsAddress

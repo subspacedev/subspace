@@ -14,7 +14,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import space.getsub.core.data.db.SubspaceDatabase
 import space.getsub.core.model.identity.Hwid
-import space.getsub.core.network.HwidProvider
 import java.io.File
 
 @RunWith(AndroidJUnit4::class)
@@ -29,7 +28,7 @@ class SubscriptionRepositoryLinkTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         db = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
         profiles = ProfileRepository(db.profileDao())
-        val settings = SettingsRepository(db.settingDao(), HwidProvider { "h" })
+        val settings = SettingsRepository(db.settingDao())
         root = File(context.cacheDir, "sub-link-${System.nanoTime()}").apply { mkdirs() }
         val deletion =
             RoutingProfileDeletion(
