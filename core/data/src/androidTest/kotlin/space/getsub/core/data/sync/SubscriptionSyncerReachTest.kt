@@ -22,8 +22,12 @@ import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.db.SubspaceDatabase
 import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.LocalProxy
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.XrayRange
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
 import space.getsub.core.network.HwidProvider
@@ -66,8 +70,22 @@ class SubscriptionSyncerReachTest {
     /** No tunnel bound by default; individual tests override to assert the proxy is threaded through. */
     private var proxy: LocalProxy? = null
 
+    private val device =
+        object : DeviceInfo {
+            override val osVersion: String = "15"
+            override val model: String = "Pixel 8"
+        }
+
     private fun syncer() =
-        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxy })
+        SubscriptionSyncer(
+            db.subscriptionDao(),
+            subscriptions,
+            settings,
+            source,
+            TunnelProxyLocator { proxy },
+            device,
+            appVersion = "0.1.0",
+        )
 
     @Before
     fun setUp() {
@@ -140,6 +158,67 @@ class SubscriptionSyncerReachTest {
         syncer().sync(id)
         requests.clear()
         return id
+    }
+
+    // M10-B spec §3.5: an own HWID, one switch off and one literal. Every fetch path must send
+    // exactly this, built from the row, never from a global setting.
+    private suspend fun customiseIdentity(id: Long) {
+        subscriptions.setHwid(id, "abcDEF1234")
+        subscriptions.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = false, literal = null))
+        subscriptions.setHeader(id, DeviceHeader.AppVersion, HeaderSetting(enabled = true, literal = "9.9.9"))
+    }
+
+    private val customisedHeaders =
+        mapOf(DeviceHeader.Os to "Android", DeviceHeader.OsVersion to "15", DeviceHeader.AppVersion to "9.9.9")
+
+    private fun SubscriptionRequest.shouldCarryTheCustomisedIdentity() {
+        hwid shouldBe "abcDEF1234"
+        headers shouldBe customisedHeaders
+    }
+
+    @Test
+    fun theFallbackCarriesTheSameIdentityAsTheMainUrl() = runTest {
+        val id = allowedWithFallback()
+        customiseIdentity(id)
+        responseForRequest = { r ->
+            requests += r
+            if (r.url == "https://example.com/sub") FetchOutcome.Failed(FetchFailure.TimedOut) else ok()
+        }
+
+        syncer().sync(id).shouldBeInstanceOf<SyncResult.Synced>()
+
+        requests.map { it.url } shouldBe listOf("https://example.com/sub", "https://backup.example/s")
+        requests.forEach { it.shouldCarryTheCustomisedIdentity() }
+    }
+
+    @Test
+    fun aMovedSubscriptionKeepsItsIdentity() = runTest {
+        // M10-B spec §3.5, "New URLs": a new-url move changes the URL, not who the device says it is.
+        val id = subscriptions.add("https://example.com/sub", "Provider").id
+        subscriptions.setRedirectTrust(id, RedirectTrust.Allowed)
+        customiseIdentity(id)
+        response = ok(mapOf("new-url" to "https://moved.example/sub"))
+        syncer().sync(id)
+        requests.clear()
+        response = ok()
+
+        syncer().sync(id)
+
+        requests.single().url shouldBe "https://moved.example/sub"
+        requests.single().shouldCarryTheCustomisedIdentity()
+    }
+
+    @Test
+    fun aFetchThroughTheTunnelsProxyCarriesTheSameIdentity() = runTest {
+        val id = addSubscription()
+        customiseIdentity(id)
+        proxy = LocalProxy(18080, ProxyCredentials("u", "p"))
+        response = ok()
+
+        syncer().sync(id)
+
+        lastRequest!!.proxy shouldBe LocalProxy(18080, ProxyCredentials("u", "p"))
+        lastRequest!!.shouldCarryTheCustomisedIdentity()
     }
 
     @Test

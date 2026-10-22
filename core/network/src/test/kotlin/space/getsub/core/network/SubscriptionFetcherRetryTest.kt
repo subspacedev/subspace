@@ -33,11 +33,12 @@ import org.junit.Test
 class SubscriptionFetcherRetryTest {
     private lateinit var server: MockWebServer
 
-    private fun fetcher() = SubscriptionFetcher(HwidProvider { "TESTHWIDvalue0123456789" }, appVersion = "1.0.0")
+    private fun fetcher() = SubscriptionFetcher(appVersion = "1.0.0")
 
     private fun request() = SubscriptionRequest(
         url = server.url("/sub").toString(),
-        hwidEnabled = true,
+        hwid = "TESTHWIDvalue0123456789",
+        headers = emptyMap(),
         userAgentOverride = null,
         timeoutSeconds = 9,
     )

@@ -115,19 +115,15 @@ internal fun safeRedirectTarget(
  * a swallowed failure that surfaces as a generic error is the outcome §A.4.1
  * singles out as the worst one.
  *
- * `deviceInfo` defaults to [EmptyDeviceInfo] so tests (and any other plain-JVM
- * caller) never have to touch `android.os.Build` to construct this class; the
- * default is inert for that purpose only — Hilt always supplies the real
- * [AndroidDeviceInfo] in production regardless of the Kotlin default, since the
- * generated `Factory` calls the constructor with every parameter explicit.
+ * It sends no identity of its own. The HWID and the device headers arrive resolved in each
+ * [SubscriptionRequest], because they belong to the subscription, not to the device
+ * (M10-B spec §3.5); [appVersion] is here only for the default User-Agent.
  */
 @Singleton
 public class SubscriptionFetcher
 @Inject
 constructor(
-    private val hwidProvider: HwidProvider,
     @param:AppVersion private val appVersion: String,
-    private val deviceInfo: DeviceInfo = EmptyDeviceInfo,
 ) : SubscriptionSource {
     private val baseClient = OkHttpClient.Builder()
         .followRedirects(false)
@@ -274,11 +270,9 @@ constructor(
         Request.Builder()
             .url(url)
             .header("user-agent", userAgentOverride ?: UserAgent.default(appVersion))
-            .header("x-device-os", "Android")
-            .header("x-ver-os", deviceInfo.osVersion)
-            .header("x-device-model", deviceInfo.model)
-            .header("x-app-version", appVersion)
-            .apply { if (hwidEnabled) header("x-hwid", hwidProvider.hwid()) }
+            // M10-B spec §3.5: exactly the headers the subscription sends, nothing added here.
+            .apply { this@toOkHttpRequest.headers.forEach { (name, value) -> header(name.wireName, value) } }
+            .apply { this@toOkHttpRequest.hwid?.let { header("x-hwid", it) } }
             // M9-B spec §1.1: fronting. OkHttp also uses an explicit Host as HTTP/2's :authority.
             .apply { route.hostHeader?.let { header("Host", it) } }
             .get()

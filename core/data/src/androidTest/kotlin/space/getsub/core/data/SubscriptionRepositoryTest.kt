@@ -5,6 +5,7 @@ package space.getsub.core.data
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -22,6 +23,9 @@ import org.junit.Test
 import space.getsub.core.data.db.SubscriptionDirectiveEntity
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.SubscriptionIdentity
 
 private const val REEMIT_TIMEOUT_MS = 5_000L
 
@@ -231,6 +235,78 @@ class SubscriptionRepositoryTest {
         repository.setHwidEnabled(id, false)
 
         repository.observeSubscriptions().first().single().hwidEnabled shouldBe false
+    }
+
+    // M10-B spec §3.5: the identity a subscription is created with, and every edit to it.
+    @Test
+    fun aNewSubscriptionsIdentityIsItsHwidWithEveryHeaderFollowingTheDevice() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        repository.identity(id).first() shouldBe
+            SubscriptionIdentity(
+                hwid = "abcDEF1234",
+                hwidEnabled = true,
+                headers = DeviceHeader.entries.associateWith { HeaderSetting(enabled = true, literal = null) },
+            )
+    }
+
+    @Test
+    fun theIdentityOfAMissingSubscriptionIsNull() = runTest {
+        repository.identity(42).first().shouldBeNull()
+    }
+
+    @Test
+    fun anEditedHwidIsTrimmedAndStored() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        repository.setHwid(id, "  NEWhwid-5678=  ")
+
+        repository.identity(id).first()!!.hwid shouldBe "NEWhwid-5678="
+    }
+
+    @Test
+    fun anInvalidHwidIsRejectedAndTheOldOneKept() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        shouldThrow<IllegalArgumentException> { repository.setHwid(id, "short") }
+        shouldThrow<IllegalArgumentException> { repository.setHwid(id, "has_underscore_0123") }
+
+        repository.identity(id).first()!!.hwid shouldBe "abcDEF1234"
+    }
+
+    @Test
+    fun eachHeaderSettingIsStoredOnItsOwn() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider").id
+
+        repository.setHeader(id, DeviceHeader.Os, HeaderSetting(enabled = false, literal = null))
+        repository.setHeader(id, DeviceHeader.OsVersion, HeaderSetting(enabled = true, literal = " 14 "))
+        repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = false, literal = "Pixel 7"))
+
+        repository.identity(id).first()!!.headers shouldBe
+            mapOf(
+                DeviceHeader.Os to HeaderSetting(enabled = false, literal = null),
+                DeviceHeader.OsVersion to HeaderSetting(enabled = true, literal = "14"),
+                DeviceHeader.Model to HeaderSetting(enabled = false, literal = "Pixel 7"),
+                DeviceHeader.AppVersion to HeaderSetting(enabled = true, literal = null),
+            )
+    }
+
+    @Test
+    fun anInvalidHeaderLiteralIsRejectedAndTheOldSettingKept() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider").id
+
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "line\r\nbreak"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "华为"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "   "))
+        }
+
+        repository.identity(id).first()!!.headers[DeviceHeader.Model] shouldBe
+            HeaderSetting(enabled = true, literal = null)
     }
 
     @Test

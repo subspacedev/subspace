@@ -14,17 +14,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import space.getsub.core.model.identity.DeviceHeader
 import java.util.concurrent.TimeUnit
 
 class SubscriptionFetcherTest {
     private lateinit var server: MockWebServer
-    private val hwid = HwidProvider { "TESTHWIDvalue0123456789" }
-
-    private fun fetcher() = SubscriptionFetcher(hwid, appVersion = "1.0.0")
+    private fun fetcher() = SubscriptionFetcher(appVersion = "1.0.0")
 
     private fun request(timeoutSeconds: Int = 9) = SubscriptionRequest(
         url = server.url("/sub").toString(),
-        hwidEnabled = true,
+        hwid = "TESTHWIDvalue0123456789",
+        headers = mapOf(DeviceHeader.Os to "Android", DeviceHeader.AppVersion to "1.0.0"),
         userAgentOverride = null,
         timeoutSeconds = timeoutSeconds,
     )
@@ -50,9 +50,34 @@ class SubscriptionFetcherTest {
     fun `omits x-hwid when the user has disabled it`() = runTest {
         server.enqueue(MockResponse(code = 200, body = ""))
 
-        fetcher().fetch(request().copy(hwidEnabled = false))
+        fetcher().fetch(request().copy(hwid = null))
 
         server.takeRequest().headers["x-hwid"] shouldBe null
+    }
+
+    // M10-B spec §3.5: a switch that is off means the header is not sent at all. The fetcher adds
+    // nothing of its own beyond the User-Agent, so an empty identity is exactly an empty request.
+    @Test
+    fun `no hwid and no headers sends none of the five identity headers`() = runTest {
+        server.enqueue(MockResponse(code = 200, body = ""))
+
+        fetcher().fetch(request().copy(hwid = null, headers = emptyMap()))
+
+        val headers = server.takeRequest().headers
+        (DeviceHeader.entries.map { it.wireName } + "x-hwid").forEach { headers[it] shouldBe null }
+        headers["user-agent"] shouldBe "Subspace/1.0.0"
+    }
+
+    @Test
+    fun `sends exactly the hwid and the headers in the request`() = runTest {
+        server.enqueue(MockResponse(code = 200, body = ""))
+
+        fetcher().fetch(request().copy(hwid = "abcDEF1234", headers = mapOf(DeviceHeader.Model to "Pixel 8")))
+
+        val headers = server.takeRequest().headers
+        headers["x-hwid"] shouldBe "abcDEF1234"
+        headers["x-device-model"] shouldBe "Pixel 8"
+        listOf("x-device-os", "x-ver-os", "x-app-version").forEach { headers[it] shouldBe null }
     }
 
     @Test
@@ -322,7 +347,8 @@ class SubscriptionFetcherTest {
         val outcome = fetcher().fetch(
             SubscriptionRequest(
                 url = "https://localhost:1/sub",
-                hwidEnabled = true,
+                hwid = null,
+                headers = emptyMap(),
                 userAgentOverride = null,
                 timeoutSeconds = 5,
             ),
@@ -362,7 +388,8 @@ class SubscriptionFetcherTest {
         val outcome = fetcher().fetch(
             SubscriptionRequest(
                 url = "https://$host/sub",
-                hwidEnabled = true,
+                hwid = null,
+                headers = emptyMap(),
                 userAgentOverride = null,
                 timeoutSeconds = 5,
             ),

@@ -67,12 +67,14 @@ private const val MAX_GEO_FILE_BYTES = 128L * 1024 * 1024
  *
  * [name] is a parameter for that test's sake only; production has exactly one database.
  *
- * [legacyHwid] is the HWID this device sends today. Only the 8 to 9 migration reads it, to keep
- * every existing subscription's identity exactly (M10-B spec §3.5).
+ * [legacyHwid] supplies the HWID this device sends today. Only the 8 to 9 migration calls it, to
+ * keep every existing subscription's identity exactly (M10-B spec §3.5). It is a supplier, not a
+ * value, so a database that is already at version 9 never derives it: a throw there would
+ * otherwise break the database on every launch.
  */
 internal fun subspaceDatabase(
     context: Context,
-    legacyHwid: String,
+    legacyHwid: () -> String,
     name: String = DATABASE_NAME,
 ): SubspaceDatabase =
     Room
@@ -105,7 +107,7 @@ internal object DataModule {
     fun database(
         @ApplicationContext context: Context,
         hwidProvider: HwidProvider,
-    ): SubspaceDatabase = subspaceDatabase(context, legacyHwid = hwidProvider.hwid())
+    ): SubspaceDatabase = subspaceDatabase(context, legacyHwid = hwidProvider::hwid)
 
     @Provides
     fun profileDao(database: SubspaceDatabase): ProfileDao = database.profileDao()

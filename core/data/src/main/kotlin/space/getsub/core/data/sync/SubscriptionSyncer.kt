@@ -17,19 +17,23 @@ import space.getsub.core.data.db.SubscriptionDao
 import space.getsub.core.data.db.SubscriptionDirectiveEntity
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SyncChangeSet
+import space.getsub.core.data.identity
 import space.getsub.core.data.protocolName
 import space.getsub.core.data.redirectTrustOf
+import space.getsub.core.data.resolve
 import space.getsub.core.data.serialization.identityHashOf
 import space.getsub.core.data.serialization.identityHashOfRaw
 import space.getsub.core.data.serialization.toJson
 import space.getsub.core.data.transportSummary
 import space.getsub.core.model.Profile
 import space.getsub.core.model.TunnelProxyLocator
+import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
 import space.getsub.core.network.FetchRoute
 import space.getsub.core.network.SubscriptionRequest
 import space.getsub.core.network.SubscriptionSource
+import space.getsub.core.network.di.AppVersion
 import space.getsub.core.parser.ParseFailure
 import space.getsub.core.parser.PassthroughAnalysis
 import space.getsub.core.parser.RedirectCheck
@@ -70,7 +74,13 @@ private const val MAX_LOG_KEY_LENGTH = 64
  * `:service` (§4). A background refresh with no bound service — or no tunnel
  * up at all — gets null back and fetches directly; that is correct fallback
  * behaviour, not a failure (see [TunnelProxyLocator.localHttpProxyOrNull]).
+ *
+ * [device] and [appVersion] are what a device header that follows this device sends. Each request
+ * is built from its subscription's own identity (M10-B spec §3.5), never from a global setting.
  */
+// LongParameterList: each parameter is a separate Hilt seam the instrumented tests replace; the
+// last two are the device values a subscription's headers follow (M10-B spec §3.5).
+@Suppress("LongParameterList")
 @Singleton
 public class SubscriptionSyncer
 @Inject
@@ -80,6 +90,8 @@ internal constructor(
     private val settings: SettingsRepository,
     private val source: SubscriptionSource,
     private val proxyLocator: TunnelProxyLocator,
+    private val device: DeviceInfo,
+    @param:AppVersion private val appVersion: String,
 ) {
     /**
      * Runs one sync of [subscriptionId].
@@ -117,10 +129,14 @@ internal constructor(
             subscription.userAgentOverride
                 ?: subscriptions.effective(subscription.id, KEY_USER_AGENT, null).value
 
+        // M10-B spec §3.5: built once from the row, so the fallback, the tunnel's proxy and the URL a
+        // new-url move stored all send this same identity.
+        val (hwid, headers) = subscription.identity().resolve(device, appVersion)
         val request =
             SubscriptionRequest(
                 url = subscription.url,
-                hwidEnabled = subscription.hwidEnabled && settings.hwidEnabled.first(),
+                hwid = hwid,
+                headers = headers,
                 userAgentOverride = userAgent,
                 timeoutSeconds = timeout,
                 proxy = proxyLocator.localHttpProxyOrNull(),

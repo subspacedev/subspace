@@ -67,7 +67,7 @@ class Migration8To9Test {
     }
 
     private fun migrate(): SupportSQLiteDatabase =
-        helper.runMigrationsAndValidate(DB_NAME, 9, true, migration8To9(LEGACY_HWID))
+        helper.runMigrationsAndValidate(DB_NAME, 9, true, migration8To9 { LEGACY_HWID })
 
     /** id to hwidEnabled, for every subscription. */
     private fun hwidSwitches(db: SupportSQLiteDatabase): Map<Long, Int> =

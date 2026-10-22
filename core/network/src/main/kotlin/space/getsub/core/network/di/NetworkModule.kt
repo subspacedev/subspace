@@ -19,8 +19,9 @@ import javax.inject.Qualifier
 import javax.inject.Singleton
 
 /**
- * Qualifies this app's own `versionName`, sent as `x-app-version` and folded
- * into the default User-Agent (§A.4.1/§A.4.2). Provided below via
+ * Qualifies this app's own `versionName`, folded into the default User-Agent by the fetcher and
+ * sent as `x-app-version` when a subscription's header follows the device (ARCHITECTURE.md
+ * §A.4.1/§A.4.2, M10-B spec §3.5). Provided below via
  * [android.content.pm.PackageManager] rather than `BuildConfig.VERSION_NAME`:
  * `:core:network` cannot see `:app`'s `BuildConfig` (only `:core:data` may
  * depend on `:core:network`, §4 — the reverse edge does not exist either), so
@@ -36,10 +37,12 @@ public annotation class AppVersion
 @Module
 @InstallIn(SingletonComponent::class)
 internal abstract class NetworkModule {
+    /** Only the 8 to 9 migration's legacy value and the Settings page still read this (M10-B spec §3.5). */
     @Binds
     @Singleton
     abstract fun bindHwidProvider(impl: AndroidHwidProvider): HwidProvider
 
+    /** `:core:data` resolves each subscription's device headers from this (M10-B spec §3.5). */
     @Binds
     @Singleton
     abstract fun bindDeviceInfo(impl: AndroidDeviceInfo): DeviceInfo

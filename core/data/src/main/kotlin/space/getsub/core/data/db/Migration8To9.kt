@@ -16,7 +16,8 @@ private const val SCHEMA_VERSION_9 = 9
  * a provider with a device limit counts HWIDs, so a changed value on upgrade would take a new
  * slot and could lock the user out of their own subscription (M10-B spec §3.5, "keeps exactly
  * the value it sends today"). It is passed in rather than derived here so this file stays free
- * of `Settings.Secure`, and so the test can pin it.
+ * of `Settings.Secure`, and so the test can pin it. It is a supplier called only inside
+ * [Migration.migrate], so the derivation runs once, on upgrade, and never on an ordinary launch.
  *
  * `hwid` is added as `NOT NULL DEFAULT ''` only because SQLite cannot add a NOT NULL column
  * without a default; the `UPDATE` replaces the empty string in the same transaction. The entity
@@ -29,11 +30,11 @@ private const val SCHEMA_VERSION_9 = 9
  * subscription's own switch is turned off, so none starts sending an HWID it did not send
  * before. An absent row or `"true"` leaves each subscription's switch as it was.
  */
-internal fun migration8To9(legacyHwid: String): Migration =
+internal fun migration8To9(legacyHwid: () -> String): Migration =
     object : Migration(SCHEMA_VERSION_8, SCHEMA_VERSION_9) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE subscriptions ADD COLUMN hwid TEXT NOT NULL DEFAULT ''")
-            db.execSQL("UPDATE subscriptions SET hwid = ?", arrayOf(legacyHwid))
+            db.execSQL("UPDATE subscriptions SET hwid = ?", arrayOf(legacyHwid()))
             // Same order as SubscriptionEntity declares them: the four switches, then the four literals.
             val headers = listOf("deviceOs", "osVersion", "deviceModel", "appVersion")
             headers.forEach {

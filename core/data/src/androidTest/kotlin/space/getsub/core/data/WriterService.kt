@@ -77,7 +77,7 @@ class WriterService : Service() {
      */
     override fun onBind(intent: Intent): IBinder {
         val name = intent.getStringExtra(EXTRA_DATABASE_NAME) ?: DEFAULT_DATABASE_NAME
-        val db = subspaceDatabase(applicationContext, TEST_LEGACY_HWID, name)
+        val db = subspaceDatabase(applicationContext, { TEST_LEGACY_HWID }, name)
         database = db
         Thread({ write(db) }, "subspace-writer").start()
         return Binder()

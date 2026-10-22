@@ -25,6 +25,9 @@ import space.getsub.core.model.LocalProxy
 import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
 import space.getsub.core.network.HwidProvider
@@ -168,8 +171,22 @@ class SubscriptionSyncerTest {
     /** No tunnel bound by default; individual tests override to assert the proxy is threaded through. */
     private var proxy: LocalProxy? = null
 
+    private val device =
+        object : DeviceInfo {
+            override val osVersion: String = "15"
+            override val model: String = "Pixel 8"
+        }
+
     private fun syncer() =
-        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxy })
+        SubscriptionSyncer(
+            db.subscriptionDao(),
+            subscriptions,
+            settings,
+            source,
+            TunnelProxyLocator { proxy },
+            device,
+            appVersion = "0.1.0",
+        )
 
     @Before
     fun setUp() {
@@ -275,14 +292,55 @@ class SubscriptionSyncerTest {
         subscriptions.effective(id, "profile-update-interval", null).value shouldBe "6"
     }
 
+    // M10-B spec §3.5: each subscription sends its own HWID and device headers.
     @Test
-    fun globalHwidGateDisablesTheHeaderEvenWhenTheSubscriptionAllowsIt() = runTest {
+    fun aNewSubscriptionSendsItsOwnHwidAndFollowsTheDevice() = runTest {
+        val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        syncer().sync(id)
+
+        lastRequest!!.hwid shouldBe "abcDEF1234"
+        lastRequest!!.headers shouldBe
+            mapOf(
+                DeviceHeader.Os to "Android",
+                DeviceHeader.OsVersion to "15",
+                DeviceHeader.Model to "Pixel 8",
+                DeviceHeader.AppVersion to "0.1.0",
+            )
+    }
+
+    @Test
+    fun aSwitchedOffHeaderIsNotSentAndALiteralIsSentAsTyped() = runTest {
         val id = addSubscription()
+        subscriptions.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = false, literal = null))
+        subscriptions.setHeader(id, DeviceHeader.AppVersion, HeaderSetting(enabled = true, literal = "9.9.9"))
+
+        syncer().sync(id)
+
+        lastRequest!!.headers.containsKey(DeviceHeader.Model) shouldBe false
+        lastRequest!!.headers[DeviceHeader.AppVersion] shouldBe "9.9.9"
+    }
+
+    @Test
+    fun aSwitchedOffHwidIsNotSent() = runTest {
+        val id = addSubscription()
+        subscriptions.setHwidEnabled(id, false)
+
+        syncer().sync(id)
+
+        lastRequest!!.hwid shouldBe null
+    }
+
+    // M10-B spec §3.5: the global switch goes away; migration 8 to 9 carried its "off" into every
+    // row. The setting still exists until a later task removes it, and must no longer gate a fetch.
+    @Test
+    fun theGlobalHwidSettingNoLongerGatesTheRequest() = runTest {
+        val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
         settings.setHwidEnabled(false)
 
         syncer().sync(id)
 
-        lastRequest?.hwidEnabled shouldBe false
+        lastRequest!!.hwid shouldBe "abcDEF1234"
     }
 
     @Test
