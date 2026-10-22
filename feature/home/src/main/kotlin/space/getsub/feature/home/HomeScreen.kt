@@ -223,6 +223,7 @@ private fun LaunchAutomationState.noteRes(): Int? =
     when (this) {
         LaunchAutomationState.NoServerAnswered -> R.string.home_launch_no_server_answered
         LaunchAutomationState.ForeignVpnFallback -> R.string.home_launch_foreign_vpn_fallback
+        LaunchAutomationState.ForeignVpnNothingConnected -> R.string.home_launch_foreign_vpn_nothing_connected
         LaunchAutomationState.Idle, LaunchAutomationState.Finding -> null
     }
 

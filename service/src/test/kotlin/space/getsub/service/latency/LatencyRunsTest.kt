@@ -94,6 +94,21 @@ class LatencyRunsTest {
         }
 
     @Test
+    fun currentRunMovesOnEveryStartButNotOnCancel() =
+        runTest {
+            runs.start(listOf(1), emptyMap())
+            val first = runs.currentRun
+            first shouldBe dispatcher.started.single().runId
+
+            runs.cancel()
+            runs.currentRun shouldBe first
+
+            runs.start(listOf(2), emptyMap())
+            runs.currentRun shouldBe dispatcher.started.last().runId
+            (runs.currentRun > first) shouldBe true
+        }
+
+    @Test
     fun perProfileModeOverridesTheGlobalOne() =
         runTest {
             runs.start(listOf(1, 2), mapOf(2L to PingMode.PROXY_HEAD))

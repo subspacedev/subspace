@@ -16,9 +16,11 @@ All notable changes to Subspace are documented here. The format follows
   does not run when you switch back from recent apps or after a phone restart, and it
   reconnects even if you disconnected on purpose. It is off by default.
 - **Fastest server.** Subspace tests the candidates, connects to the quickest one and makes
-  it your active server. Home shows "Finding the fastest server…" with a Cancel button. If
-  nothing answers, it connects to your last picked server. If another VPN app is active,
-  it skips the test and connects to your last server.
+  it your active server. Home shows "Finding the fastest server…" with a Cancel button.
+  Picking a server, connecting, starting a latency test yourself or leaving the app also
+  cancels the choice. If nothing answers, it connects to your last picked server. If
+  another VPN app is active, it skips the test and connects to your last server, or says
+  it didn't connect when there is none.
 - **Choose which servers are tested when the app opens.** "Active subscription" or "All
   servers", under Settings > Latency.
 - **Wi-Fi and mobile markers.** A server name containing WIFI or WI-FI is used only on

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -70,7 +71,12 @@ internal constructor(
      * One event per auto-connect: run VPN consent, then call [onConsentGranted] or [onConsentDenied].
      * Only requests for the current target pass: one abandoned or superseded since is dropped.
      */
-    val connectRequests: Flow<Unit> = requests.receiveAsFlow().filter { it == chosen }.map { }
+    val connectRequests: Flow<Unit> =
+        requests
+            .receiveAsFlow()
+            .filter { it == chosen }
+            .onEach { delivered = it }
+            .map { }
 
     private val _running = MutableStateFlow(false)
 
@@ -89,10 +95,28 @@ internal constructor(
     /** The profile the last request was for; cleared once consent is answered or the user acts. */
     private var chosen: Long? = null
 
+    /** The last request the activity collected; one not yet collected can still be dropped. */
+    private var delivered: Long? = null
+
+    /**
+     * True while the auto-connect choice is still open: from a fresh open until a request goes
+     * out or the sequence decides nothing will connect. The launch test that may follow is not
+     * part of it.
+     */
+    private var deciding = false
+
+    /** A granted consent waiting for the bind; see [onConsentGranted]. */
+    private var connectJob: Job? = null
+
+    /** The last sequence's bound on waiting, reused for the consent hand-off's bind wait. */
+    private var budget = MARGIN_MILLIS
+
     /** Runs the whole sequence. Called on every fresh open: there is no per-process latch. */
     fun onFreshOpen() {
         job?.cancel()
+        connectJob?.cancel()
         chosen = null
+        deciding = true
         _state.value = LaunchAutomationState.Idle
         // Before the launch, so a reader never sees a gap between "open" and "running". A request
         // left over from an earlier open is drained, not delivered to this one. Conflated, so it
@@ -108,7 +132,10 @@ internal constructor(
                     // Only this run's own end clears it: a superseded run's finally can land after
                     // the next open has set it again. A counter, not the Job: on Main.immediate the
                     // body can finish before `job` is assigned.
-                    if (generation == run) _running.value = false
+                    if (generation == run) {
+                        _running.value = false
+                        deciding = false
+                    }
                 }
             }
     }
@@ -117,22 +144,46 @@ internal constructor(
     fun onConsentGranted() {
         val id = chosen ?: return
         chosen = null
-        scope.launch {
-            // Never on the client's default state: an unbound client reads Disconnected even
-            // while the tunnel is up in :bg (ARCHITECTURE.md §5.5).
-            if (!tunnel.bound.value) return@launch
-            // Re-read, not assumed from when consent was asked: the dialog is asynchronous, and
-            // the same reasoning as HomeViewModel.onConsentGranted applies.
-            if (!tunnel.state.value.isIdle()) return@launch
-            val profile = servers.profile(id) ?: return@launch
-            tunnel.connect(profile, rowId = id)
+        connectJob?.cancel()
+        connectJob =
+            scope.launch {
+                // Never on the client's default state: an unbound client reads Disconnected even
+                // while the tunnel is up in :bg (ARCHITECTURE.md §5.5). Waited for rather than
+                // refused: the activity's onStart rebinds, and bind() drops `bound` at once while
+                // the handshake lands later, so a consent answer right after a rotation or a
+                // return to the screen would otherwise lose an approved connect without a trace.
+                // Bounded like the sequence itself, so it never hangs.
+                withTimeoutOrNull(budget) { tunnel.bound.first { it } } ?: return@launch
+                // Re-read, not assumed from when consent was asked: the dialog is asynchronous, and
+                // the same reasoning as HomeViewModel.onConsentGranted applies.
+                if (!tunnel.state.value.isIdle()) return@launch
+                val profile = servers.profile(id) ?: return@launch
+                tunnel.connect(profile, rowId = id)
+            }
+    }
+
+    /**
+     * The winner stays active and nothing connects (M10-C spec §3.1, "Order with the consent
+     * dialog"). The foreign-VPN note goes too: it says Subspace connected, and it did not.
+     */
+    fun onConsentDenied() {
+        chosen = null
+        val now = _state.value
+        if (now == LaunchAutomationState.Finding || now == LaunchAutomationState.ForeignVpnFallback) {
+            _state.value = LaunchAutomationState.Idle
         }
     }
 
-    /** The winner stays active and nothing connects (M10-C spec §3.1, "Order with the consent dialog"). */
-    fun onConsentDenied() {
-        chosen = null
-        if (_state.value == LaunchAutomationState.Finding) _state.value = LaunchAutomationState.Idle
+    /**
+     * The activity has gone to the background (not a configuration change). An open choice, or
+     * a request the activity has not collected yet, is abandoned: otherwise it would surface as
+     * a consent dialog or a connect on some later return from Recents, which is not an open
+     * (M10-C spec §6). A request already collected stays: its consent dialog is up, and the
+     * user's answer to it still counts. The launch test is left to run.
+     */
+    fun onScreenStopped() {
+        val undelivered = chosen != null && chosen != delivered
+        if (deciding || undelivered) abandon()
     }
 
     /** Home's Cancel during "Finding the fastest server…". */
@@ -148,7 +199,10 @@ internal constructor(
     /** Home has shown [LaunchAutomationState.NoServerAnswered] or [LaunchAutomationState.ForeignVpnFallback]. */
     fun onNoteShown() {
         val now = _state.value
-        if (now == LaunchAutomationState.NoServerAnswered || now == LaunchAutomationState.ForeignVpnFallback) {
+        if (now == LaunchAutomationState.NoServerAnswered ||
+            now == LaunchAutomationState.ForeignVpnFallback ||
+            now == LaunchAutomationState.ForeignVpnNothingConnected
+        ) {
             _state.value = LaunchAutomationState.Idle
         }
     }
@@ -156,7 +210,10 @@ internal constructor(
     private fun abandon() {
         job?.cancel()
         job = null
+        connectJob?.cancel()
+        connectJob = null
         _running.value = false
+        deciding = false
         chosen = null
         if (_state.value == LaunchAutomationState.Finding) _state.value = LaunchAutomationState.Idle
     }
@@ -168,6 +225,8 @@ internal constructor(
         // "The whole choice is bounded by the ping timeout plus a small margin" (M10-C spec §3.1),
         // and the same bound caps waiting for the service, so launch never hangs on a bind.
         val budget = snapshot.pingTimeoutSeconds * MILLIS + MARGIN_MILLIS
+        this.budget = budget
+        if (!snapshot.autoConnect) deciding = false
         if (snapshot.autoConnect && snapshot.mode != AutoConnectMode.LastPicked) {
             fastestSequence(snapshot, budget)
             return
@@ -201,20 +260,23 @@ internal constructor(
 
     /**
      * A Fastest mode, from "Finding" to a request or a note. The bind wait, the state check,
-     * reading the candidates and the run all sit inside one [budget], so the whole visible
-     * "Finding" phase is capped, bind included.
+     * reading the candidates and the run all sit inside one [budget], so the whole phase is
+     * capped, bind included. "Finding" shows only once the tunnel is known to be idle, so it
+     * never flashes over a tunnel that is already up or reconnecting.
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod", "LongMethod")
     private suspend fun fastestSequence(
         snapshot: LaunchSettingsSnapshot,
         budget: Long,
     ) {
-        _state.value = LaunchAutomationState.Finding
         // This run's own results. LatencyCache keeps every earlier run's values too, and a stale
         // number must not decide the pick. Written from binder threads.
         val fresh = ConcurrentHashMap<Long, LatencyResult>()
         var bound = false
         var choice: Choice? = null
+        // The id LatencyRuns gave our run, and whether it ended before the budget did.
+        var ourRun: Long? = null
+        var runEnded = false
         val phase =
             withTimeoutOrNull(budget) {
                 tunnel.bound.first { it }
@@ -235,6 +297,7 @@ internal constructor(
                 val candidates = pool.filter { it.connectable }
                 choice = Choice(all, active, candidates)
                 if (!state.isIdle()) return@withTimeoutOrNull Phase.AlreadyConnected
+                _state.value = LaunchAutomationState.Finding
                 // "If there are no servers at all, it does nothing" (M10-C spec §3.1).
                 if (candidates.isEmpty()) return@withTimeoutOrNull Phase.NoCandidates
                 val ids = candidates.map { it.id }
@@ -248,7 +311,12 @@ internal constructor(
                         }
                     // No metered gate: the user asked to be connected (M10-C spec §3.1, "Mobile data").
                     val started = latency.start(ids, candidates.modes()) { id, result -> fresh[id] = result }
-                    if (started) latency.awaitDone(ids, budget)
+                    // Read at once: on the main thread nothing can start between start's return
+                    // and here (Ruling D), so this is our run's id.
+                    if (started) {
+                        ourRun = latency.currentRun
+                        runEnded = latency.awaitDone(ids, budget)
+                    }
                     // Stopped before any write below, so our own write is never mistaken for a pick.
                     watcher.cancel()
                 }
@@ -280,7 +348,20 @@ internal constructor(
 
             else -> Unit
         }
-        // Measured, or the budget ran out mid-run: decide on what this run delivered.
+        val run = ourRun
+        if (run != null && latency.currentRun != run) {
+            // Another start superseded ours: Servers' Test all, a row's test or Home's tile. That
+            // is the user taking over (M10-C spec §3.1, "the user's action wins"; Ruling E), and
+            // what this run measured is a cut-short set, so no pick is made from it. The user's
+            // run is theirs: neither cancelled nor superseded by a launch test.
+            abandon()
+            return
+        }
+        // The budget ran out mid-run. Stop it before deciding, so it neither competes with the
+        // start sequence a request begins (M10-C spec §4) nor is superseded by the launch test.
+        // What finished stays cached; the rest return to idle, as on Cancel.
+        if (run != null && !runEnded) latency.cancel()
+        // Measured, or cut short: decide on what this run delivered.
         val results = HashMap(fresh)
         when (val outcome = decide(snapshot, chosenFrom, results)) {
             AutoConnectOutcome.Requested, AutoConnectOutcome.Stopped -> Unit
@@ -300,8 +381,17 @@ internal constructor(
         // Ruling for this task: another VPN is read from the run's own results, not probed for
         // beforehand. Every candidate refused means nothing was measurable (M10-C spec §3.1).
         if (ids.all { results[it]?.outcome == LatencyOutcome.FOREIGN_VPN }) {
-            _state.value = LaunchAutomationState.ForeignVpnFallback
-            choice.active?.let { request(it.id) }
+            // The note says Subspace connected to the last server, so it goes out only with a
+            // request for one that can connect. Otherwise nothing was asked for, and the note
+            // says so.
+            val active = choice.active?.takeIf { servers.profile(it.id) != null }
+            if (active != null) {
+                _state.value = LaunchAutomationState.ForeignVpnFallback
+                request(active.id)
+            } else {
+                deciding = false
+                _state.value = LaunchAutomationState.ForeignVpnNothingConnected
+            }
             return AutoConnectOutcome.Stopped
         }
         // On no winner, only ids with a fresh result count as measured: a refused or cut-short
@@ -315,6 +405,13 @@ internal constructor(
                 activeId = choice.active?.id,
             ) ?: return fallBack(choice.active, results.keys, noteIfNone = true)
 
+        // A session started meanwhile by a path that never reaches onUserTookOver (the Quick
+        // Settings tile, Always-on): writing the winner now would hot-switch that live session
+        // onto it, partly overriding a deliberate action (M10-C spec §4). Abandon instead.
+        if (!tunnel.state.value.isIdle()) {
+            abandon()
+            return AutoConnectOutcome.Stopped
+        }
         // The winner becomes "last picked", so Home shows what is connected (M10-C spec §3.1).
         settings.setActiveProfile(winner)
         request(winner)
@@ -344,6 +441,8 @@ internal constructor(
         active: LaunchCandidate?,
         measured: Set<Long>,
     ) {
+        // The auto-connect choice, if any, is over: leaving the screen no longer abandons anything.
+        deciding = false
         if (!snapshot.pingOnLaunch) return
         // Re-read: the Fastest run above can take seconds.
         if (tunnel.state.value.isStartSequenceBusy()) return
@@ -366,6 +465,8 @@ internal constructor(
 
     private fun request(id: Long) {
         chosen = id
+        delivered = null
+        deciding = false
         requests.trySend(id)
     }
 

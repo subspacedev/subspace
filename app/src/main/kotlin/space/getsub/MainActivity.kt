@@ -261,6 +261,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // Backgrounded, not rotated: an open auto-connect choice, or a request not yet shown,
+        // must not surface on a later return from Recents, which is not an open (M10-C spec §6).
+        // A rotation re-creates this screen with saved state and the choice carries on.
+        if (!isChangingConfigurations) launchAutomation.onScreenStopped()
         tunnelClient.unbind()
         super.onStop()
     }

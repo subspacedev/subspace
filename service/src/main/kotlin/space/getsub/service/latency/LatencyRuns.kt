@@ -96,6 +96,13 @@ internal constructor(
     private val runId = AtomicLong(0)
 
     /**
+     * The id of the latest run started, from any caller. Read right after a caller's own [start]
+     * and again later, it says whether another start has superseded that run since: auto-connect
+     * treats one as the user taking over (M10-C spec §3.1). [cancel] does not move it.
+     */
+    public val currentRun: Long get() = runId.get()
+
+    /**
      * Measures [profileIds], superseding any run already in flight.
      *
      * A single-server test is a one-element list: there is deliberately no separate path.

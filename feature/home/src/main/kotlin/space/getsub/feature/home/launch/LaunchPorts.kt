@@ -78,6 +78,12 @@ internal interface LaunchLatency {
         profileIds: Collection<Long>,
         timeoutMillis: Long,
     ): Boolean
+
+    /** See `LatencyRuns.currentRun`: moves on every start, from any caller. */
+    val currentRun: Long
+
+    /** Stops the current run; rows still testing return to idle. See `LatencyRuns.cancel`. */
+    fun cancel()
 }
 
 @Singleton
@@ -139,4 +145,8 @@ constructor(
         profileIds: Collection<Long>,
         timeoutMillis: Long,
     ): Boolean = runs.awaitDone(profileIds, timeoutMillis)
+
+    override val currentRun: Long get() = runs.currentRun
+
+    override fun cancel() = runs.cancel()
 }

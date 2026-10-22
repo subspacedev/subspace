@@ -24,6 +24,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Test
 import space.getsub.core.data.automation.LaunchCandidate
 import space.getsub.core.model.ConnectionState
+import space.getsub.core.model.FailureReason
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PingMode
@@ -110,13 +111,51 @@ class LaunchAutomationTest {
             for (state in busy) {
                 val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
                 h.tunnel.emit(state)
+                val seen = h.states()
                 h.automation.onFreshOpen()
                 advanceUntilIdle()
                 withClue(state::class.simpleName) {
                     h.requests.shouldBeEmpty()
                     h.latency.starts.shouldBeEmpty()
+                    seen shouldBe listOf<LaunchAutomationState>(LaunchAutomationState.Idle)
                 }
             }
+        }
+
+    @Test
+    fun fastestOpeningDuringAStartSequenceDoesNothing() =
+        runTest {
+            val starting =
+                listOf(
+                    ConnectionState.Reconnecting(FailureReason.entries.first(), attempt = 1, blocked = false),
+                    ConnectionState.Connecting(StartupStage.StartingCore),
+                )
+            for (state in starting) {
+                for (mode in listOf(AutoConnectMode.FastestOverall, AutoConnectMode.FastestInSubscription)) {
+                    val h = harness(settings(mode = mode, pingOnLaunch = true, metered = true), active = 1)
+                    h.tunnel.emit(state)
+                    val seen = h.states()
+                    h.automation.onFreshOpen()
+                    advanceUntilIdle()
+                    withClue("$mode during ${state::class.simpleName}") {
+                        h.requests.shouldBeEmpty()
+                        h.settings.writes.shouldBeEmpty()
+                        withClue("neither the Fastest run nor the launch test") { h.latency.starts.shouldBeEmpty() }
+                        seen shouldBe listOf<LaunchAutomationState>(LaunchAutomationState.Idle)
+                        h.automation.running.value shouldBe false
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun findingShowsOnceTheTunnelIsKnownIdle() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            val seen = h.states()
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            seen shouldBe listOf(LaunchAutomationState.Idle, LaunchAutomationState.Finding, LaunchAutomationState.Idle)
         }
 
     // ---- Fastest modes ---------------------------------------------------------------------
@@ -285,19 +324,59 @@ class LaunchAutomationTest {
         }
 
     @Test
-    fun foreignVpnWithNoActiveKeepsTheNoteAndStops() =
+    fun foreignVpnWithNoActiveSaysNothingConnectedAndStops() =
         runTest {
             val h =
                 harness(
-                    settings(mode = AutoConnectMode.FastestOverall),
+                    settings(mode = AutoConnectMode.FastestOverall, pingOnLaunch = true),
                     active = null,
                     answers = allFailed(LatencyOutcome.FOREIGN_VPN),
                 )
             h.automation.onFreshOpen()
             advanceUntilIdle()
 
-            h.automation.state.value shouldBe LaunchAutomationState.ForeignVpnFallback
+            h.automation.state.value shouldBe LaunchAutomationState.ForeignVpnNothingConnected
             h.requests.shouldBeEmpty()
+            h.latency.starts.size shouldBe 1
+            h.automation.onNoteShown()
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+        }
+
+    @Test
+    fun foreignVpnWithAnActiveServerThatCannotConnectSaysNothingConnected() =
+        runTest {
+            val list = servers.map { if (it.id == 3L) it.copy(connectable = false) else it }
+            val h =
+                harness(
+                    settings(mode = AutoConnectMode.FastestOverall),
+                    active = 3,
+                    list = list,
+                    answers = allFailed(LatencyOutcome.FOREIGN_VPN),
+                )
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+
+            h.automation.state.value shouldBe LaunchAutomationState.ForeignVpnNothingConnected
+            h.requests.shouldBeEmpty()
+        }
+
+    @Test
+    fun consentDeniedClearsTheForeignVpnNote() =
+        runTest {
+            val h =
+                harness(
+                    settings(mode = AutoConnectMode.FastestOverall),
+                    active = 3,
+                    answers = allFailed(LatencyOutcome.FOREIGN_VPN),
+                )
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            h.automation.state.value shouldBe LaunchAutomationState.ForeignVpnFallback
+
+            h.automation.onConsentDenied()
+            withClue("nothing connected, so a note saying it did must not stay") {
+                h.automation.state.value shouldBe LaunchAutomationState.Idle
+            }
         }
 
     @Test
@@ -353,16 +432,20 @@ class LaunchAutomationTest {
         runTest {
             val h = harness(settings(mode = AutoConnectMode.FastestOverall, timeoutSeconds = 5), active = 1)
             h.tunnel.bound.value = false
+            val seen = h.states()
             h.automation.onFreshOpen()
             runCurrent()
-            h.automation.state.value shouldBe LaunchAutomationState.Finding
+            h.automation.running.value shouldBe true
 
             advanceTimeBy(7_999)
-            h.automation.state.value shouldBe LaunchAutomationState.Finding
+            h.automation.running.value shouldBe true
             advanceTimeBy(2)
-            h.automation.state.value shouldBe LaunchAutomationState.Idle
+            h.automation.running.value shouldBe false
 
             advanceUntilIdle()
+            withClue("Finding is shown only once the tunnel is known to be idle") {
+                seen shouldBe listOf<LaunchAutomationState>(LaunchAutomationState.Idle)
+            }
             h.requests.shouldBeEmpty()
             h.settings.writes.shouldBeEmpty()
             h.latency.starts.shouldBeEmpty()
@@ -403,6 +486,23 @@ class LaunchAutomationTest {
         }
 
     @Test
+    fun consentGrantedWhileUnboundWaitsForTheBind() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.LastPicked, timeoutSeconds = 5), active = 1)
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            // As after an onStart rebind: bind() drops `bound` at once, the handshake lands later.
+            h.tunnel.bound.value = false
+            h.automation.onConsentGranted()
+            advanceTimeBy(2_000)
+            h.tunnel.connected.shouldBeEmpty()
+
+            h.tunnel.bound.value = true
+            runCurrent()
+            h.tunnel.connected shouldBe listOf(1L)
+        }
+
+    @Test
     fun consentGrantedBeforeBindConnectsNothing() =
         runTest {
             val h = harness(settings(mode = AutoConnectMode.LastPicked), active = 1)
@@ -423,10 +523,47 @@ class LaunchAutomationTest {
             runCurrent()
             h.automation.state.value shouldBe LaunchAutomationState.Finding
 
+            var requestsAtCancel: Int? = null
+            h.latency.onCancel = { requestsAtCancel = h.requests.size }
             advanceUntilIdle()
             h.requestTimes shouldBe listOf(5_000L + 3_000L)
             h.settings.writes.shouldBeEmpty()
             h.automation.state.value shouldBe LaunchAutomationState.Idle
+            withClue("the cut-short run is cancelled, once, before the fallback's request (M10-C spec §4)") {
+                h.latency.cancels shouldBe 1
+                requestsAtCancel shouldBe 0
+                h.latency.testing.value shouldBe emptySet()
+            }
+        }
+
+    @Test
+    fun aRunThatFinishesInTimeIsNotCancelled() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            h.requests.size shouldBe 1
+            h.latency.cancels shouldBe 0
+        }
+
+    @Test
+    fun aRunCutShortWithNoWinnerAndNoActiveIsCancelledBeforeTheLaunchTest() =
+        runTest {
+            val h =
+                harness(
+                    settings(mode = AutoConnectMode.FastestOverall, pingOnLaunch = true),
+                    active = null,
+                )
+            h.latency.finishes = false
+            var startsAtCancel: Int? = null
+            h.latency.onCancel = { startsAtCancel = h.latency.starts.size }
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+
+            h.automation.state.value shouldBe LaunchAutomationState.NoServerAnswered
+            h.latency.cancels shouldBe 1
+            withClue("cancelled before the launch test starts, not superseded by it") { startsAtCancel shouldBe 1 }
+            h.latency.starts.size shouldBe 2
         }
 
     // ---- taking over -----------------------------------------------------------------------
@@ -485,6 +622,143 @@ class LaunchAutomationTest {
             h.automation.state.value shouldBe LaunchAutomationState.Idle
             h.settings.writes.shouldBeEmpty()
             h.requests.shouldBeEmpty()
+        }
+
+    @Test
+    fun aLatencyTestTheUserStartsDuringTheChoiceAbandonsIt() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall, pingOnLaunch = true), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+            h.latency.deliver(2)
+
+            // Servers' Test all, a row's test or Home's tile: the user taking over (Ruling E).
+            h.latency.userStarts(listOf(4L))
+            advanceUntilIdle()
+
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+            withClue("no pick from the cut-short set") {
+                h.settings.writes.shouldBeEmpty()
+                h.requests.shouldBeEmpty()
+            }
+            withClue("the user's run is left alone: not cancelled, not superseded by a launch test") {
+                h.latency.cancels shouldBe 0
+                h.latency.starts.size shouldBe 2
+                h.latency.testing.value shouldBe setOf(4L)
+            }
+            h.automation.running.value shouldBe false
+        }
+
+    @Test
+    fun aSessionStartedDuringTheChoiceIsNotOverwritten() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+
+            // The Quick Settings tile or Always-on: no onUserTookOver reaches the automation.
+            h.tunnel.emit(ConnectionState.Connecting(StartupStage.StartingCore))
+            h.latency.finishNow()
+            advanceUntilIdle()
+
+            withClue("a live session must not be hot-switched onto the winner") {
+                h.settings.writes.shouldBeEmpty()
+                h.settings.active.value shouldBe 1L
+            }
+            h.requests.shouldBeEmpty()
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+        }
+
+    @Test
+    fun theScreenStoppingDuringFindingAbandonsTheChoice() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+            h.automation.state.value shouldBe LaunchAutomationState.Finding
+
+            h.automation.onScreenStopped()
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+            h.latency.finishNow()
+            advanceUntilIdle()
+            h.settings.writes.shouldBeEmpty()
+            h.requests.shouldBeEmpty()
+        }
+
+    @Test
+    fun theScreenStoppingDuringTheBindWaitAbandonsTheChoice() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.LastPicked), active = 1)
+            h.tunnel.bound.value = false
+            h.automation.onFreshOpen()
+            runCurrent()
+
+            h.automation.onScreenStopped()
+            h.tunnel.bound.value = true
+            advanceUntilIdle()
+            h.requests.shouldBeEmpty()
+        }
+
+    @Test
+    fun theScreenStoppingDropsARequestNotYetDelivered() =
+        runTest {
+            // Built by hand: no collector, as while the activity is in the background.
+            val tunnel = FakeTunnel()
+            val automation =
+                LaunchAutomation(
+                    scope = this,
+                    settings = FakeSettings(settings(mode = AutoConnectMode.LastPicked), initialActive = 2),
+                    servers = FakeServers(servers),
+                    latency = FakeLatency(answers),
+                    tunnel = tunnel,
+                    network = FakeNetwork(NetworkKind.Other),
+                )
+            automation.onFreshOpen()
+            advanceUntilIdle()
+            automation.onScreenStopped()
+
+            // A later return from Recents starts collecting again.
+            val delivered = mutableListOf<Unit>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                automation.connectRequests.collect { delivered += it }
+            }
+            runCurrent()
+            delivered.shouldBeEmpty()
+            automation.onConsentGranted()
+            advanceUntilIdle()
+            tunnel.connected.shouldBeEmpty()
+        }
+
+    @Test
+    fun theScreenStoppingKeepsARequestAlreadyDelivered() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.LastPicked), active = 1)
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            h.requests.size shouldBe 1
+
+            // The consent dialog is up, or about to be: its answer still counts.
+            h.automation.onScreenStopped()
+            h.automation.onConsentGranted()
+            advanceUntilIdle()
+            h.tunnel.connected shouldBe listOf(1L)
+        }
+
+    @Test
+    fun theScreenStoppingLeavesTheLaunchTestAlone() =
+        runTest {
+            val h = harness(settings(autoConnect = false, pingOnLaunch = true), active = 1)
+            h.tunnel.bound.value = false
+            h.automation.onFreshOpen()
+            runCurrent()
+
+            h.automation.onScreenStopped()
+            h.tunnel.bound.value = true
+            advanceUntilIdle()
+            h.latency.starts.size shouldBe 1
         }
 
     @Test
@@ -765,6 +1039,8 @@ class LaunchAutomationTest {
         val network: FakeNetwork,
         val requests: List<Unit>,
         val requestTimes: List<Long>,
+        /** Every state the automation passes through from the call on, starting with the current one. */
+        val states: () -> List<LaunchAutomationState>,
     )
 
     private fun TestScope.harness(
@@ -797,7 +1073,12 @@ class LaunchAutomationTest {
                 times += currentTime
             }
         }
-        return Harness(automation, settings, latency, tunnel, net, requests, times)
+        val states = {
+            val seen = mutableListOf<LaunchAutomationState>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { automation.state.collect { seen += it } }
+            seen
+        }
+        return Harness(automation, settings, latency, tunnel, net, requests, times, states)
     }
 
     private class FakeSettings(
@@ -881,12 +1162,38 @@ class LaunchAutomationTest {
             starts += profileIds
             this.modes += modes
             onStart?.invoke()
+            // As LatencyRuns: every start moves the run id and supersedes the run in flight, whose
+            // rows are released and whose later results no longer reach its hook.
+            currentRun++
+            testing.value = emptySet()
+            this.onResult = null
             // TunnelClient reports a refused run finished at once, so no row is left testing.
             if (!startReturns) return false
             this.onResult = onResult
-            testing.value = testing.value + profileIds
+            testing.value = profileIds.toSet()
             if (finishes) finishNow()
             return true
+        }
+
+        /** Another caller (Servers' Test all, a row, Home's tile) starting its own run. */
+        suspend fun userStarts(profileIds: List<Long>) {
+            val keep = finishes
+            finishes = false
+            start(profileIds, emptyMap())
+            finishes = keep
+        }
+
+        override var currentRun = 0L
+
+        var cancels = 0
+
+        /** Runs as cancel is called. */
+        var onCancel: (() -> Unit)? = null
+
+        override fun cancel() {
+            cancels++
+            onCancel?.invoke()
+            testing.value = emptySet()
         }
 
         override suspend fun awaitDone(
