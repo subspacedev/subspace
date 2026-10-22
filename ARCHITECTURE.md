@@ -2361,17 +2361,23 @@ your DNS setting"* while the profile's routing rules still apply.
 
 ### A.3.2 Subscription metadata surface
 
-- [ ] `profile-title` — display name, plain or base64, max 25 chars
-- [ ] `subscription-userinfo` — `upload`, `download`, `total`, `expire` in
+- [x] `profile-title` — display name, plain or base64, max 25 chars
+- [x] `subscription-userinfo` — `upload`, `download`, `total`, `expire` in
       one semicolon-separated header. Drives the traffic/expiry status bar.
-- [ ] `announce` / `sub-info-*` — provider announcements with optional
-      button and link, colors, max 200 chars
-- [ ] `sub-expire` — automatic "expires in N days" notice, shown from 3 days
-      out; expiry message takes priority over the info block
-- [ ] `support-url`, `profile-web-page-url` — support and account buttons
-- [ ] `serverDescription` — per-server caption, base64, appended after
-      `title` with a `?` separator in the share link, max 30 chars
-- [ ] Flag emoji rendering from server names
+- [x] `announce` / `sub-info-*` — provider announcements with optional
+      button and link, colors, max 200 chars. **`sub-info-color` is
+      deliberately ignored:** the banner uses theme colours, so a provider
+      cannot paint over the app's contrast (M10-B spec §3.1).
+- [x] `sub-expire` — automatic "expires in N days" notice, shown from 3 days
+      out; expiry message takes priority over the info block. Delivered from
+      `subscription-userinfo` alone: the `sub-expire` header is **not needed**
+      and is not read. The red notice shows within 3 calendar days of expiry
+      and hides the info banner (M10-B spec §3.1).
+- [x] `support-url`, `profile-web-page-url` — support and account buttons
+      (tap-only, `https`/`http` only)
+- [x] `serverDescription` — per-server caption, base64, appended to
+      the link's fragment as `title?serverDescription=<base64>`, max 30 chars
+- [x] Flag emoji rendering from server names
 
 ### A.3.3 Censorship-resistance features
 
@@ -2405,9 +2411,13 @@ above cosmetic parity:
       DoH server before connecting, pick the lowest-latency IP
       — M9-C: implemented (user switch, or the provider's resolver after consent); verified on
       device before ticking.
-- [ ] **User-Agent override** for subscription fetch and for geo file
-      downloads (`safari-mac`, `chrome-win`, `chrome-android`, ...)
-- [ ] **Configurable request timeout** (Happ: 5–15s, default 9)
+- [x] **User-Agent override** for subscription fetch (per subscription, free
+      text) — M10-B spec §3.5.
+- [ ] User-Agent override for geo file downloads (`user-agent-geo-files` is
+      accepted but not yet read).
+- [x] **Configurable request timeout** (Happ: 5–15s, default 9) — both now
+      sit under "Sent to the provider" in the subscription details (M10-B
+      spec §3.5).
 - [ ] Consider exposing Xray's **Finalmask** (§6) — decided in §14.6: fragment
       and noise only, as above; the server-paired masks pass through
 
@@ -2476,7 +2486,7 @@ authoritative version.
 Headers sent on the subscription request:
 
 ```
-x-hwid:          <stable unique device identifier>   REQUIRED
+x-hwid:          <per-subscription random identifier>  needed when the provider limits devices
 x-device-os:     Android                              optional
 x-ver-os:        14                                   optional
 x-device-model:  Pixel 8                              optional
@@ -2484,28 +2494,49 @@ x-app-version:   <version>                            optional
 user-agent:      <see A.4.2>
 ```
 
-Only `x-hwid` is required; the rest exist so the provider's device list is
-human-readable in the panel.
+`x-hwid` is what a device limit needs; the four device headers exist so the
+provider's device list is human-readable in the panel. Each of the five has its
+own switch per subscription, and each device header can be overridden with a
+literal (M10-B spec §3.5).
 
 Requirements:
 
-- [ ] Generate a **stable, app-scoped** HWID. Never a hardware serial, IMEI,
-      MAC, or advertising ID. On Android, `Settings.Secure.ANDROID_ID` is the
-      right primitive: it is scoped to app-signing-key + user + device, and
-      it **survives reinstall**. A freshly-generated UUID persisted to disk
-      does not survive reinstall, which silently burns a slot from the
-      user's device limit every time they reinstall — a support nightmare.
-      Hash the value before sending so the raw platform ID never leaves the
-      device. The panel accepts only `/^[a-zA-Z0-9=-]{10,64}$/`: standard
-      base64's `+` and `/`, and base64url's `_`, are therefore not valid wire
-      encodings even though they are common hash renderings.
-- [ ] Send it by default. Happ sends by default; Throne ships it as a
-      toggle disabled by default and consequently breaks against
-      limit-enabled providers out of the box.
-- [ ] Expose a user-visible toggle anyway (see §A.5), with a clear
-      explanation that disabling it will break some subscriptions.
-- [ ] Show the user their own HWID somewhere in settings. Providers ask for
-      it during support, and it is their identifier.
+- [x] The HWID is **per subscription**: a random 32-character value from
+      `[A-Za-z0-9]`, drawn with `SecureRandom` and stored with the
+      subscription. It is never derived from a platform identifier and never
+      regenerated except by the user's "new random ID" (M10-B spec §3.5). The
+      panel accepts only `/^[a-zA-Z0-9=-]{10,64}$/`: standard base64's `+` and
+      `/`, and base64url's `_`, are therefore not valid wire encodings. A
+      user-typed value is trimmed and checked against that rule before it can
+      be saved.
+- [x] **The reinstall cost is accepted.** A random value stored in the app's
+      database does not survive reinstall, so reinstalling burns one slot of
+      the user's device limit. An `ANDROID_ID`-derived hash would survive, but
+      it is one identifier shared by every subscription and every provider, and
+      a fresh per-subscription value is the better trade. The remedy is the
+      editable field: the add screen pre-fills "Device ID (HWID)" and a user at
+      their limit pastes the ID from a previous install before the first fetch.
+      The add flow generates the value once per URL, so retries of a failed
+      first fetch do not each use up a slot.
+- [x] **Migration keeps what is sent today.** Existing subscriptions get the
+      HWID they already send (the former derived hash) copied into their own
+      row, and the former single global HWID switch is folded into every
+      subscription: if it was off, every subscription starts with its own
+      switch off. Nobody's device slot changes on upgrade (Room 8 to 9).
+- [x] **Switches are per subscription**, replacing the global default-on
+      toggle. Switching the HWID off is allowed and the UI says it will break
+      subscriptions that enforce a device limit. Throne's default-off was the
+      failure to avoid, and new subscriptions send by default.
+- [x] **Device-header rule.** A device header either follows this device (so a
+      later OS or app update sends the new value) or carries a literal the user
+      typed. A literal is printable ASCII, no CR/LF, 1..128 characters, because
+      OkHttp throws on anything else. A device-derived value that breaks the
+      rule (`Build.MODEL` can be non-ASCII) is sanitised, not sent raw, and
+      omitted when nothing is left; the UI says so (M10-B spec §3.5).
+- [x] Each subscription's details screen shows its own HWID, which is what a
+      provider asks for in support. The device-wide Device ID settings page is
+      gone.
+- Never a hardware serial, IMEI, MAC, or advertising ID as the source.
 
 **Response headers (Remnawave panel v2.7.5+).** Parse these and turn them
 into distinct, actionable UI states rather than a generic fetch failure:
@@ -2551,7 +2582,7 @@ client. An unrecognized UA can therefore yield the wrong format entirely —
 a JSON array where the client expected a base64 line list, or vice versa.
 
 - [ ] Send a well-formed, versioned UA: `<AppName>/<version>`
-- [ ] Make the UA overridable per-subscription (Happ exposes
+- [x] Make the UA overridable per-subscription (Happ exposes
       `change-user-agent` for exactly this reason)
 - [ ] The parser must not assume a format from the UA it sent. Sniff the
       actual response body: base64 blob, plain line list, JSON, or YAML.

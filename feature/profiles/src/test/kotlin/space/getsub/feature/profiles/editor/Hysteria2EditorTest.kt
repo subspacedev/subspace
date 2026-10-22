@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -38,6 +39,9 @@ import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 
@@ -104,7 +108,10 @@ class Hysteria2EditorTest {
         ): Flow<List<ProfileGroup>> = MutableStateFlow(listOf(ProfileGroup(10L, "Local configs", emptyList())))
 
         override val activeProfileId: StateFlow<Long?> = MutableStateFlow<Long?>(null).asStateFlow()
-        override val globalHwidEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = flowOf(null)
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> = emptyMap()
+        override suspend fun setHwid(id: Long, hwid: String) = Unit
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) = Unit
         override val routingOverridesPassthrough: Flow<Boolean> = MutableStateFlow(false).asStateFlow()
 
         override suspend fun setActiveProfile(id: Long?) = Unit
@@ -148,6 +155,7 @@ class Hysteria2EditorTest {
         override suspend fun addSubscription(
             url: String,
             name: String,
+            hwid: String,
         ) = AddedSubscription(0L, created = true)
 
         override suspend fun syncSubscription(id: Long): SyncResult = SyncResult.Synced(0, 0, 0, 0, 0)

@@ -18,6 +18,8 @@ import space.getsub.core.data.AddedSubscription
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SubscriptionSyncer
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.HwidResult
 import space.getsub.core.parser.ParseFailure
 import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.SubscriptionParser
@@ -210,9 +212,42 @@ internal data class ImportState(
     val failures: List<ParseFailure> = emptyList(),
     val fileReadFailed: Boolean = false,
     val subscriptionResult: UserMessage? = null,
+    val subscriptionHwid: String = "",
+    val subscriptionHwidError: Boolean = false,
+    /** The box holds a subscription URL that is already stored, so its own HWID is the one in use. */
+    val subscriptionAlreadyAdded: Boolean = false,
 ) {
+    /**
+     * The HWID field shows only once the box holds one recognised subscription URL (M10-B spec §3.5):
+     * for a share link or a config there is no provider to identify the device to. A URL that is
+     * already stored keeps its own HWID, so the field would be ignored; it is replaced by a hint.
+     */
+    val showsSubscriptionHwid: Boolean
+        get() = routeImport(input) is ImportRoute.Subscription && !subscriptionAlreadyAdded
+
+    /** See [subscriptionAlreadyAdded]: the hint that stands in for the HWID field. */
+    val showsAlreadyAddedHint: Boolean
+        get() = routeImport(input) is ImportRoute.Subscription && subscriptionAlreadyAdded
+
+    /** A fresh attempt: the previous outcome goes, the typed text and the HWID field stay. */
+    fun restarted(): ImportState =
+        ImportState(
+            input = input,
+            busy = true,
+            subscriptionHwid = subscriptionHwid,
+            subscriptionAlreadyAdded = subscriptionAlreadyAdded,
+        )
+
     /** What was attempted, for the "of N" half of the summary — always [parsed], never [imported]. */
     val total: Int get() = parsed + failures.size
+
+    // ARCHITECTURE.md §5.6: the pasted text is config content and the HWID is an identifier, so
+    // neither reaches a log through a data class's generated toString.
+    override fun toString(): String =
+        "ImportState(input=<redacted>, busy=$busy, completed=$completed, imported=$imported, parsed=$parsed, " +
+            "failures=${failures.size}, fileReadFailed=$fileReadFailed, subscriptionResult=$subscriptionResult, " +
+            "subscriptionHwid=<redacted>, subscriptionHwidError=$subscriptionHwidError, " +
+            "subscriptionAlreadyAdded=$subscriptionAlreadyAdded)"
 }
 
 @HiltViewModel
@@ -223,13 +258,79 @@ constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
+
+    /**
+     * The HWID generated for each subscription URL, keyed by the trimmed plain URL, so every retry of
+     * a failed first fetch sends the same one (M10-B spec §3.5). Held here and not in the new row:
+     * [addSubscription] deletes that row when the first sync fails, and a provider that already
+     * counted this device would then see a second one on the next attempt. In memory only: it has to
+     * outlive a failed attempt, not the process.
+     */
+    private val generatedHwids = mutableMapOf<String, String>()
+
+    /**
+     * What the user typed into the HWID field, per URL key. Editing the URL through a state that is
+     * not a subscription URL clears the field, and getting back to the same URL must not replace
+     * what they typed with a generated value.
+     */
+    private val typedHwids = mutableMapOf<String, String>()
+
+    /** Plain URLs of the stored subscriptions; a URL in here keeps its own HWID (see [addSubscription]). */
+    private var storedUrls: Set<String> = emptySet()
+
+    init {
+        viewModelScope.launch {
+            profileSource.observeSubscriptions().collect { subscriptions ->
+                storedUrls = subscriptions.mapTo(mutableSetOf()) { it.url }
+                _state.update { it.copy(subscriptionAlreadyAdded = isStored(it.input)) }
+            }
+        }
+    }
+
+    private fun isStored(input: String): Boolean {
+        val route = routeImport(input) as? ImportRoute.Subscription ?: return false
+        return hwidKey(route.url) in storedUrls
+    }
+
+    /** The key the HWID field's current text belongs to, `null` while the field is not shown. */
+    private var hwidFieldKey: String? = null
     private var nextFileReadOwner = 0L
     private var activeFileReadOwner: Long? = null
 
     /** The paste field's `onValueChange` — see [ImportState.input]'s own KDoc. */
     fun onInputChanged(text: String) {
-        _state.update { it.copy(input = text) }
+        val key = (routeImport(text) as? ImportRoute.Subscription)?.let { hwidKey(it.url) }
+        val previousKey = hwidFieldKey
+        hwidFieldKey = key
+        _state.update {
+            when {
+                key == null ->
+                    it.copy(
+                        input = text,
+                        subscriptionHwid = "",
+                        subscriptionHwidError = false,
+                        subscriptionAlreadyAdded = false,
+                    )
+                // Same URL (a whitespace or `#fragment` edit): keep whatever the user did to the field.
+                key == previousKey -> it.copy(input = text)
+                else ->
+                    it.copy(
+                        input = text,
+                        subscriptionHwid = typedHwids[key] ?: generatedHwidFor(key),
+                        subscriptionHwidError = false,
+                        subscriptionAlreadyAdded = key in storedUrls,
+                    )
+            }
+        }
     }
+
+    /** The HWID field's `onValueChange`. Validation waits for the add; typing only clears the error. */
+    fun onSubscriptionHwidChanged(text: String) {
+        hwidFieldKey?.let { typedHwids[it] = text }
+        _state.update { it.copy(subscriptionHwid = text, subscriptionHwidError = false) }
+    }
+
+    private fun generatedHwidFor(key: String): String = generatedHwids.getOrPut(key) { Hwid.random() }
 
     /**
      * [AddServerSheet]'s "Import from file" flow calls this before reading
@@ -241,7 +342,7 @@ constructor(
     fun beginFileRead(): Long {
         val owner = ++nextFileReadOwner
         activeFileReadOwner = owner
-        _state.update { ImportState(input = it.input, busy = true) }
+        _state.update { it.restarted() }
         return owner
     }
 
@@ -312,7 +413,7 @@ constructor(
         if (fileReadOwner != null && activeFileReadOwner != fileReadOwner) return false
         activeFileReadOwner = null
         viewModelScope.launch {
-            _state.update { ImportState(input = it.input, busy = true) }
+            _state.update { it.restarted() }
 
             // ARCHITECTURE.md §5.3: the whole pass — a SHA-256 plus regex validation per
             // entry, a YAML document parse per Clash entry — must not run on
@@ -337,7 +438,7 @@ constructor(
                 }
 
             _state.update { current ->
-                ImportState(
+                current.restarted().copy(
                     // Fix round 1, finding 3: clear the pasted secret material
                     // once it has actually landed a profile — a fully-failed
                     // attempt keeps it so the user can see and fix what they
@@ -388,10 +489,27 @@ constructor(
     fun addSubscription(url: String) {
         if (!isSubscriptionUrl(url)) return
 
-        viewModelScope.launch {
-            _state.update { ImportState(input = it.input, busy = true) }
+        // The field's text is this URL's HWID only while the field is showing this URL. A URL that
+        // arrives some other way (a scanned QR code, a test) never had a field, so its generated one
+        // is used.
+        val key = hwidKey(url)
+        // A stored URL keeps its own HWID and `add` ignores this one, so the field is hidden and
+        // cannot block the re-sync with a validation error for a value that will not be used.
+        val hwid =
+            if (hwidFieldKey == key && key !in storedUrls) {
+                (Hwid.validate(_state.value.subscriptionHwid) as? HwidResult.Valid)?.value
+                    ?: run {
+                        _state.update { it.copy(subscriptionHwidError = true) }
+                        return
+                    }
+            } else {
+                generatedHwidFor(key)
+            }
 
-            val added = profileSource.addSubscription(url = url, name = subscriptionHostName(url))
+        viewModelScope.launch {
+            _state.update { it.restarted() }
+
+            val added = profileSource.addSubscription(url = url, name = subscriptionHostName(url), hwid = hwid)
             val result = profileSource.syncSubscription(added.id)
 
             if (result !is SyncResult.Synced && added.created) {
@@ -401,9 +519,17 @@ constructor(
             // Mirrors the parse leg: clear the box once the subscription has landed (a URL can carry
             // a token, and a second tap would silently re-sync); keep it on any failure. Only when
             // the box holds this URL: a QR or clipboard URL must not wipe unrelated typed text.
+            val landed = result is SyncResult.Synced
+            if (landed) {
+                generatedHwids.remove(key)
+                typedHwids.remove(key)
+            }
+            val clearsBox = landed && _state.value.input.trim() == url.trim()
+            if (clearsBox) hwidFieldKey = null
             _state.update {
                 it.copy(
-                    input = if (result is SyncResult.Synced && it.input.trim() == url.trim()) "" else it.input,
+                    input = if (clearsBox) "" else it.input,
+                    subscriptionHwid = if (clearsBox) "" else it.subscriptionHwid,
                     busy = false,
                     subscriptionResult = result.toUserMessage(),
                 )
@@ -411,6 +537,9 @@ constructor(
         }
     }
 }
+
+/** The per-URL key for a generated HWID: the trimmed plain URL, so a `#title` tail does not mint a second one. */
+private fun hwidKey(url: String): String = SubscriptionLink.parse(url.trim()).plainUrl
 
 /**
  * The group name shown until the provider's own `profile-title` (if any)

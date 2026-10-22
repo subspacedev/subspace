@@ -43,12 +43,6 @@ internal fun perAppText(state: SettingsState): String =
     }
 
 @Composable
-internal fun deviceIdText(state: SettingsState): String =
-    stringResource(
-        if (state.deviceIdValue()) R.string.settings_hub_device_id_sent else R.string.settings_hub_device_id_not_sent,
-    )
-
-@Composable
 internal fun latencyText(state: SettingsState): String {
     val (mode, timeout) = state.latencyValue()
     return stringResource(R.string.settings_hub_latency, stringResource(mode.labelRes()), timeout)

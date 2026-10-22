@@ -29,6 +29,8 @@ public data class Profile(
     val name: String,
     val outbound: Outbound,
     val rawJson: String? = null,
+    /** The provider's per-server caption (Happ `serverDescription`, M10-B spec §2), or null. */
+    val caption: String? = null,
 )
 
 /**

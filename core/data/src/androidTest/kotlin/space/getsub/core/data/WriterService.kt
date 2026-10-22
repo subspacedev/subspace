@@ -30,6 +30,12 @@ internal const val WRITER_PID_KEY = "test.writer.pid"
 internal const val WRITER_PROCESS_KEY = "test.writer.process"
 
 /**
+ * The legacy HWID test databases are opened with. Only the 8 to 9 migration reads it, and these
+ * databases are created at the current version, so its value never reaches a row.
+ */
+internal const val TEST_LEGACY_HWID = "TestLegacyHwid0123456789"
+
+/**
  * The name of the process this code is executing in.
  *
  * `Application.getProcessName()` only exists from API 28 and this module's `minSdk` is 26, so the
@@ -71,7 +77,7 @@ class WriterService : Service() {
      */
     override fun onBind(intent: Intent): IBinder {
         val name = intent.getStringExtra(EXTRA_DATABASE_NAME) ?: DEFAULT_DATABASE_NAME
-        val db = subspaceDatabase(applicationContext, name)
+        val db = subspaceDatabase(applicationContext, { TEST_LEGACY_HWID }, name)
         database = db
         Thread({ write(db) }, "subspace-writer").start()
         return Binder()

@@ -17,7 +17,7 @@ import space.getsub.core.data.db.SubscriptionDirectiveEntity
 import space.getsub.core.data.db.SubspaceDatabase
 import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ExcludedRoutes
-import space.getsub.core.network.HwidProvider
+import space.getsub.core.model.identity.Hwid
 import java.io.File
 
 @RunWith(AndroidJUnit4::class)
@@ -35,7 +35,7 @@ class SubscriptionRepositoryRouteTrustTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         db = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
         val profiles = ProfileRepository(db.profileDao())
-        val settings = SettingsRepository(db.settingDao(), HwidProvider { "h" })
+        val settings = SettingsRepository(db.settingDao())
         root = File(context.cacheDir, "sub-route-${System.nanoTime()}").apply { mkdirs() }
         val deletion =
             RoutingProfileDeletion(
@@ -66,7 +66,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun noDirectiveOffersNothing() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
 
         val status = repo.routeExclusionStatus(id).first()
 
@@ -77,7 +77,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun aNewListIsUnaskedAndOffersEveryParsedRange() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.20.1.2/12,192.168.1.5")
 
         val status = repo.routeExclusionStatus(id).first()
@@ -89,7 +89,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun allowingBindsToTheFingerprintAndAChangedListAsksAgain() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.16.0.0/12,192.168.1.5")
         val asked = repo.routeExclusionStatus(id).first()
         repo.setRouteExclusionTrust(id, RouteExclusionTrust.Allowed, checkNotNull(asked.fingerprint))
@@ -104,7 +104,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun theSameListReorderedStaysAllowed() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.16.0.0/12,192.168.1.5")
         repo.setRouteExclusionTrust(
             id,
@@ -121,7 +121,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun aDenialAlsoHoldsUntilTheListChanges() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.16.0.0/12")
         repo.setRouteExclusionTrust(
             id,
@@ -137,7 +137,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun theSetVariantReplacesTheList() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.16.0.0/12", "exclude-routes-set" to "2001:db8::/32")
 
         val status = repo.routeExclusionStatus(id).first()
@@ -148,7 +148,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun aTooWideRangeIsOfferedButLeftOutOfWhatIsApproved() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "0.0.0.0/0,172.16.0.0/12")
 
         val status = repo.routeExclusionStatus(id).first()
@@ -166,7 +166,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun onlyTooWideRangesLeaveNothingToApprove() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "::/0")
 
         val status = repo.routeExclusionStatus(id).first()
@@ -177,7 +177,7 @@ class SubscriptionRepositoryRouteTrustTest {
 
     @Test
     fun anUnparseableListOffersNothing() = runTest {
-        val id = repo.add("https://a.example/s", name = "a").id
+        val id = repo.add("https://a.example/s", name = "a", hwid = Hwid.random()).id
         send(id, "exclude-routes" to "172.16.0.0/12,not-a-range")
 
         val status = repo.routeExclusionStatus(id).first()

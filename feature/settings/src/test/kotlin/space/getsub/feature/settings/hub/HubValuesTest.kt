@@ -62,19 +62,16 @@ class HubValuesTest {
     }
 
     @Test
-    fun `appearance device id latency and dns read their fields`() {
+    fun `appearance latency and dns read their fields`() {
         val s =
             base.copy(
                 theme = ThemePreference.Dark,
-                hwidEnabled = false,
                 pingMode = PingMode.PROXY_HEAD,
                 pingTimeoutSeconds = 7,
                 dnsTransport = DnsTransport.DOU,
                 dnsAddress = "1.1.1.1",
             )
         s.appearanceValue() shouldBe ThemePreference.Dark
-        s.deviceIdValue() shouldBe false
-        base.deviceIdValue() shouldBe true
         s.latencyValue() shouldBe (PingMode.PROXY_HEAD to 7)
         s.dnsValue() shouldBe (DnsTransport.DOU to "1.1.1.1")
     }

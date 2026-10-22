@@ -9,6 +9,10 @@ import org.junit.Test
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.subscription.Expiry
+import space.getsub.core.model.subscription.LinkButton
+import space.getsub.core.model.subscription.SubscriptionInfo
+import space.getsub.core.model.subscription.Usage
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 
@@ -208,6 +212,82 @@ class ServersSnapshotTest {
                 )
             },
         )
+
+    @Suppress("LongParameterList")
+    private fun info(
+        usage: Usage? = null,
+        expiry: Expiry? = null,
+        announce: String? = null,
+        infoText: String? = null,
+        infoButton: LinkButton? = null,
+        renewLink: String? = null,
+        supportLink: String? = null,
+        accountLink: String? = null,
+    ) = SubscriptionInfo(
+        title = null,
+        refreshHours = 12,
+        usage = usage,
+        expiry = expiry,
+        announce = announce,
+        infoText = infoText,
+        infoButton = infoButton,
+        renewLink = renewLink,
+        supportLink = supportLink,
+        accountLink = accountLink,
+    )
+
+    /** One collapsed subscription card carrying [info], so the shot is the card header alone. */
+    private fun cardWith(info: SubscriptionInfo?): ServersState =
+        populated().let { s ->
+            // The legacy byte counters are cleared so the usage line comes from [info] alone.
+            s.copy(groups = listOf(s.groups[0].copy(info = info, quotaUsedBytes = null, quotaTotalBytes = null)))
+        }
+
+    @Test
+    fun cardUnlimitedWithAnnouncementAndLinks() =
+        shoot(
+            "servers-card-unlimited",
+            cardWith(
+                info(
+                    usage = Usage.Unlimited(usedBytes = 2_934_000_000_000L),
+                    expiry = Expiry.None,
+                    announce = "Maintenance on Sunday.\nExpect a short break.",
+                    supportLink = "https://example.com/support",
+                    accountLink = "https://example.com/account",
+                ),
+            ),
+        )
+
+    @Test
+    fun cardExpiringSoonHidesTheInfoBanner() =
+        shoot(
+            "servers-card-expiring",
+            cardWith(
+                info(
+                    usage = Usage.Limited(usedBytes = 38_000_000_000L, totalBytes = 100_000_000_000L),
+                    expiry = Expiry.On(java.time.LocalDate.of(2026, 11, 14), daysLeft = 2),
+                    infoText = "Renew now for a discount",
+                    renewLink = "https://example.com/renew",
+                ),
+            ),
+        )
+
+    @Test
+    fun cardExpiringLaterShowsTheInfoBannerAndButton() =
+        shoot(
+            "servers-card-info-banner",
+            cardWith(
+                info(
+                    usage = Usage.Limited(usedBytes = 38_000_000_000L, totalBytes = 100_000_000_000L),
+                    expiry = Expiry.On(java.time.LocalDate.of(2026, 11, 14), daysLeft = 10),
+                    infoText = "New servers added this week",
+                    infoButton = LinkButton("See what is new", "https://example.com/news"),
+                ),
+            ),
+        )
+
+    @Test
+    fun cardWithoutUserinfoIsTodaysCard() = shoot("servers-card-no-userinfo", cardWith(info()))
 
     private companion object {
         const val DROPPED_AT = 1_700_000_000_000L

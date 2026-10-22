@@ -22,7 +22,7 @@ class PerAppRepositoryTest {
     fun setUp() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         db = Room.inMemoryDatabaseBuilder(context, SubspaceDatabase::class.java).build()
-        repository = PerAppRepository(SettingsRepository(db.settingDao()) { "test-hwid" })
+        repository = PerAppRepository(SettingsRepository(db.settingDao()))
     }
 
     @After

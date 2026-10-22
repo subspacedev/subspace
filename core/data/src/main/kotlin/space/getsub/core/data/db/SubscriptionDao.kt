@@ -88,6 +88,27 @@ internal interface SubscriptionDao {
         enabled: Boolean,
     )
 
+    /** The row for [id] as it changes; null once it is deleted. */
+    @Query("SELECT * FROM subscriptions WHERE id = :id")
+    fun observeSubscription(id: Long): Flow<SubscriptionEntity?>
+
+    // M10-B spec §3.5: the user-owned identity columns. Each write touches only its own columns, for
+    // the same reason as setHwidEnabled: a sync landing mid-edit must not be clobbered, nor clobber it.
+    @Query("UPDATE subscriptions SET hwid = :hwid WHERE id = :id")
+    suspend fun setHwid(id: Long, hwid: String)
+
+    @Query("UPDATE subscriptions SET deviceOsEnabled = :enabled, deviceOsLiteral = :literal WHERE id = :id")
+    suspend fun setDeviceOsHeader(id: Long, enabled: Boolean, literal: String?)
+
+    @Query("UPDATE subscriptions SET osVersionEnabled = :enabled, osVersionLiteral = :literal WHERE id = :id")
+    suspend fun setOsVersionHeader(id: Long, enabled: Boolean, literal: String?)
+
+    @Query("UPDATE subscriptions SET deviceModelEnabled = :enabled, deviceModelLiteral = :literal WHERE id = :id")
+    suspend fun setDeviceModelHeader(id: Long, enabled: Boolean, literal: String?)
+
+    @Query("UPDATE subscriptions SET appVersionEnabled = :enabled, appVersionLiteral = :literal WHERE id = :id")
+    suspend fun setAppVersionHeader(id: Long, enabled: Boolean, literal: String?)
+
     /** Updates only the user-owned User-Agent preference, preserving concurrent sync columns. */
     @Query("UPDATE subscriptions SET userAgentOverride = :value WHERE id = :id")
     suspend fun setUserAgentOverride(

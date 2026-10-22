@@ -31,6 +31,9 @@ import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.pingModeFrom
+import space.getsub.core.model.subscription.ProviderQuota
+import space.getsub.core.model.subscription.SubscriptionInfo
+import space.getsub.core.model.subscription.subscriptionInfo
 import space.getsub.core.parser.directive.UserInfo
 import space.getsub.core.parser.directive.parseUserInfo
 import space.getsub.core.ui.format.protocolDisplayName
@@ -39,6 +42,8 @@ import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.toUserMessage
 import space.getsub.feature.profiles.answerRouteExclusion
 import space.getsub.feature.profiles.request
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -192,6 +197,17 @@ constructor(
         val resolverRequestHost: String?,
         /** The provider's excluded routes to ask about; null once answered or when nothing can apply. */
         val routeExclusionRequest: RouteExclusionRequest?,
+        /** What the provider says about this subscription (M10-B spec §3.1). */
+        val info: SubscriptionInfo,
+    )
+
+    /** The provider directives this screen reads for one subscription, effective values. */
+    private data class ProviderDirectives(
+        val sortType: String?,
+        val pingOnOpen: String?,
+        val pingType: String?,
+        /** The [INFO_DIRECTIVE_KEYS] that have a value, for [subscriptionInfo]. */
+        val info: Map<String, String>,
     )
 
     /** How the rows are presented, as opposed to what the rows are. */
@@ -215,31 +231,48 @@ constructor(
         if (isEmpty()) return flowOf(emptyMap())
         val perSubscription =
             map { sub ->
+                // Each directive is observed on its own, so a pin or a re-sync of any one of
+                // them recomputes the card (M10-B spec §3.1).
+                val infoDirectives =
+                    combine(
+                        INFO_DIRECTIVE_KEYS.map { key -> profileSource.observeEffective(sub.id, key, default = null) },
+                    ) { values -> values.mapNotNull { v -> v.value?.let { v.key to it } }.toMap() }
                 val directives =
                     combine(
                         profileSource.observeEffective(sub.id, KEY_SUBSCRIPTIONS_SORT_TYPE, default = null),
                         profileSource.observeEffective(sub.id, KEY_PING_ON_OPEN, default = null),
                         profileSource.observeEffective(sub.id, KEY_PING_TYPE, default = null),
-                    ) { sortType, pingOnOpen, pingType -> Triple(sortType.value, pingOnOpen.value, pingType.value) }
+                        infoDirectives,
+                    ) { sortType, pingOnOpen, pingType, info ->
+                        ProviderDirectives(sortType.value, pingOnOpen.value, pingType.value, info)
+                    }
                 combine(
                     profileSource.observeUserInfo(sub.id),
                     directives,
                     profileSource.observeRedirectStatus(sub.id),
                     profileSource.observeResolverStatus(sub.id),
                     profileSource.observeRouteExclusionStatus(sub.id),
-                ) { raw, (sortType, pingOnOpen, pingType), redirects, resolver, routes ->
+                ) { raw, provider, redirects, resolver, routes ->
+                    val userInfo = raw?.let(::parseUserInfo)
                     sub.groupId to
                         SubscriptionContext(
                             subscriptionId = sub.id,
-                            userInfo = raw?.let(::parseUserInfo),
+                            userInfo = userInfo,
                             lastFetchedAtEpochMillis = sub.lastFetchedAt,
-                            sortType = sortType,
-                            pingOnOpen = pingOnOpen,
-                            pingType = pingType,
+                            sortType = provider.sortType,
+                            pingOnOpen = provider.pingOnOpen,
+                            pingType = provider.pingType,
                             redirectRequestHosts =
                             if (sub.redirectTrust == RedirectTrust.Unasked) redirects.targetHosts else emptyList(),
                             resolverRequestHost = resolver.requestHost(),
                             routeExclusionRequest = routes.request(),
+                            info =
+                            subscriptionInfo(
+                                directives = provider.info,
+                                userInfo = userInfo?.toQuota(),
+                                today = LocalDate.now(),
+                                zone = ZoneId.systemDefault(),
+                            ),
                         )
                 }
             }
@@ -511,6 +544,7 @@ constructor(
                     redirectRequestHosts = context?.redirectRequestHosts.orEmpty(),
                     resolverRequestHost = context?.resolverRequestHost,
                     routeExclusionRequest = context?.routeExclusionRequest,
+                    info = context?.info,
                 )
             }
         return ServersState(
@@ -549,6 +583,22 @@ private const val KEY_SUBSCRIPTIONS_SORT_TYPE = "subscriptions-sort-type"
 private const val KEY_PING_ON_OPEN = "subscription-ping-onopen-enabled"
 private const val KEY_PING_TYPE = "ping-type"
 
+/** What [subscriptionInfo] reads (M10-B spec §3.1); `sub-info-color` is deliberately absent. */
+private val INFO_DIRECTIVE_KEYS =
+    listOf(
+        "profile-title",
+        "profile-update-interval",
+        "announce",
+        "sub-info-text",
+        "sub-info-button-text",
+        "sub-info-button-link",
+        "sub-expire-button-link",
+        "support-url",
+        "profile-web-page-url",
+    )
+
+private fun UserInfo.toQuota() = ProviderQuota(upload, download, total, expiresAtEpochSeconds)
+
 private fun StoredProfile.toRow(
     activeProfileId: Long?,
     latencies: Map<Long, LatencyResult>,
@@ -568,6 +618,7 @@ private fun StoredProfile.toRow(
         // Absent stays absent: an unmeasured row renders an em-dash, never a zero.
         latency = latencies[id],
         isTesting = id in testing,
+        caption = caption,
     )
 
 private fun List<ProfileGroup>.availableProtocolLabels(): List<String> =

@@ -107,4 +107,19 @@ class DataDisplaySnapshotTest {
 
     @Test
     fun serverRow() = paparazzi.snapshotThemes("server-row") { Rows() }
+
+    @Test
+    fun serverRowCaption() =
+        paparazzi.snapshotThemes("server-row-caption") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ServerRow(
+                    "🇩🇪", "Frankfurt Alpha", "VLESS · REALITY · TCP", "42 ms", false, true, 1, null, {}, {}, {},
+                    caption = "Example caption",
+                )
+                ServerRow(
+                    "🇳🇱", "Amsterdam Beta", "VMESS · WS · TLS", "88 ms", true, true, 2, null, {}, {}, {},
+                    caption = "Example caption",
+                )
+            }
+        }
 }

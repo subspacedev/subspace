@@ -3,13 +3,16 @@
 package space.getsub.feature.profiles.add
 
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -32,6 +35,11 @@ import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.HwidResult
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
@@ -100,6 +108,18 @@ class ImportViewModelTest {
             """"port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]}}]}"""
     private val validRawJsonArray = "[$validRawJsonArrayElement]"
 
+    private fun storedSubscription(url: String) =
+        StoredSubscription(
+            id = 42L,
+            groupId = 1L,
+            url = url,
+            userAgentOverride = null,
+            hwidEnabled = true,
+            lastFetchedAt = null,
+            lastFetchStatus = null,
+            lastFetchDetail = null,
+        )
+
     private class FakeProfileSource : ProfileSource {
         private val stored = mutableMapOf<Long, StoredProfile>()
         private var nextId = 1L
@@ -113,7 +133,10 @@ class ImportViewModelTest {
         ): Flow<List<ProfileGroup>> = MutableStateFlow(emptyList())
 
         override val activeProfileId: Flow<Long?> = MutableStateFlow(null)
-        override val globalHwidEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = flowOf(null)
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> = emptyMap()
+        override suspend fun setHwid(id: Long, hwid: String) = Unit
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) = Unit
 
         override suspend fun setActiveProfile(id: Long?) = Unit
 
@@ -204,6 +227,7 @@ class ImportViewModelTest {
             private set
         var lastAddSubscriptionName: String? = null
             private set
+        val addSubscriptionHwids = mutableListOf<String>()
         var syncSubscriptionCallCount = 0
             private set
         var lastSyncedSubscriptionId: Long? = null
@@ -216,8 +240,10 @@ class ImportViewModelTest {
         override suspend fun addSubscription(
             url: String,
             name: String,
+            hwid: String,
         ): AddedSubscription {
             addSubscriptionCallCount++
+            addSubscriptionHwids += hwid
             lastAddSubscriptionUrl = url
             lastAddSubscriptionName = name
             return existingSubscriptionId?.let { AddedSubscription(it, created = false) }
@@ -237,7 +263,9 @@ class ImportViewModelTest {
 
         // Not exercised — ImportViewModel never reads either. Task 14's
         // real coverage lives in ServersViewModelTest.
-        override fun observeSubscriptions(): Flow<List<StoredSubscription>> = MutableStateFlow(emptyList())
+        val storedSubscriptions = MutableStateFlow<List<StoredSubscription>>(emptyList())
+
+        override fun observeSubscriptions(): Flow<List<StoredSubscription>> = storedSubscriptions
 
         override fun observeUserInfo(id: Long): Flow<String?> = MutableStateFlow(null)
 
@@ -512,6 +540,219 @@ class ImportViewModelTest {
     // proves SyncResult.toUserMessage() is a correct pure function; these
     // prove ImportViewModel actually calls the sequence that function's
     // input comes from.
+
+    // M10-B spec §3.5, Task 5: one HWID per URL across retries, and an optional field to override it.
+
+    @Test
+    fun twoFailedAddsOfTheSameUrlSendTheSameHwid() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.addSubscription("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.addSubscription("https://example.com/sub")
+            advanceUntilIdle()
+
+            repository.addSubscriptionHwids shouldHaveSize 2
+            repository.addSubscriptionHwids[0] shouldBe repository.addSubscriptionHwids[1]
+            Hwid.validate(repository.addSubscriptionHwids[0]).shouldBeInstanceOf<HwidResult.Valid>()
+        }
+
+    @Test
+    fun aTitleTailOnTheUrlDoesNotMintASecondHwid() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.addSubscription("https://example.com/sub")
+            advanceUntilIdle()
+            viewModel.addSubscription("  https://example.com/sub#My%20Provider  ")
+            advanceUntilIdle()
+
+            repository.addSubscriptionHwids.distinct() shouldHaveSize 1
+        }
+
+    @Test
+    fun aDifferentUrlGetsADifferentHwid() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.addSubscription("https://example.com/one")
+            advanceUntilIdle()
+            viewModel.addSubscription("https://example.com/two")
+            advanceUntilIdle()
+
+            repository.addSubscriptionHwids.distinct() shouldHaveSize 2
+        }
+
+    @Test
+    fun theFieldIsPrefilledOnceAUrlIsRecognisedAndHiddenOtherwise() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+
+            viewModel.onInputChanged("vless://x@198.51.100.7:443")
+            viewModel.state.value.showsSubscriptionHwid shouldBe false
+            viewModel.state.value.subscriptionHwid shouldBe ""
+
+            viewModel.onInputChanged("https://example.com/sub")
+            val prefilled = viewModel.state.value.subscriptionHwid
+            viewModel.state.value.showsSubscriptionHwid shouldBe true
+            Hwid.validate(prefilled).shouldBeInstanceOf<HwidResult.Valid>()
+
+            // Typing more of the same URL keeps the field, edits included.
+            viewModel.onSubscriptionHwidChanged("EDITED-hwid-0123")
+            viewModel.onInputChanged("https://example.com/sub ")
+            viewModel.state.value.subscriptionHwid shouldBe "EDITED-hwid-0123"
+        }
+
+    @Test
+    fun theFieldKeepsTheSameGeneratedValueWhenTheUrlIsTypedAgain() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+
+            viewModel.onInputChanged("https://example.com/sub")
+            val first = viewModel.state.value.subscriptionHwid
+            viewModel.onInputChanged("")
+            viewModel.onInputChanged("https://example.com/sub")
+
+            viewModel.state.value.subscriptionHwid shouldBe first
+        }
+
+    @Test
+    fun aValidEditedHwidIsTrimmedAndUsedByTheAdd() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.onSubscriptionHwidChanged("  EDITED-hwid-0123  ")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+
+            repository.addSubscriptionHwids shouldBe listOf("EDITED-hwid-0123")
+        }
+
+    @Test
+    fun anEditedHwidSurvivesAFailedFirstAddForTheRetry() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.onSubscriptionHwidChanged("EDITED-hwid-0123")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+
+            repository.addSubscriptionHwids shouldBe listOf("EDITED-hwid-0123", "EDITED-hwid-0123")
+            viewModel.state.value.subscriptionHwid shouldBe "EDITED-hwid-0123"
+        }
+
+    @Test
+    fun anInvalidHwidSetsTheErrorAndTheAddIsNotAttempted() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.onSubscriptionHwidChanged("short")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+
+            viewModel.state.value.subscriptionHwidError shouldBe true
+            viewModel.state.value.busy shouldBe false
+            repository.addSubscriptionCallCount shouldBe 0
+
+            viewModel.onSubscriptionHwidChanged("fixed-hwid-0123")
+            viewModel.state.value.subscriptionHwidError shouldBe false
+        }
+
+    @Test
+    fun aHwidTheUserTypedSurvivesTheUrlBrieflyBecomingInvalid() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.onSubscriptionHwidChanged("EDITED-hwid-0123")
+            viewModel.onInputChanged("https://example.com/su") // still a URL
+            viewModel.onInputChanged("") // not one
+            viewModel.state.value.subscriptionHwid shouldBe ""
+            viewModel.onInputChanged("https://example.com/sub")
+
+            viewModel.state.value.subscriptionHwid shouldBe "EDITED-hwid-0123"
+        }
+
+    @Test
+    fun anAlreadyStoredUrlHidesTheFieldAndANonsenseValueCannotBlockTheAdd() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.existingSubscriptionId = 42L
+            repository.storedSubscriptions.value = listOf(storedSubscription("https://example.com/sub"))
+            val viewModel = ImportViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.state.value.showsSubscriptionHwid shouldBe false
+            viewModel.state.value.showsAlreadyAddedHint shouldBe true
+
+            viewModel.onSubscriptionHwidChanged("short")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+
+            viewModel.state.value.subscriptionHwidError shouldBe false
+            repository.addSubscriptionCallCount shouldBe 1
+        }
+
+    @Test
+    fun importStateNeverPrintsThePastedTextOrTheHwid() {
+        val state = ImportState(input = "vless://secret-pasted-config", subscriptionHwid = "secret-hwid-0123")
+
+        val text = state.toString()
+
+        text.contains("secret-pasted-config") shouldBe false
+        text.contains("secret-hwid-0123") shouldBe false
+    }
+
+    @Test
+    fun aSuccessfulAddClearsTheFieldAndForgetsTheGeneratedValue() =
+        runTest {
+            val repository = FakeProfileSource()
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            viewModel.state.value.input shouldBe ""
+            viewModel.state.value.subscriptionHwid shouldBe ""
+            viewModel.state.value.showsSubscriptionHwid shouldBe false
+        }
+
+    @Test
+    fun reAddingAnExistingUrlStillNeverDeletesItAndOnlyOffersTheHwidToAdd() =
+        runTest {
+            // `add` ignores the HWID for a row that exists (SubscriptionRepositoryTest proves the
+            // stored one is untouched); this view model must not reach for any other writer either.
+            val repository = FakeProfileSource()
+            repository.existingSubscriptionId = 42L
+            repository.syncResultToReturn = SyncResult.Failed(SubscriptionSyncFailure.Unreachable)
+            val viewModel = ImportViewModel(repository)
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+            viewModel.state.first { it.subscriptionResult != null }
+
+            repository.addSubscriptionCallCount shouldBe 1
+            repository.deletedSubscriptionIds.shouldBeEmpty()
+        }
 
     @Test
     fun readdingAnExistingUrlNeverDeletesItWhenTheSyncFails() =

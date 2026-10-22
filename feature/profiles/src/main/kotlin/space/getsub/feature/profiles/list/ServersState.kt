@@ -4,6 +4,7 @@ package space.getsub.feature.profiles.list
 
 import space.getsub.core.data.ProfileKind
 import space.getsub.core.model.LatencyResult
+import space.getsub.core.model.subscription.SubscriptionInfo
 import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 
@@ -146,6 +147,12 @@ internal data class ServersGroup(
      * least one range can apply (M9-E spec §4). Null otherwise.
      */
     val routeExclusionRequest: RouteExclusionRequest? = null,
+    /**
+     * Everything the provider says about this subscription, ready to draw (M10-B spec §3.1).
+     * Null for a MANUAL group. A subscription whose provider sent no `subscription-userinfo`
+     * still has one, with no usage and no expiry in it.
+     */
+    val info: SubscriptionInfo? = null,
 )
 
 /**
@@ -194,6 +201,8 @@ internal data class ServerRow(
     val latency: LatencyResult? = null,
     /** True while a measurement for this row is in flight. */
     val isTesting: Boolean = false,
+    /** The provider's per-server caption (M10-B spec §2), or null. */
+    val caption: String? = null,
 )
 
 /**

@@ -90,6 +90,8 @@ internal data class ProfileEntity(
      * Meaningful only for `kind = RAW_JSON`. A `TYPED` row leaves it null.
      */
     val passthroughRejection: String? = null,
+    /** The provider's per-server caption (`serverDescription`, M10-B spec §2), or null. */
+    val caption: String? = null,
 ) {
     // ARCHITECTURE.md §5.6, same structural guard the subscription entities carry: address, outbound and rawJson
     // are the server address, the serialized credential set (UUID, REALITY key material) and the

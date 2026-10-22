@@ -66,6 +66,7 @@ class AddServerSheetSubscriptionTest {
                     actions =
                     ImportActions(
                         onInputChanged = { state.value = state.value.copy(input = it) },
+                        onSubscriptionHwidChanged = {},
                         onImportClick = onImportClick,
                         onImportFromFileClick = {},
                         onScanClick = {},

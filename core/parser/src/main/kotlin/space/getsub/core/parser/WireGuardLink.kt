@@ -54,12 +54,14 @@ internal fun parseWireGuardLink(
     when (val step = buildWireGuard(raw)) {
         is Step.Fail -> LinkResult.Bad(parseFailure(index, step.reason, step.detail))
         is Step.Ok -> {
-            val (outbound, name) = step.value
+            val (outbound, fragment) = step.value
+            val named = splitCaption(fragment)
             LinkResult.Ok(
                 Profile(
                     id = profileId("wireguard", outbound.address, outbound.port, outbound.secretKey),
-                    name = name.ifBlank { outbound.address },
+                    name = named.name.ifBlank { outbound.address },
                     outbound = outbound,
+                    caption = named.caption,
                 ),
             )
         }

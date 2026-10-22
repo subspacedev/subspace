@@ -71,6 +71,19 @@ internal data class SubscriptionEntity(
     // Null until answered; RouteExclusionTrust reads null as Unasked.
     val routeExclusionTrust: String? = null,
     val routeExclusionFingerprint: String? = null,
+    // M10-B spec §3.5: this subscription's own device identity. [hwid] is never derived again
+    // after migration 8 to 9; new rows get the add flow's value. A null literal means "follow
+    // this device", so an OS or app update changes what is sent; a switch that is off means the
+    // header is not sent at all.
+    val hwid: String,
+    @ColumnInfo(defaultValue = "1") val deviceOsEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val osVersionEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val deviceModelEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val appVersionEnabled: Boolean = true,
+    val deviceOsLiteral: String? = null,
+    val osVersionLiteral: String? = null,
+    val deviceModelLiteral: String? = null,
+    val appVersionLiteral: String? = null,
 ) {
     // ARCHITECTURE.md §5.6: url is a secret. The generated data-class toString() would print
     // it verbatim, which is exactly the "reaches a log line" failure mode
@@ -92,7 +105,17 @@ internal data class SubscriptionEntity(
             "movedAt=$movedAt, lastFetchVia=$lastFetchVia, resolverTrust=$resolverTrust, " +
             "resolverTrustHost=${if (resolverTrustHost == null) "none" else "<redacted>"}, " +
             "routeExclusionTrust=$routeExclusionTrust, " +
-            "routeExclusionFingerprint=${if (routeExclusionFingerprint == null) "none" else "<redacted>"})"
+            "routeExclusionFingerprint=${if (routeExclusionFingerprint == null) "none" else "<redacted>"}, " +
+            // ARCHITECTURE.md §5.6 and M10-B constraints: an HWID and a header value are never
+            // printed. The switches are shape, not content, and stay readable.
+            "hwid=<redacted>, deviceOsEnabled=$deviceOsEnabled, osVersionEnabled=$osVersionEnabled, " +
+            "deviceModelEnabled=$deviceModelEnabled, appVersionEnabled=$appVersionEnabled, " +
+            "deviceOsLiteral=${redactedOrNone(deviceOsLiteral)}, " +
+            "osVersionLiteral=${redactedOrNone(osVersionLiteral)}, " +
+            "deviceModelLiteral=${redactedOrNone(deviceModelLiteral)}, " +
+            "appVersionLiteral=${redactedOrNone(appVersionLiteral)})"
+
+    private fun redactedOrNone(value: String?): String = if (value == null) "none" else "<redacted>"
 }
 
 /**

@@ -36,6 +36,9 @@ import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TrafficSample
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.failure
+import space.getsub.core.model.subscription.Expiry
+import space.getsub.core.model.subscription.SubscriptionInfo
+import space.getsub.core.model.subscription.Usage
 
 /**
  * Covers what Task 17 rewrote [HomeViewModel] to do: connect using the profile
@@ -121,6 +124,7 @@ class HomeViewModelTest {
         override val hasAnyProfile: Flow<Boolean> = MutableStateFlow(profiles.isNotEmpty())
         override val activeProfile: Flow<StoredProfile?> =
             activeProfileId.map { id -> profiles.firstOrNull { it.id == id } }
+        override val activeSubscription: Flow<SubscriptionInfo?> = MutableStateFlow(null)
     }
 
     /**
@@ -133,6 +137,8 @@ class HomeViewModelTest {
         private val _activeProfile = MutableStateFlow(initial)
         override val activeProfile: Flow<StoredProfile?> = _activeProfile.asStateFlow()
         override val hasAnyProfile: Flow<Boolean> = MutableStateFlow(true)
+        val subscription = MutableStateFlow<SubscriptionInfo?>(null)
+        override val activeSubscription: Flow<SubscriptionInfo?> = subscription
 
         fun emit(next: StoredProfile?) {
             _activeProfile.value = next
@@ -602,5 +608,40 @@ class HomeViewModelTest {
             policy.name.value = null
             advanceUntilIdle()
             vm.state.value.activeRuleSetName shouldBe null
+        }
+
+    private fun subscriptionInfo(
+        usage: Usage?,
+        expiry: Expiry?,
+    ) = SubscriptionInfo(
+        title = null,
+        refreshHours = null,
+        usage = usage,
+        expiry = expiry,
+        announce = null,
+        infoText = null,
+        infoButton = null,
+        renewLink = "https://example.com/renew",
+        supportLink = null,
+        accountLink = null,
+    )
+
+    @Test
+    fun `the active subscription's limit and expiry reach the state, and clear for a manual server`() =
+        runTest {
+            val source = MutableActiveProfileSource(storedProfile(id = 1L, name = "a"))
+            val vm = HomeViewModel(FakeTunnelConnection(), source, FakeTrafficPolicySource())
+            advanceUntilIdle()
+            vm.state.value.activeSubscription shouldBe null
+
+            val limited = Usage.Limited(usedBytes = 10L, totalBytes = 100L)
+            source.subscription.value = subscriptionInfo(limited, Expiry.Today)
+            advanceUntilIdle()
+            vm.state.value.activeSubscription shouldBe
+                HomeSubscriptionLine(usage = limited, expiry = Expiry.Today, renewLink = "https://example.com/renew")
+
+            source.subscription.value = null
+            advanceUntilIdle()
+            vm.state.value.activeSubscription shouldBe null
         }
 }

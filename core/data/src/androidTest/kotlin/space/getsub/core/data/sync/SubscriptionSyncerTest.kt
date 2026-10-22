@@ -25,9 +25,12 @@ import space.getsub.core.model.LocalProxy
 import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.network.DeviceInfo
 import space.getsub.core.network.FetchFailure
 import space.getsub.core.network.FetchOutcome
-import space.getsub.core.network.HwidProvider
 import space.getsub.core.network.SubscriptionRequest
 import space.getsub.core.network.SubscriptionSource
 import space.getsub.core.parser.PassthroughRejection
@@ -168,8 +171,22 @@ class SubscriptionSyncerTest {
     /** No tunnel bound by default; individual tests override to assert the proxy is threaded through. */
     private var proxy: LocalProxy? = null
 
+    private val device =
+        object : DeviceInfo {
+            override val osVersion: String = "15"
+            override val model: String = "Pixel 8"
+        }
+
     private fun syncer() =
-        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxy })
+        SubscriptionSyncer(
+            db.subscriptionDao(),
+            subscriptions,
+            settings,
+            source,
+            TunnelProxyLocator { proxy },
+            device,
+            appVersion = "0.1.0",
+        )
 
     @Before
     fun setUp() {
@@ -178,7 +195,7 @@ class SubscriptionSyncerTest {
             SubspaceDatabase::class.java,
         ).build()
         profiles = ProfileRepository(db.profileDao())
-        settings = SettingsRepository(db.settingDao(), HwidProvider { "test-hwid" })
+        settings = SettingsRepository(db.settingDao())
         root =
             File(
                 InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
@@ -203,7 +220,7 @@ class SubscriptionSyncerTest {
     }
 
     private suspend fun addSubscription() =
-        subscriptions.add("https://example.com/sub", name = "Provider").id
+        subscriptions.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
     // M6 Task 16. The `routing` header is the channel §A.1's threat model is
     // written about: whoever controls the subscription URL can use it to change
@@ -275,14 +292,43 @@ class SubscriptionSyncerTest {
         subscriptions.effective(id, "profile-update-interval", null).value shouldBe "6"
     }
 
+    // M10-B spec §3.5: each subscription sends its own HWID and device headers.
     @Test
-    fun globalHwidGateDisablesTheHeaderEvenWhenTheSubscriptionAllowsIt() = runTest {
-        val id = addSubscription()
-        settings.setHwidEnabled(false)
+    fun aNewSubscriptionSendsItsOwnHwidAndFollowsTheDevice() = runTest {
+        val id = subscriptions.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
 
         syncer().sync(id)
 
-        lastRequest?.hwidEnabled shouldBe false
+        lastRequest!!.hwid shouldBe "abcDEF1234"
+        lastRequest!!.headers shouldBe
+            mapOf(
+                DeviceHeader.Os to "Android",
+                DeviceHeader.OsVersion to "15",
+                DeviceHeader.Model to "Pixel 8",
+                DeviceHeader.AppVersion to "0.1.0",
+            )
+    }
+
+    @Test
+    fun aSwitchedOffHeaderIsNotSentAndALiteralIsSentAsTyped() = runTest {
+        val id = addSubscription()
+        subscriptions.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = false, literal = null))
+        subscriptions.setHeader(id, DeviceHeader.AppVersion, HeaderSetting(enabled = true, literal = "9.9.9"))
+
+        syncer().sync(id)
+
+        lastRequest!!.headers.containsKey(DeviceHeader.Model) shouldBe false
+        lastRequest!!.headers[DeviceHeader.AppVersion] shouldBe "9.9.9"
+    }
+
+    @Test
+    fun aSwitchedOffHwidIsNotSent() = runTest {
+        val id = addSubscription()
+        subscriptions.setHwidEnabled(id, false)
+
+        syncer().sync(id)
+
+        lastRequest!!.hwid shouldBe null
     }
 
     @Test

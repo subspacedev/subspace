@@ -63,11 +63,13 @@ internal fun parseTrojanLink(
             password = uri.userInfo,
             stream = stream,
         )
+    val named = splitCaption(uri.fragment)
     return LinkResult.Ok(
         Profile(
             id = profileId("trojan", uri.host, uri.port, uri.userInfo),
-            name = uri.fragment.ifBlank { uri.host },
+            name = named.name.ifBlank { uri.host },
             outbound = outbound,
+            caption = named.caption,
         ),
     )
 }

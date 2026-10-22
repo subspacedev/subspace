@@ -84,6 +84,9 @@ internal const val IMPORT_BUSY_TEST_TAG = "import-busy"
  */
 internal const val IMPORT_PASTE_FIELD_TEST_TAG = "import-paste-field"
 
+/** The HWID field, shown only for a subscription URL. */
+internal const val IMPORT_HWID_FIELD_TEST_TAG = "import-hwid-field"
+
 /**
  * The only place in the app that turns pasted or imported text into a stored
  * [space.getsub.core.data.StoredProfile] — before this task, Home
@@ -178,6 +181,7 @@ private fun AddServerSheetBody(
         actions =
         ImportActions(
             onInputChanged = viewModel::onInputChanged,
+            onSubscriptionHwidChanged = viewModel::onSubscriptionHwidChanged,
             onImportClick = { viewModel.submit(state.input) },
             // "*/*": a subscription can be a share-link list, base64 blob,
             // Clash YAML or raw Xray JSON (ARCHITECTURE.md §7) — SubscriptionParser detects
@@ -206,13 +210,14 @@ private fun AddServerSheetBody(
 }
 
 /**
- * [AddServerSheetContent]'s five callbacks, grouped for the same reason
+ * [AddServerSheetContent]'s six callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.list.ServersActions] is (both
  * pre-date and post-date detekt's `LongParameterList` threshold — this one
  * crossed it when Task 20 fix round 1 added [onScanClick]).
  */
 internal data class ImportActions(
     val onInputChanged: (String) -> Unit,
+    val onSubscriptionHwidChanged: (String) -> Unit,
     val onImportClick: () -> Unit,
     val onImportFromFileClick: () -> Unit,
     val onScanClick: () -> Unit,
@@ -260,6 +265,15 @@ internal fun AddServerSheetContent(
             modifier = Modifier.fillMaxWidth().testTag(IMPORT_PASTE_FIELD_TEST_TAG),
         )
 
+        if (state.showsSubscriptionHwid) SubscriptionHwidField(state, actions)
+        if (state.showsAlreadyAddedHint) {
+            Text(
+                text = stringResource(R.string.import_hwid_already_added),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         Button(
             onClick = actions.onImportClick,
             enabled = !state.busy && state.input.isNotBlank(),
@@ -273,6 +287,31 @@ internal fun AddServerSheetContent(
 
         ResultCard(state)
     }
+}
+
+/**
+ * The device ID this subscription will be added with, pre-filled with the one generated for its URL
+ * (M10-B spec §3.5). Editable so a user can paste the ID from a previous install and keep their
+ * device slot. Plain monospace text, never masked: it is an identifier the user has to read and
+ * paste, not a secret.
+ */
+@Composable
+private fun SubscriptionHwidField(
+    state: ImportState,
+    actions: ImportActions,
+) {
+    OutlinedTextField(
+        value = state.subscriptionHwid,
+        onValueChange = actions.onSubscriptionHwidChanged,
+        label = { Text(stringResource(R.string.import_hwid_label)) },
+        supportingText = { Text(stringResource(R.string.import_hwid_hint)) },
+        isError = state.subscriptionHwidError,
+        singleLine = true,
+        enabled = !state.busy,
+        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = RobotoMonoFontFamily),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().testTag(IMPORT_HWID_FIELD_TEST_TAG),
+    )
 }
 
 @Composable

@@ -5,6 +5,7 @@ package space.getsub.core.data
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -22,6 +23,10 @@ import org.junit.Test
 import space.getsub.core.data.db.SubscriptionDirectiveEntity
 import space.getsub.core.data.db.SubscriptionEntity
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.SubscriptionIdentity
 
 private const val REEMIT_TIMEOUT_MS = 5_000L
 
@@ -38,7 +43,7 @@ class SubscriptionRepositoryTest {
             SubspaceDatabase::class.java,
         ).build()
         val profiles = ProfileRepository(db.profileDao())
-        val settings = SettingsRepository(db.settingDao()) { "test-hwid" }
+        val settings = SettingsRepository(db.settingDao())
         root = java.io.File(context.cacheDir, "subscription-repository-${System.nanoTime()}").apply { mkdirs() }
         val deletion =
             RoutingProfileDeletion(
@@ -96,6 +101,7 @@ class SubscriptionRepositoryTest {
                         lastFetchStatus = null,
                         lastFetchDetail = null,
                         createdAt = 0L,
+                        hwid = "TestHwid0123456789",
                     ),
                 )
             }
@@ -112,7 +118,7 @@ class SubscriptionRepositoryTest {
         val url = "https://example.com/sub"
 
         val results =
-            (1..8).map { async { repository.add(url, name = "Provider $it") } }.awaitAll()
+            (1..8).map { async { repository.add(url, name = "Provider $it", hwid = Hwid.random()) } }.awaitAll()
 
         results.map { it.id }.distinct().size shouldBe 1
         results.count { it.created } shouldBe 1
@@ -122,7 +128,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun addingASubscriptionCreatesASubscriptionSourcedGroup() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
         val stored = repository.observeSubscriptions().first().single()
         stored.id shouldBe id
@@ -137,8 +143,8 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun addingTheSameUrlTwiceReturnsTheExistingSubscription() = runTest {
-        val first = repository.add("https://example.com/sub", name = "Provider").id
-        val second = repository.add("https://example.com/sub", name = "Provider Again").id
+        val first = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
+        val second = repository.add("https://example.com/sub", name = "Provider Again", hwid = Hwid.random()).id
 
         second shouldBe first
         repository.observeSubscriptions().first().size shouldBe 1
@@ -146,7 +152,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun theProviderValueIsEffectiveWhenNothingIsPinned() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         db.subscriptionDao().putDirectives(
             listOf(SubscriptionDirectiveEntity(id, "profile-update-interval", "6", 0)),
         )
@@ -163,7 +169,7 @@ class SubscriptionRepositoryTest {
         // Spec D3's UI consequence: "provider suggests 6 h, you pinned 24 h"
         // must be renderable, or a pinned field looks like a subscription that
         // stopped updating.
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         db.subscriptionDao().putDirectives(
             listOf(SubscriptionDirectiveEntity(id, "profile-update-interval", "6", 0)),
         )
@@ -178,7 +184,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun aPinSurvivesADirectiveUpdateCarryingADifferentValue() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         repository.pin(id, "profile-update-interval", "24")
 
         db.subscriptionDao().putDirectives(
@@ -190,7 +196,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun unpinningFallsBackToTheProviderValue() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         db.subscriptionDao().putDirectives(
             listOf(SubscriptionDirectiveEntity(id, "profile-update-interval", "6", 0)),
         )
@@ -202,7 +208,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun theDefaultAppliesOnlyWhenThereIsNoProviderValueAndNoPin() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
         val effective = repository.effective(id, "profile-update-interval", default = "12")
 
@@ -214,7 +220,7 @@ class SubscriptionRepositoryTest {
     @Test
     fun deletingASubscriptionRemovesItsGroupAndItsServers() = runTest {
         // §A.1: deletion must cascade.
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         val groupId = repository.observeSubscriptions().first().single().groupId
 
         repository.delete(id)
@@ -225,16 +231,115 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun theHwidTogglePersists() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
         repository.setHwidEnabled(id, false)
 
         repository.observeSubscriptions().first().single().hwidEnabled shouldBe false
     }
 
+    // M10-B spec §3.5: the identity a subscription is created with, and every edit to it.
+    @Test
+    fun aNewSubscriptionsIdentityIsItsHwidWithEveryHeaderFollowingTheDevice() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        repository.identity(id).first() shouldBe
+            SubscriptionIdentity(
+                hwid = "abcDEF1234",
+                hwidEnabled = true,
+                headers = DeviceHeader.entries.associateWith { HeaderSetting(enabled = true, literal = null) },
+            )
+    }
+
+    @Test
+    fun reAddingAnExistingUrlKeepsItsStoredHwid() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        val again = repository.add("https://example.com/sub", name = "Provider", hwid = "otherHWID-5678")
+
+        again.created shouldBe false
+        again.id shouldBe id
+        repository.identity(id).first()!!.hwid shouldBe "abcDEF1234"
+    }
+
+    @Test
+    fun theIdentityOfAMissingSubscriptionIsNull() = runTest {
+        repository.identity(42).first().shouldBeNull()
+    }
+
+    @Test
+    fun anEditedHwidIsTrimmedAndStored() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        repository.setHwid(id, "  NEWhwid-5678=  ")
+
+        repository.identity(id).first()!!.hwid shouldBe "NEWhwid-5678="
+    }
+
+    @Test
+    fun anInvalidHwidIsRejectedAndTheOldOneKept() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "abcDEF1234").id
+
+        shouldThrow<IllegalArgumentException> { repository.setHwid(id, "short") }
+        shouldThrow<IllegalArgumentException> { repository.setHwid(id, "has_underscore_0123") }
+
+        repository.identity(id).first()!!.hwid shouldBe "abcDEF1234"
+    }
+
+    @Test
+    fun addRejectsAnInvalidHwidAndStoresNothing() = runTest {
+        shouldThrow<IllegalArgumentException> {
+            repository.add("https://example.com/sub", name = "Provider", hwid = "short")
+        }
+
+        repository.observeSubscriptions().first().size shouldBe 0
+    }
+
+    @Test
+    fun addStoresTheHwidTrimmed() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "  abcDEF1234  ").id
+
+        repository.identity(id).first()!!.hwid shouldBe "abcDEF1234"
+    }
+
+    @Test
+    fun eachHeaderSettingIsStoredOnItsOwn() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
+
+        repository.setHeader(id, DeviceHeader.Os, HeaderSetting(enabled = false, literal = null))
+        repository.setHeader(id, DeviceHeader.OsVersion, HeaderSetting(enabled = true, literal = " 14 "))
+        repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = false, literal = "Pixel 7"))
+
+        repository.identity(id).first()!!.headers shouldBe
+            mapOf(
+                DeviceHeader.Os to HeaderSetting(enabled = false, literal = null),
+                DeviceHeader.OsVersion to HeaderSetting(enabled = true, literal = "14"),
+                DeviceHeader.Model to HeaderSetting(enabled = false, literal = "Pixel 7"),
+                DeviceHeader.AppVersion to HeaderSetting(enabled = true, literal = null),
+            )
+    }
+
+    @Test
+    fun anInvalidHeaderLiteralIsRejectedAndTheOldSettingKept() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
+
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "line\r\nbreak"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "华为"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            repository.setHeader(id, DeviceHeader.Model, HeaderSetting(enabled = true, literal = "   "))
+        }
+
+        repository.identity(id).first()!!.headers[DeviceHeader.Model] shouldBe
+            HeaderSetting(enabled = true, literal = null)
+    }
+
     @Test
     fun hwidSetterPreservesSyncStatusThatLandsInsideItsWriteWindow() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         installSyncDuringUserWriteTrigger(column = "hwidEnabled", status = "SyncedAfterRead")
 
         repository.setHwidEnabled(id, false)
@@ -246,7 +351,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun userAgentSetterPreservesSyncStatusThatLandsInsideItsWriteWindow() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
         installSyncDuringUserWriteTrigger(column = "userAgentOverride", status = "SyncedAfterRead")
 
         repository.setUserAgentOverride(id, "Subspace/Test")
@@ -258,7 +363,7 @@ class SubscriptionRepositoryTest {
 
     @Test
     fun syncStatusWrittenAfterUserSettersPreservesBothUserValues() = runTest {
-        val id = repository.add("https://example.com/sub", name = "Provider").id
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
         repository.setHwidEnabled(id, false)
         repository.setUserAgentOverride(id, "Subspace/Test")
@@ -281,7 +386,7 @@ class SubscriptionRepositoryTest {
     @Test
     fun refreshScheduleChangesReEmitWhenAnIntervalPinLands() {
         runBlocking {
-            val id = repository.add("https://example.com/sub", name = "Provider").id
+            val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 
             withTimeout(REEMIT_TIMEOUT_MS) {
                 val emissions = Channel<Unit>(Channel.UNLIMITED)
@@ -321,7 +426,7 @@ class SubscriptionRepositoryTest {
     @Test
     fun observeEffectiveReEmitsWhenAPinLands() {
         runBlocking {
-            val id = repository.add("https://example.com/sub", name = "Provider").id
+            val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
             db.subscriptionDao().putDirectives(
                 listOf(SubscriptionDirectiveEntity(id, "profile-update-interval", "6", 0)),
             )

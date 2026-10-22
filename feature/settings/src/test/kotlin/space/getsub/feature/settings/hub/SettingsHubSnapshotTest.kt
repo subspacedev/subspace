@@ -23,7 +23,7 @@ class SettingsHubSnapshotTest {
 
     private val actions =
         SettingsActions(
-            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {},
+            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {},
         )
     private val navigation = SettingsNavigation({}, {}, {}, {})
 
@@ -65,7 +65,6 @@ class SettingsHubSnapshotTest {
                 perTagBreakdown = true,
                 perApp = PerAppSelection.OFF,
                 activeRuleSetName = null,
-                hwidEnabled = false,
             ),
         )
 }

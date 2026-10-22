@@ -44,6 +44,12 @@ class StoredProfileMappingTest {
     }
 
     @Test
+    fun aStoredProfileCarriesItsCaptionAndDefaultsToNone() {
+        storedProfile().caption.shouldBeNull()
+        storedProfile().copy(caption = "Example caption").caption shouldBe "Example caption"
+    }
+
+    @Test
     fun theProfileIdIsTheRowIdAsAString() {
         val mapped = storedProfile(id = 7L, name = "row").toProfile()
 

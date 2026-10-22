@@ -75,7 +75,8 @@ private fun parseShadowsocksLinkSafely(
     val outbound = ShadowsocksOutbound(parts.host, parts.port, parts.method, parts.password)
     val credential = shadowsocksIdentityMaterial(parts.method, parts.password)
     val id = profileId("ss", parts.host, parts.port, credential)
-    return LinkResult.Ok(Profile(id, name.ifBlank { parts.host }, outbound))
+    val named = splitCaption(name)
+    return LinkResult.Ok(Profile(id, named.name.ifBlank { parts.host }, outbound, caption = named.caption))
 }
 
 private fun hasSip003Plugin(body: String): Boolean {

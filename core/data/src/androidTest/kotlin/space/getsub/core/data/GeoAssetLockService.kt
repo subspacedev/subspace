@@ -40,7 +40,7 @@ class GeoAssetLockService : Service() {
             val started = File(requireNotNull(intent.getStringExtra(EXTRA_STARTED_FILE)))
             val result = File(requireNotNull(intent.getStringExtra(EXTRA_RESULT_FILE)))
             val closed = File(requireNotNull(intent.getStringExtra(EXTRA_CLOSED_FILE)))
-            val database = subspaceDatabase(applicationContext, requireNotNull(databaseName))
+            val database = subspaceDatabase(applicationContext, { TEST_LEGACY_HWID }, requireNotNull(databaseName))
             val installResult =
                 try {
                     val repository =

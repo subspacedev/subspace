@@ -48,7 +48,6 @@ internal data class SettingsNavigation(
  */
 internal data class SettingsActions(
     val onThemeChanged: (ThemePreference) -> Unit,
-    val onHwidEnabledChanged: (Boolean) -> Unit,
     val onPingModeChanged: (PingMode) -> Unit,
     val onPingCheckUrlChanged: (String) -> Unit,
     val onPingTimeoutChanged: (Int) -> Unit,
@@ -62,9 +61,8 @@ internal data class SettingsActions(
     val onAddCustomGeoSource: (url: String, fileName: String, geoType: GeoDataKind) -> Unit,
     val onGeoRefreshOnMeteredChanged: (Boolean) -> Unit,
     val onRemoveCustomGeoSource: (String) -> Unit,
-    // Defaulted (unlike every field above): these landed after SettingsHwidLayoutTest's and
-    // SettingsDnsSectionTest's own full positional SettingsActions(...) construction, and none of
-    // them bears on what those tests assert.
+    // Defaulted (unlike every field above): these landed after SettingsDnsSectionTest's own
+    // full positional SettingsActions(...) construction, and none of them bears on what it asserts.
     val onBootAutostartChanged: (Boolean) -> Unit = {},
     val onFailClosedChanged: (Boolean) -> Unit = {},
     val onBatteryPromptResolved: () -> Unit = {},
@@ -88,7 +86,6 @@ internal data class SettingsActions(
 internal fun settingsActionsOf(viewModel: SettingsViewModel): SettingsActions =
     SettingsActions(
         onThemeChanged = viewModel::onThemeChanged,
-        onHwidEnabledChanged = viewModel::onHwidEnabledChanged,
         onPingModeChanged = viewModel::onPingModeChanged,
         onPingCheckUrlChanged = viewModel::onPingCheckUrlChanged,
         onPingTimeoutChanged = viewModel::onPingTimeoutChanged,

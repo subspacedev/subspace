@@ -96,6 +96,9 @@
     <string name="import_sheet_title">Add server</string>
     <string name="import_paste_placeholder">Link, subscription URL or Xray JSON</string>
     <string name="import_button">Add</string>
+    <string name="import_hwid_label">Device ID (HWID)</string>
+    <string name="import_hwid_already_added">This subscription is already added; its device ID is in its details.</string>
+    <string name="import_hwid_hint">Paste the ID from a previous install to keep your device slot.</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
          same import(raw) path this whole sheet already uses. -->
@@ -187,7 +190,6 @@
     </plurals>
     <string name="subscription_up_to_date">Up to date</string>
     <string name="subscription_error_hwid_required">This subscription requires a device ID. Enable it in Settings.</string>
-    <string name="subscription_detail_hwid_disabled_globally">Disabled globally in Settings. Turn on Send device ID there to use this subscription preference.</string>
     <string name="subscription_error_device_limit">Device limit reached. Remove a device in your account.</string>
     <string name="subscription_error_not_found">Subscription not found. Check the URL.</string>
     <string name="subscription_error_unreachable">Could not reach the server.</string>
@@ -499,7 +501,7 @@
     <string name="subscription_detail_not_found_back_button">Go back</string>
 
     <string name="subscription_detail_section_subscription">Subscription</string>
-    <string name="subscription_detail_section_requests">Requests</string>
+    <string name="subscription_detail_section_sent">Sent to the provider</string>
     <string name="subscription_detail_section_directives">Provider settings</string>
     <string name="subscription_detail_url_label">Subscription URL</string>
     <string name="subscription_detail_never_fetched">Never refreshed yet</string>
@@ -513,10 +515,26 @@
     <string name="subscription_detail_refresh_action">Refresh now</string>
     <string name="subscription_detail_refreshing_description">Refreshing</string>
 
-    <string name="subscription_detail_hwid_label">Device ID header</string>
+    <string name="subscription_detail_hwid_label">Device ID (HWID)</string>
     <string name="subscription_detail_hwid_description">
-        Sends a hashed device identifier some providers require for device limits.
+        A random ID some providers use to limit devices. It stays the same until you change it.
     </string>
+    <string name="subscription_detail_hwid_format">10 to 64 letters, digits, = or -</string>
+    <string name="subscription_detail_hwid_edit">Edit</string>
+    <string name="subscription_detail_hwid_random">New random ID</string>
+    <string name="subscription_detail_hwid_random_confirm_title">Make a new device ID?</string>
+    <string name="subscription_detail_hwid_random_confirm_text">The provider will see this device as new. It may count against your device limit.</string>
+    <string name="subscription_detail_hwid_random_confirm">Make new</string>
+    <string name="subscription_detail_header_adjusted">Adjusted: some characters can\'t be sent.</string>
+    <string name="subscription_detail_hwid_copy">Copy</string>
+    <string name="subscription_detail_hwid_save">Save</string>
+
+    <!-- %1$s = this device's value for the header, e.g. a phone model. -->
+    <string name="subscription_detail_header_follows">Follows this device: %1$s</string>
+    <string name="subscription_detail_header_not_sent">Not sent: this device has no value providers can receive.</string>
+    <string name="subscription_detail_header_format">1 to 128 printable ASCII characters</string>
+    <string name="subscription_detail_header_edit">Edit</string>
+    <string name="subscription_detail_header_reset">Reset to this device</string>
 
     <string name="subscription_detail_user_agent_label">User-Agent override</string>
     <string name="subscription_detail_user_agent_placeholder">Default</string>
@@ -572,6 +590,11 @@
     <string name="tuning_origin_default">default</string>
     <string name="subscription_fragment_ignored">Fragmentation directive ignored: %1$s</string>
     <string name="subscription_noise_ignored">Noise directive ignored: %1$s</string>
+
+    <!-- M10-B spec §3.1: what the provider says about a subscription, on its Servers card. -->
+    <string name="servers_group_subtitle_refresh">%1$s · refreshes every %2$d h</string>
+    <string name="subscription_support_link">Support</string>
+    <string name="subscription_account_link">Account</string>
 
     <!-- M9-B: reaching the subscription -->
     <string name="subscription_detail_section_reach">Reaching the subscription</string>

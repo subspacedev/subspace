@@ -24,7 +24,7 @@ import java.net.Proxy
 
 class SubscriptionFetcherRouteTest {
     private lateinit var server: MockWebServer
-    private val fetcher = SubscriptionFetcher(HwidProvider { "hwid" }, appVersion = "1.0.0")
+    private val fetcher = SubscriptionFetcher(appVersion = "1.0.0")
 
     @Before fun setUp() { server = MockWebServer().also { it.start() } }
 
@@ -38,7 +38,8 @@ class SubscriptionFetcherRouteTest {
     ) =
         SubscriptionRequest(
             url = "$scheme://$host:${server.port}/sub",
-            hwidEnabled = false,
+            hwid = null,
+            headers = emptyMap(),
             userAgentOverride = null,
             timeoutSeconds = timeoutSeconds,
             route = route,

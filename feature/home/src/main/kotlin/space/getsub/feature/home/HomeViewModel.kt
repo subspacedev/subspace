@@ -69,6 +69,10 @@ internal class HomeViewModel @Inject constructor(
             .combine(policySource.activeRuleSetName) { partial, name -> partial.copy(activeRuleSetName = name) }
             // A tenth: the effective per-app selection, for the Apps chip.
             .combine(policySource.perApp) { partial, selection -> partial.copy(perApp = selection) }
+            // An eleventh: the active subscription's limit and expiry, for the line on the server card.
+            .combine(profileSource.activeSubscription) { partial, info ->
+                partial.copy(activeSubscription = homeSubscriptionLine(info))
+            }
             .onEach { _state.value = it }
             .launchIn(viewModelScope)
     }

@@ -21,7 +21,7 @@ class AddServerSheetSnapshotTest {
     @get:Rule
     val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_5.copy(screenHeight = 2400))
 
-    private val noActions = ImportActions({}, {}, {}, {}, {})
+    private val noActions = ImportActions({}, {}, {}, {}, {}, {})
 
     private fun shoot(
         name: String,
@@ -46,6 +46,13 @@ class AddServerSheetSnapshotTest {
 
     @Test
     fun idle() = shoot("add-server-idle", ImportState())
+
+    @Test
+    fun subscriptionUrlShowsTheHwidField() =
+        shoot(
+            "add-server-subscription-hwid",
+            ImportState(input = "https://example.com/sub", subscriptionHwid = "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY"),
+        )
 
     @Test
     fun busy() = shoot("add-server-busy", ImportState(input = "vless://x@198.51.100.7:443", busy = true))

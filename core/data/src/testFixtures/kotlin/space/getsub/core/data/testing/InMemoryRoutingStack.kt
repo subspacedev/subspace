@@ -11,7 +11,6 @@ import space.getsub.core.data.RuleSetAssets
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.db.SubspaceDatabase
-import space.getsub.core.network.HwidProvider
 import java.io.File
 
 /**
@@ -33,7 +32,7 @@ public class InMemoryRoutingStack(context: Context) {
 
     /** The real routing repository under test. */
     public val repository: RoutingRepository = RoutingRepository(database.routingRuleSetDao())
-    private val settings = SettingsRepository(database.settingDao(), HwidProvider { "test-hwid" })
+    private val settings = SettingsRepository(database.settingDao())
     private val deletion =
         RoutingProfileDeletion(database, repository, RuleSetAssets(root), settings, profiles)
 

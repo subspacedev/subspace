@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit
 class SubscriptionFetcherProxyTest {
     private lateinit var proxy: MockWebServer
 
-    private fun fetcher() = SubscriptionFetcher(HwidProvider { "TESTHWIDvalue0123456789" }, appVersion = "1.0.0")
+    private fun fetcher() = SubscriptionFetcher(appVersion = "1.0.0")
 
     @Before fun setUp() { proxy = MockWebServer().also { it.start() } }
 
@@ -51,7 +51,8 @@ class SubscriptionFetcherProxyTest {
             fetcher().fetch(
                 SubscriptionRequest(
                     url = proxy.url("/sub").toString(),
-                    hwidEnabled = false,
+                    hwid = null,
+                    headers = emptyMap(),
                     userAgentOverride = null,
                     timeoutSeconds = 5,
                     proxy = null,
@@ -73,7 +74,8 @@ class SubscriptionFetcherProxyTest {
                 SubscriptionRequest(
                     // A host that must never be resolved for this test to be meaningful.
                     url = "http://sub.invalid/list",
-                    hwidEnabled = false,
+                    hwid = null,
+                    headers = emptyMap(),
                     userAgentOverride = null,
                     timeoutSeconds = 5,
                     proxy = LocalProxy(proxy.port, CREDENTIALS),
@@ -92,7 +94,8 @@ class SubscriptionFetcherProxyTest {
             fetcher().fetch(
                 SubscriptionRequest(
                     url = "http://sub.invalid/list",
-                    hwidEnabled = false,
+                    hwid = null,
+                    headers = emptyMap(),
                     userAgentOverride = null,
                     timeoutSeconds = 5,
                     proxy = LocalProxy(proxy.port, CREDENTIALS),
@@ -191,7 +194,8 @@ class SubscriptionFetcherProxyTest {
         timeoutSeconds: Int = 5,
     ) = SubscriptionRequest(
         url = url,
-        hwidEnabled = false,
+        hwid = null,
+        headers = emptyMap(),
         userAgentOverride = null,
         timeoutSeconds = timeoutSeconds,
         proxy = LocalProxy(proxy.port, CREDENTIALS),

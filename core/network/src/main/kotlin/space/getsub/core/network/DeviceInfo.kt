@@ -5,12 +5,12 @@ package space.getsub.core.network
 import javax.inject.Inject
 
 /**
- * The two optional device-identifying headers from §A.4.1: `x-ver-os` and
- * `x-device-model`. Behind a seam, same reasoning as [HwidProvider]: it keeps
- * [SubscriptionFetcher] itself free of `android.os.Build`, so its request
- * building stays provable on the plain JVM rather than needing Robolectric or
- * `androidTest` — `android.os.Build.VERSION.RELEASE`/`Build.MODEL` are not
- * live values under a JVM unit test.
+ * This device's values for `x-ver-os` and `x-device-model`, used when a subscription's header
+ * follows the device (M10-B spec §3.5). `:core:data` resolves them into each
+ * [SubscriptionRequest]. Behind a seam, same reasoning as [HwidProvider]: the resolution stays
+ * provable on the plain JVM rather than needing Robolectric or `androidTest` —
+ * `android.os.Build.VERSION.RELEASE`/`Build.MODEL` are not live values under a JVM unit test.
+ * The raw values may be non-ASCII; the caller sanitises them before they become header values.
  */
 public interface DeviceInfo {
     /** e.g. `"14"`. Empty string if unavailable. */
@@ -23,9 +23,8 @@ public interface DeviceInfo {
 /**
  * A [DeviceInfo] with both fields empty.
  *
- * The default for call sites — tests, and [SubscriptionFetcher]'s own
- * constructor default — that have no reason to touch `android.os.Build`.
- * Production wiring binds the real one in `NetworkModule`.
+ * For tests and fixtures that have no reason to touch `android.os.Build`. An empty value is
+ * dropped rather than sent. Production wiring binds the real one in `NetworkModule`.
  */
 public object EmptyDeviceInfo : DeviceInfo {
     override val osVersion: String = ""

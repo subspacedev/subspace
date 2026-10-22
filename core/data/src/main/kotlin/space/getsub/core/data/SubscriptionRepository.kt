@@ -20,6 +20,12 @@ import space.getsub.core.data.preresolve.PreResolvePolicy
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.preresolve.providerResolverOf
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.HeaderValue
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.HwidResult
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.directive.DirectiveKind
 import space.getsub.core.parser.directive.KindResult
@@ -214,12 +220,24 @@ internal constructor(
      * HWID defaults to **on** — §A.4.1 and §A.5. Happ sends by default; Throne
      * ships it off by default and consequently breaks limit-enabled providers
      * out of the box. Do the opposite.
+     *
+     * [hwid] is stored as this subscription's own identity and never derived again (M10-B spec
+     * §3.5). The add flow passes the value it generated once per URL, so every retry of a failed
+     * first fetch sends the same one. It has no default on purpose: a caller that could omit it could
+     * mint a fresh one per attempt. It is ignored when [url] is already stored (`created = false`),
+     * but it is validated first either way, as [setHwid] does, and stored trimmed.
+     *
+     * @throws IllegalArgumentException when [hwid] does not match the panel's format.
      */
     public suspend fun add(
         url: String,
         name: String,
-    ): AddedSubscription =
-        addMutex.withLock {
+        hwid: String,
+    ): AddedSubscription {
+        val validHwid = Hwid.validate(hwid) as? HwidResult.Valid
+        // ARCHITECTURE.md §5.6: the message names the rule, never the value.
+        requireNotNull(validHwid) { "HWID does not match the panel's format" }
+        return addMutex.withLock {
             // One transaction, not two committed writes. The group insert and the subscription
             // insert used to commit independently, so a failure or a cancellation between them
             // left a `source = "SUBSCRIPTION"` group with no subscription behind it — a group the
@@ -255,10 +273,12 @@ internal constructor(
                         hostHeader = link.hostHeader,
                         linkFragment = link.fragment,
                         insecureIgnored = link.insecure,
+                        hwid = validHwid.value,
                     ),
                 ).let { AddedSubscription(it, created = true) }
             }
         }
+    }
 
     /**
      * Deletes a subscription and everything it owns, including routing profiles and generations.
@@ -296,6 +316,52 @@ internal constructor(
         id: Long,
         enabled: Boolean,
     ): Unit = dao.setHwidEnabled(id, enabled)
+
+    /**
+     * Replaces [id]'s HWID with [hwid], trimmed (M10-B spec §3.5). The UI validates first and shows
+     * a field error; this check is the last line, so an invalid value never reaches a request.
+     *
+     * @throws IllegalArgumentException when [hwid] does not match the panel's format.
+     */
+    public suspend fun setHwid(
+        id: Long,
+        hwid: String,
+    ) {
+        val valid = Hwid.validate(hwid) as? HwidResult.Valid
+        // ARCHITECTURE.md §5.6: the message names the rule, never the value.
+        requireNotNull(valid) { "HWID does not match the panel's format" }
+        dao.setHwid(id, valid.value)
+    }
+
+    /**
+     * Stores [setting] for one of [id]'s device headers (M10-B spec §3.5). A literal is trimmed; a
+     * null literal means "follow this device".
+     *
+     * @throws IllegalArgumentException when the literal is not printable ASCII of 1 to 128 characters.
+     */
+    public suspend fun setHeader(
+        id: Long,
+        header: DeviceHeader,
+        setting: HeaderSetting,
+    ) {
+        val literal =
+            setting.literal?.let {
+                // ARCHITECTURE.md §5.6: the message names the rule, never the value.
+                requireNotNull(HeaderValue.validateLiteral(it)) {
+                    "${header.wireName} literal is not a valid header value"
+                }
+            }
+        when (header) {
+            DeviceHeader.Os -> dao.setDeviceOsHeader(id, setting.enabled, literal)
+            DeviceHeader.OsVersion -> dao.setOsVersionHeader(id, setting.enabled, literal)
+            DeviceHeader.Model -> dao.setDeviceModelHeader(id, setting.enabled, literal)
+            DeviceHeader.AppVersion -> dao.setAppVersionHeader(id, setting.enabled, literal)
+        }
+    }
+
+    /** What [id] tells its provider about this device (M10-B spec §3.5); null once it is deleted. */
+    public fun identity(id: Long): Flow<SubscriptionIdentity?> =
+        dao.observeSubscription(id).map { it?.identity() }.distinctUntilChanged()
 
     /** Sets a per-subscription User-Agent override, or clears it when [userAgent] is null or blank. */
     public suspend fun setUserAgentOverride(

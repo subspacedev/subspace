@@ -83,7 +83,7 @@ class MultiProcessInvalidationTest {
         // looks identical to a missing invalidation flag. A new name makes each
         // run hermetic no matter what is still resident.
         databaseName = "$TEST_DB_PREFIX-${System.currentTimeMillis()}.db"
-        db = subspaceDatabase(context, databaseName)
+        db = subspaceDatabase(context, { TEST_LEGACY_HWID }, databaseName)
     }
 
     @After

@@ -137,5 +137,7 @@
     <!-- No session: no peak was measured (M8.5 spec §10.1). -->
     <string name="home_throughput_peak_none">—</string>
     <!-- %1$s protocol, %2$s transport, upper-cased words such as VLESS, TCP. Not config content. -->
+    <!-- M10-B spec §3.3: %1$s and %2$s are already-formatted byte counts. -->
+    <string name="home_active_server_usage">%1$s of %2$s</string>
     <string name="home_active_server_meta">%1$s · %2$s</string>
 </resources>

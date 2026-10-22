@@ -25,10 +25,12 @@ import space.getsub.core.data.db.RoutingRuleSetDao
 import space.getsub.core.data.db.SettingDao
 import space.getsub.core.data.db.SubscriptionDao
 import space.getsub.core.data.db.SubspaceDatabase
+import space.getsub.core.data.db.migration8To9
 import space.getsub.core.model.GeoDataValidator
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.network.GeoDownloadOutcome
 import space.getsub.core.network.GeoFileFetcher
+import space.getsub.core.network.HwidProvider
 import java.io.File
 import java.io.IOException
 import javax.inject.Singleton
@@ -64,9 +66,15 @@ private const val MAX_GEO_FILE_BYTES = 128L * 1024 * 1024
  * [DataModule.database], and do not "simplify" the flag away.
  *
  * [name] is a parameter for that test's sake only; production has exactly one database.
+ *
+ * [legacyHwid] supplies the HWID this device sends today. Only the 8 to 9 migration calls it, to
+ * keep every existing subscription's identity exactly (M10-B spec §3.5). It is a supplier, not a
+ * value, so a database that is already at version 9 never derives it: a throw there would
+ * otherwise break the database on every launch.
  */
 internal fun subspaceDatabase(
     context: Context,
+    legacyHwid: () -> String,
     name: String = DATABASE_NAME,
 ): SubspaceDatabase =
     Room
@@ -80,6 +88,7 @@ internal fun subspaceDatabase(
             MIGRATION_5_6,
             MIGRATION_6_7,
             MIGRATION_7_8,
+            migration8To9(legacyHwid),
         )
         .build()
 
@@ -97,7 +106,8 @@ internal object DataModule {
     @Singleton
     fun database(
         @ApplicationContext context: Context,
-    ): SubspaceDatabase = subspaceDatabase(context)
+        hwidProvider: HwidProvider,
+    ): SubspaceDatabase = subspaceDatabase(context, legacyHwid = hwidProvider::hwid)
 
     @Provides
     fun profileDao(database: SubspaceDatabase): ProfileDao = database.profileDao()

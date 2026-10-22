@@ -43,7 +43,7 @@ class SettingsPagesSnapshotTest {
 
     private val actions =
         SettingsActions(
-            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {},
+            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, { _, _, _ -> }, {}, {},
         )
 
     private val base =
@@ -53,8 +53,6 @@ class SettingsPagesSnapshotTest {
             dnsTransport = DnsTransport.DOH,
             dnsAddress = "https://dns.cloudflare.com/dns-query",
             dnsBootstrapIp = "1.1.1.1",
-            hwid = "K7dQ2mX9pL4nR8vT1yU3wA6sD5fG0hJ2kZ9xC4vB7nM",
-            hwidEnabled = true,
             dynamicColorAvailable = true,
             pingCheckUrl = "https://www.gstatic.com/generate_204",
             pingTimeoutSeconds = 5,
@@ -77,9 +75,6 @@ class SettingsPagesSnapshotTest {
 
     @Test
     fun appearance() = shoot(SettingsPageId.Appearance)
-
-    @Test
-    fun deviceId() = shoot(SettingsPageId.DeviceId)
 
     @Test
     fun latency() = shoot(SettingsPageId.Latency)

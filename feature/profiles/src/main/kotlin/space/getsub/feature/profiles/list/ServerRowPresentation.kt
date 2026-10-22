@@ -75,6 +75,9 @@ internal fun ServerRow.leadingMark(): String = flagIn(name) ?: name.codeTileInit
 /** The name shown beside [leadingMark]: without the flag that tile already carries. */
 internal fun ServerRow.displayName(): String = nameWithoutFlag(name)
 
+/** The provider's caption, or null when it is absent or blank (M10-B spec §2). */
+internal fun ServerRow.displayCaption(): String? = caption?.trim()?.takeIf { it.isNotEmpty() }
+
 /** True when the group's sort came from its provider (S6, M8.6 Part 3 R5). */
 internal fun ServersGroup.showsProviderOrder(): Boolean = sortFromProvider
 

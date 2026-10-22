@@ -71,8 +71,7 @@ internal fun parseVlessLink(
             stream = stream,
         )
     val id = profileId("vless", uri.host, uri.port, uri.userInfo)
-    val name = uri.fragment.ifBlank { uri.host }
-    return LinkResult.Ok(Profile(id = id, name = name, outbound = outbound))
+    return named(id, uri, outbound)
 }
 
 private fun buildReality(
@@ -136,3 +135,12 @@ private fun transportOptions(
 
         else -> TransportOptions.None
     }
+
+private fun named(
+    id: String,
+    uri: UriParts,
+    outbound: VlessOutbound,
+): LinkResult {
+    val named = splitCaption(uri.fragment)
+    return LinkResult.Ok(Profile(id, named.name.ifBlank { uri.host }, outbound, caption = named.caption))
+}

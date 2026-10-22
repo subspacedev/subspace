@@ -25,7 +25,6 @@ import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.perAppModeFrom
 import space.getsub.core.model.perAppModeWire
 import space.getsub.core.model.pingModeFrom
-import space.getsub.core.network.HwidProvider
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,7 +34,6 @@ import javax.inject.Singleton
 private const val KEY_THEME = "theme"
 private const val KEY_ACTIVE_PROFILE = "active_profile_id"
 private const val KEY_ACTIVE_ROUTING_RULE_SET = "active_routing_rule_set_id"
-private const val KEY_HWID_ENABLED = "hwid_enabled"
 private const val KEY_PING_MODE = "ping_mode"
 private const val KEY_PING_CHECK_URL = "ping_check_url"
 private const val KEY_PING_TIMEOUT_SECONDS = "ping_timeout_seconds"
@@ -114,7 +112,6 @@ public class SettingsRepository
 @Inject
 internal constructor(
     private val dao: SettingDao,
-    private val hwidProvider: HwidProvider,
 ) {
     /** The current theme preference, defaulting to [ThemePreference.System] until set. */
     public val theme: Flow<ThemePreference> =
@@ -173,22 +170,6 @@ internal constructor(
     /** Clears routing only if [id] is still active; a newer selection is untouched. */
     public suspend fun clearActiveRoutingRuleSetIf(id: Long): Boolean =
         dao.clearIfValue(KEY_ACTIVE_ROUTING_RULE_SET, id.toString()) == 1
-
-    /** Whether the global Device ID header gate is enabled; defaults to on for provider compatibility. */
-    public val hwidEnabled: Flow<Boolean> =
-        dao.observe(KEY_HWID_ENABLED).map { stored ->
-            // A value this repository writes is always "true" or "false". Preserve the safe,
-            // compatible default if a hand-edited/future value cannot be interpreted.
-            stored?.toBooleanStrictOrNull() ?: true
-        }
-
-    /** The stable, hashed identifier the fetcher sends as `x-hwid`; never the raw Android ID. */
-    public fun hwid(): String = hwidProvider.hwid()
-
-    /** Sets the global Device ID gate. Individual subscriptions may still opt out separately. */
-    public suspend fun setHwidEnabled(enabled: Boolean) {
-        dao.put(SettingEntity(key = KEY_HWID_ENABLED, value = enabled.toString()))
-    }
 
     /**
      * How latency is measured, defaulting to [PingMode.TCP] — see [pingModeFrom]

@@ -42,6 +42,11 @@ import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.TuningProblem
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.HwidResult
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.RouteExclusionRequest
@@ -63,7 +68,16 @@ class SubscriptionDetailViewModelTest {
                 KEY_USER_AGENT to "Provider Agent",
             )
         private val pins = MutableStateFlow<Map<String, String>>(emptyMap())
-        val globalHwidEnabledState = MutableStateFlow(true)
+        val identity =
+            MutableStateFlow<SubscriptionIdentity?>(
+                SubscriptionIdentity(
+                    hwid = OLD_HWID,
+                    hwidEnabled = true,
+                    headers = DeviceHeader.entries.associateWith { HeaderSetting(enabled = true, literal = null) },
+                ),
+            )
+        val storedHwids = mutableListOf<String>()
+        val storedHeaders = mutableListOf<Pair<DeviceHeader, HeaderSetting>>()
 
         var pinned: Triple<Long, String, String>? = null
             private set
@@ -81,7 +95,24 @@ class SubscriptionDetailViewModelTest {
 
         override fun observeGroups(query: String, protocol: String?): Flow<List<ProfileGroup>> = groups
         override val activeProfileId: StateFlow<Long?> = MutableStateFlow(null)
-        override val globalHwidEnabled: StateFlow<Boolean> = globalHwidEnabledState
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = identity
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> =
+            mapOf(
+                DeviceHeader.Os to "Android",
+                DeviceHeader.OsVersion to "14",
+                DeviceHeader.Model to "Pixel 8",
+                DeviceHeader.AppVersion to null,
+            )
+        var adjusted: Set<DeviceHeader> = emptySet()
+        override fun adjustedDeviceHeaders(): Set<DeviceHeader> = adjusted
+        override suspend fun setHwid(id: Long, hwid: String) {
+            storedHwids += hwid
+            identity.value = identity.value?.copy(hwid = hwid)
+        }
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) {
+            storedHeaders += header to setting
+            identity.value = identity.value?.let { it.copy(headers = it.headers + (header to setting)) }
+        }
         override suspend fun setActiveProfile(id: Long?) = Unit
         override suspend fun renameGroup(id: Long, name: String) = Unit
         override suspend fun deleteGroup(id: Long) = Unit
@@ -91,7 +122,7 @@ class SubscriptionDetailViewModelTest {
         override suspend fun rename(id: Long, name: String) = Unit
         override suspend fun move(id: Long, toGroupId: Long): Boolean = true
         override suspend fun update(id: Long, name: String, outbound: Outbound): Boolean = true
-        override suspend fun addSubscription(url: String, name: String): AddedSubscription =
+        override suspend fun addSubscription(url: String, name: String, hwid: String): AddedSubscription =
             AddedSubscription(SUBSCRIPTION_ID, created = true)
         override suspend fun syncSubscription(id: Long): SyncResult {
             syncCalls++
@@ -415,13 +446,147 @@ class SubscriptionDetailViewModelTest {
         }
 
     @Test
-    fun globalHwidGateIsVisibleInTheDetailState() =
+    fun theStoredIdentityIsShownWithTheDeviceValues() =
         runTest {
             viewModel.load(SUBSCRIPTION_ID)
-            source.globalHwidEnabledState.value = false
             advanceUntilIdle()
 
-            viewModel.state.value.globalHwidEnabled shouldBe false
+            val state = viewModel.state.value
+            state.hwid shouldBe OLD_HWID
+            state.hwidDraft shouldBe OLD_HWID
+            state.headers[DeviceHeader.Model] shouldBe HeaderRowState(true, null, "Pixel 8")
+            // A device value with nothing sendable left has no value to show.
+            state.headers[DeviceHeader.AppVersion] shouldBe HeaderRowState(true, null, null)
+        }
+
+    @Test
+    fun theRequestTimeoutLivesInItsOwnRowNotTheDirectiveList() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            state.timeoutRow?.row?.key shouldBe KEY_TIMEOUT
+            state.rows.none { it.row.key == KEY_TIMEOUT } shouldBe true
+        }
+
+    @Test
+    fun savingAHwidTrimsItAndStoresIt() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onHwidDraftChanged("  abcDEF1234 ")
+
+            viewModel.onHwidSave() shouldBe true
+            advanceUntilIdle()
+
+            source.storedHwids shouldBe listOf("abcDEF1234")
+            viewModel.state.value.hwid shouldBe "abcDEF1234"
+            viewModel.state.value.hwidError shouldBe false
+        }
+
+    @Test
+    fun anInvalidHwidSetsTheErrorAndStoresNothing() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onHwidDraftChanged("short")
+
+            viewModel.onHwidSave() shouldBe false
+            advanceUntilIdle()
+
+            source.storedHwids shouldBe emptyList()
+            viewModel.state.value.hwidError shouldBe true
+            viewModel.onHwidDraftChanged("abcDEF1234")
+            viewModel.state.value.hwidError shouldBe false
+        }
+
+    @Test
+    fun cancellingAnHwidEditResetsTheDraftToNothingSoTheStoredValueShows() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.onHwidDraftChanged("typed-but-abandoned")
+
+            viewModel.onHwidEditCancelled()
+
+            viewModel.state.value.hwidDraft shouldBe OLD_HWID
+            viewModel.onHwidSave() shouldBe true // no draft left: nothing to store
+            source.storedHwids shouldBe emptyList()
+        }
+
+    @Test
+    fun theHwidDraftIsNeverPrintedByToString() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onHwidDraftChanged("secret-draft-0123")
+
+            val ephemeral = viewModel.javaClass.getDeclaredField("ephemeral").apply { isAccessible = true }
+                .get(viewModel)
+            ephemeral!!.toString().contains("secret-draft-0123") shouldBe false
+        }
+
+    @Test
+    fun aHeaderThatWasCleanedUpIsMarkedAdjusted() =
+        runTest {
+            source.adjusted = setOf(DeviceHeader.Model)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.headers[DeviceHeader.Model]!!.deviceValueAdjusted shouldBe true
+            viewModel.state.value.headers[DeviceHeader.Os]!!.deviceValueAdjusted shouldBe false
+        }
+
+    @Test
+    fun aNewRandomHwidIsValidAndDiffersFromTheOldOne() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+
+            viewModel.onHwidRandom()
+            advanceUntilIdle()
+
+            val stored = source.storedHwids.single()
+            (Hwid.validate(stored) is HwidResult.Valid) shouldBe true
+            (stored == OLD_HWID) shouldBe false
+        }
+
+    @Test
+    fun aHeaderSwitchPersists() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onHeaderEnabledChanged(DeviceHeader.Model, false)
+            advanceUntilIdle()
+
+            source.storedHeaders shouldBe listOf(DeviceHeader.Model to HeaderSetting(false, null))
+            viewModel.state.value.headers[DeviceHeader.Model]?.enabled shouldBe false
+        }
+
+    @Test
+    fun aHeaderLiteralIsTrimmedAndStoredAndResetFollowsTheDeviceAgain() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onHeaderLiteralSave(DeviceHeader.Model, "  Tablet 9 ") shouldBe true
+            advanceUntilIdle()
+            viewModel.state.value.headers[DeviceHeader.Model]?.literal shouldBe "Tablet 9"
+
+            viewModel.onHeaderReset(DeviceHeader.Model)
+            advanceUntilIdle()
+            source.storedHeaders.last() shouldBe (DeviceHeader.Model to HeaderSetting(true, null))
+            viewModel.state.value.headers[DeviceHeader.Model]?.literal shouldBe null
+        }
+
+    @Test
+    fun aNonAsciiHeaderLiteralIsRefused() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onHeaderLiteralSave(DeviceHeader.Model, "Пиксель") shouldBe false
+            advanceUntilIdle()
+
+            source.storedHeaders shouldBe emptyList()
         }
 
     @Test
@@ -668,6 +833,7 @@ class SubscriptionDetailViewModelTest {
         const val SUBSCRIPTION_ID = 7L
         val VALID_RESOLVER = ProviderResolver.Valid("https://dns.example/q", "dns.example", null)
         const val GROUP_ID = 9L
+        const val OLD_HWID = "oldHwid1234567890"
         const val KEY_INTERVAL = "profile-update-interval"
         const val KEY_TIMEOUT = "subscription-request-timeout"
         const val KEY_AUTO_UPDATE = "subscription-auto-update-enable"

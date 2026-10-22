@@ -30,6 +30,12 @@ import space.getsub.core.data.TUNING_DIRECTIVE_KEYS
 import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.Checked
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.HeaderValue
+import space.getsub.core.model.identity.Hwid
+import space.getsub.core.model.identity.HwidResult
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.LinkFragment
 import space.getsub.core.parser.directive.DirectiveRegistry
 import space.getsub.core.parser.directive.KindResult
@@ -164,14 +170,14 @@ constructor(
             combine(
                 rowsFlow,
                 profileSource.observeEffective(subscriptionId, KEY_USER_AGENT, default = null),
-                profileSource.globalHwidEnabled,
+                profileSource.observeIdentity(subscriptionId),
                 profileSource.observeDirectiveIssues(subscriptionId, refreshes = issuesTick),
                 reachFlow,
-            ) { rows, userAgent, globalHwidEnabled, issues, reach ->
+            ) { rows, userAgent, identity, issues, reach ->
                 DetailSettings(
                     rows = rows,
                     providerUserAgent = userAgent.providerValue,
-                    globalHwidEnabled = globalHwidEnabled,
+                    identity = identity,
                     issues = issues,
                     reach = reach,
                 )
@@ -193,7 +199,7 @@ constructor(
                         userInfo = userInfo,
                         rows = settings.rows,
                         providerUserAgent = settings.providerUserAgent,
-                        globalHwidEnabled = settings.globalHwidEnabled,
+                        identity = settings.identity,
                         issues = settings.issues,
                         reach = settings.reach,
                         ephemeral = eph,
@@ -213,33 +219,37 @@ constructor(
             Reach(redirect, fragmentationOn, resolver, userPreResolveOn, routes.request())
         }
 
-    private fun observeDirectiveRows(id: Long): Flow<List<DirectiveRow>> =
+    private fun observeDirectiveRows(id: Long): Flow<DirectiveRows> =
         combine(
             profileSource.observeEffective(id, KEY_INTERVAL, DEFAULT_INTERVAL_HOURS),
             profileSource.observeEffective(id, KEY_TIMEOUT, DEFAULT_TIMEOUT_SECONDS),
             profileSource.observeEffective(id, KEY_AUTO_UPDATE, DEFAULT_AUTO_UPDATE),
             profileSource.observeEffective(id, KEY_AUTO_UPDATE_OPEN, DEFAULT_AUTO_UPDATE),
         ) { interval, timeout, autoUpdate, autoUpdateOpen ->
-            listOf(
-                DirectiveRow(
-                    DirectiveRowKind.Hours,
-                    R.string.subscription_row_interval_label,
-                    SettingRowState.from(interval),
-                ),
+            DirectiveRows(
+                timeout =
                 DirectiveRow(
                     DirectiveRowKind.Seconds,
                     R.string.subscription_row_timeout_label,
                     SettingRowState.from(timeout),
                 ),
-                DirectiveRow(
-                    DirectiveRowKind.Toggle,
-                    R.string.subscription_row_auto_update_label,
-                    SettingRowState.from(autoUpdate),
-                ),
-                DirectiveRow(
-                    DirectiveRowKind.Toggle,
-                    R.string.subscription_row_auto_update_open_label,
-                    SettingRowState.from(autoUpdateOpen),
+                rows =
+                listOf(
+                    DirectiveRow(
+                        DirectiveRowKind.Hours,
+                        R.string.subscription_row_interval_label,
+                        SettingRowState.from(interval),
+                    ),
+                    DirectiveRow(
+                        DirectiveRowKind.Toggle,
+                        R.string.subscription_row_auto_update_label,
+                        SettingRowState.from(autoUpdate),
+                    ),
+                    DirectiveRow(
+                        DirectiveRowKind.Toggle,
+                        R.string.subscription_row_auto_update_open_label,
+                        SettingRowState.from(autoUpdateOpen),
+                    ),
                 ),
             )
         }
@@ -270,10 +280,14 @@ constructor(
             quotaUsedBytes = inputs.userInfo?.takeIf { it.upload != null || it.download != null }?.usedBytes,
             quotaTotalBytes = inputs.userInfo?.total,
             hwidEnabled = subscription.hwidEnabled,
-            globalHwidEnabled = inputs.globalHwidEnabled,
             userAgentOverride = subscription.userAgentOverride,
             providerUserAgent = inputs.providerUserAgent,
-            rows = inputs.rows,
+            hwid = inputs.identity?.hwid.orEmpty(),
+            hwidDraft = inputs.ephemeral.hwidDraft ?: inputs.identity?.hwid.orEmpty(),
+            hwidError = inputs.ephemeral.hwidError,
+            headers = headerRows(inputs.identity),
+            timeoutRow = inputs.rows.timeout,
+            rows = inputs.rows.rows,
             isRefreshing = inputs.ephemeral.isRefreshing,
             refreshResult = inputs.ephemeral.refreshResult,
             deleted = inputs.ephemeral.deleted,
@@ -300,25 +314,41 @@ constructor(
         )
     }
 
+    /** One row per device header; a header with no stored setting follows the device, like a new subscription. */
+    private fun headerRows(identity: SubscriptionIdentity?): Map<DeviceHeader, HeaderRowState> {
+        val deviceValues = profileSource.deviceHeaderValues()
+        val adjusted = profileSource.adjustedDeviceHeaders()
+        return DeviceHeader.entries.associateWith { header ->
+            val setting = identity?.headers?.get(header) ?: HeaderSetting(enabled = true, literal = null)
+            HeaderRowState(setting.enabled, setting.literal, deviceValues[header], header in adjusted)
+        }
+    }
+
     private data class DetailInputs(
         val subscriptionId: Long,
         val subscription: StoredSubscription?,
         val groups: List<ProfileGroup>,
         val userInfo: UserInfo?,
-        val rows: List<DirectiveRow>,
+        val rows: DirectiveRows,
         val providerUserAgent: String?,
-        val globalHwidEnabled: Boolean,
+        val identity: SubscriptionIdentity?,
         val issues: DirectiveIssues,
         val reach: Reach,
         val ephemeral: Ephemeral,
     )
 
     private data class DetailSettings(
-        val rows: List<DirectiveRow>,
+        val rows: DirectiveRows,
         val providerUserAgent: String?,
-        val globalHwidEnabled: Boolean,
+        val identity: SubscriptionIdentity?,
         val issues: DirectiveIssues,
         val reach: Reach,
+    )
+
+    /** The generic directive rows, and the request timeout, which the "Sent to the provider" section shows. */
+    private data class DirectiveRows(
+        val rows: List<DirectiveRow>,
+        val timeout: DirectiveRow,
     )
 
     /** Everything "Reaching the subscription" shows besides the stored row (M9-B §4, M9-C §4.2, M9-E §4). */
@@ -374,6 +404,83 @@ constructor(
     fun onHwidEnabledChanged(enabled: Boolean) {
         val id = loadedId ?: return
         viewModelScope.launch { profileSource.setHwidEnabled(id, enabled) }
+    }
+
+    /** Edits the HWID draft; a field error from a refused save clears as soon as the user types. */
+    fun onHwidDraftChanged(text: String) {
+        ephemeral.value = ephemeral.value.copy(hwidDraft = text, hwidError = false)
+    }
+
+    /**
+     * Stores the draft as the HWID, trimmed. Returns `false`, storing nothing and setting
+     * [SubscriptionDetailState.hwidError], when it does not match the panel's format (M10-B spec §3.5).
+     * No draft means nothing was edited, which is not an error.
+     */
+    fun onHwidSave(): Boolean {
+        val id = loadedId
+        val draft = ephemeral.value.hwidDraft
+        val valid = draft?.let { Hwid.validate(it) as? HwidResult.Valid }
+        return when {
+            id == null -> false
+            draft == null -> true
+            valid == null -> {
+                ephemeral.value = ephemeral.value.copy(hwidError = true)
+                false
+            }
+            else -> {
+                ephemeral.value = ephemeral.value.copy(hwidDraft = null, hwidError = false)
+                viewModelScope.launch { profileSource.setHwid(id, valid.value) }
+                true
+            }
+        }
+    }
+
+    /** Abandons the HWID edit: the stored value shows again. */
+    fun onHwidEditCancelled() {
+        ephemeral.value = ephemeral.value.copy(hwidDraft = null, hwidError = false)
+    }
+
+    /** Replaces the HWID with a fresh random one. */
+    fun onHwidRandom() {
+        val id = loadedId ?: return
+        ephemeral.value = ephemeral.value.copy(hwidDraft = null, hwidError = false)
+        viewModelScope.launch { profileSource.setHwid(id, Hwid.random()) }
+    }
+
+    fun onHeaderEnabledChanged(
+        header: DeviceHeader,
+        enabled: Boolean,
+    ) {
+        writeHeader(header) { HeaderSetting(enabled, it.literal) }
+    }
+
+    /**
+     * Stores [text] as [header]'s own value. Returns `false`, storing nothing, when it is not
+     * printable ASCII of 1 to 128 characters: OkHttp throws on anything else (M10-B spec §3.5).
+     */
+    fun onHeaderLiteralSave(
+        header: DeviceHeader,
+        text: String,
+    ): Boolean {
+        val literal = HeaderValue.validateLiteral(text) ?: return false
+        return writeHeader(header) { HeaderSetting(it.enabled, literal) }
+    }
+
+    /** Makes [header] follow this device again. */
+    fun onHeaderReset(header: DeviceHeader) {
+        writeHeader(header) { HeaderSetting(it.enabled, null) }
+    }
+
+    private fun writeHeader(
+        header: DeviceHeader,
+        change: (HeaderRowState) -> HeaderSetting,
+    ): Boolean {
+        val id = loadedId
+        val current = _state.value.headers[header]
+        if (id == null || current == null) return false
+        val setting = change(current)
+        viewModelScope.launch { profileSource.setHeader(id, header, setting) }
+        return true
     }
 
     /** [userAgent] blank or `null` clears the override — see [ProfileSource.setUserAgentOverride]. */
@@ -462,8 +569,16 @@ constructor(
     }
 
     private data class Ephemeral(
+        /** The HWID text being edited; `null` until the user types, so the stored value shows. */
+        val hwidDraft: String? = null,
+        val hwidError: Boolean = false,
         val isRefreshing: Boolean = false,
         val refreshResult: UserMessage? = null,
         val deleted: Boolean = false,
-    )
+    ) {
+        // ARCHITECTURE.md §5.6: the draft is an identifier being typed; keep it out of any log.
+        override fun toString(): String =
+            "Ephemeral(hwidDraft=${if (hwidDraft == null) "none" else "<redacted>"}, hwidError=$hwidError, " +
+                "isRefreshing=$isRefreshing, refreshResult=$refreshResult, deleted=$deleted)"
+    }
 }
