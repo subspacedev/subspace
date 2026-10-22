@@ -16,6 +16,9 @@ import javax.inject.Singleton
 internal interface LaunchProgress {
     val state: StateFlow<LaunchAutomationState>
 
+    /** See [LaunchAutomation.running]. */
+    val running: StateFlow<Boolean>
+
     fun cancel()
 
     fun onUserTookOver()
@@ -30,6 +33,8 @@ constructor(
     private val automation: LaunchAutomation,
 ) : LaunchProgress {
     override val state: StateFlow<LaunchAutomationState> get() = automation.state
+
+    override val running: StateFlow<Boolean> get() = automation.running
 
     override fun cancel() = automation.cancel()
 

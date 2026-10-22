@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import space.getsub.core.data.toProfile
-import space.getsub.feature.home.launch.LaunchAutomationState
 import space.getsub.feature.home.launch.LaunchProgress
 import javax.inject.Inject
 
@@ -101,16 +100,20 @@ internal class HomeViewModel @Inject constructor(
      *
      * Kept beside LaunchAutomation's launch test (M10-C spec §3.2), which covers the active
      * server only when it runs: its metered gate and the Last-picked connect both skip it, and
-     * a pick in another group under "Active subscription" leaves the new server unmeasured. It
-     * therefore yields to any run in flight and to a Fastest choice: Home and Servers share one
-     * runner, and a one-server start would supersede that run and release its rows unmeasured.
+     * a pick in another group under "Active subscription" leaves the new server unmeasured.
+     *
+     * It first waits for the automation to finish (bounded by its own budget), then decides:
+     * Home and Servers share one runner, and both starts suspend before marking rows, so a
+     * start racing the launch test could supersede it and release its rows unmeasured, or
+     * measure the active server twice. After the wait the checks below see what the launch
+     * test did: a reading or a run in flight means nothing to do here.
      */
     fun onHomeShown() {
         viewModelScope.launch {
             if (!tunnel.pingOnLaunch.first()) return@launch
+            launch.running.first { !it }
             val profileId = _state.value.activeProfile?.id ?: return@launch
             if (profileId in tunnel.latencies.value || tunnel.measuring.value.isNotEmpty()) return@launch
-            if (launch.state.value == LaunchAutomationState.Finding) return@launch
             tunnel.measure(profileId)
         }
     }

@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -60,12 +62,29 @@ internal constructor(
 
     // Conflated: one pending request is all that can matter, and it must survive the window
     // between onCreate and the activity starting to collect.
-    private val requests = Channel<Unit>(Channel.CONFLATED)
+    // Carries the id it was sent for, so a request that outlived its open (buffered while the
+    // activity was gone) is recognised as stale and never shows a consent dialog for nothing.
+    private val requests = Channel<Long>(Channel.CONFLATED)
 
-    /** One event per auto-connect: run VPN consent, then call [onConsentGranted] or [onConsentDenied]. */
-    val connectRequests: Flow<Unit> = requests.receiveAsFlow()
+    /**
+     * One event per auto-connect: run VPN consent, then call [onConsentGranted] or [onConsentDenied].
+     * Only requests for the current target pass: one abandoned or superseded since is dropped.
+     */
+    val connectRequests: Flow<Unit> = requests.receiveAsFlow().filter { it == chosen }.map { }
+
+    private val _running = MutableStateFlow(false)
+
+    /**
+     * True from [onFreshOpen] until the sequence has ended, including the launch test's start,
+     * or until it is abandoned. Home's own one-server measure waits on this, so it neither
+     * supersedes the launch test nor measures a server that test is about to cover.
+     */
+    val running: StateFlow<Boolean> = _running.asStateFlow()
 
     private var job: Job? = null
+
+    /** Which open the current run belongs to; see [onFreshOpen]. */
+    private var generation = 0L
 
     /** The profile the last request was for; cleared once consent is answered or the user acts. */
     private var chosen: Long? = null
@@ -75,7 +94,23 @@ internal constructor(
         job?.cancel()
         chosen = null
         _state.value = LaunchAutomationState.Idle
-        job = scope.launch { runSequence() }
+        // Before the launch, so a reader never sees a gap between "open" and "running". A request
+        // left over from an earlier open is drained, not delivered to this one. Conflated, so it
+        // holds at most one.
+        requests.tryReceive()
+        _running.value = true
+        val run = ++generation
+        job =
+            scope.launch {
+                try {
+                    runSequence()
+                } finally {
+                    // Only this run's own end clears it: a superseded run's finally can land after
+                    // the next open has set it again. A counter, not the Job: on Main.immediate the
+                    // body can finish before `job` is assigned.
+                    if (generation == run) _running.value = false
+                }
+            }
     }
 
     /** Connects the chosen server, through the same tunnel path a Connect tap takes. */
@@ -121,6 +156,7 @@ internal constructor(
     private fun abandon() {
         job?.cancel()
         job = null
+        _running.value = false
         chosen = null
         if (_state.value == LaunchAutomationState.Finding) _state.value = LaunchAutomationState.Idle
     }
@@ -330,7 +366,7 @@ internal constructor(
 
     private fun request(id: Long) {
         chosen = id
-        requests.trySend(Unit)
+        requests.trySend(id)
     }
 
     /** What a Fastest sequence read before measuring. */

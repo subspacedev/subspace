@@ -210,6 +210,14 @@ class HomeViewModelTest {
         var measuredIds: List<Long> = emptyList()
             private set
 
+        /** A result another run (the launch test) delivered. */
+        fun deliver(
+            profileId: Long,
+            result: LatencyResult,
+        ) {
+            _latencies.value = _latencies.value + (profileId to result)
+        }
+
         /** Another run (Servers', or the launch test) has [profileId] in flight. */
         fun markMeasuring(profileId: Long) {
             _measuring.value = _measuring.value + profileId
@@ -228,6 +236,7 @@ class HomeViewModelTest {
     /** Records what Home asked of the fresh-open automation; its state is driven by the test. */
     private class FakeLaunchProgress : LaunchProgress {
         override val state = MutableStateFlow<LaunchAutomationState>(LaunchAutomationState.Idle)
+        override val running = MutableStateFlow(false)
         val calls = mutableListOf<String>()
 
         override fun cancel() {
@@ -798,19 +807,46 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `home's own launch measure waits while the automation is finding`() =
+    fun `home waits for the automation, then measures nothing the launch test covered`() =
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.launchPingEnabled = true
             val launch = FakeLaunchProgress()
-            launch.state.value = LaunchAutomationState.Finding
+            launch.running.value = true
             val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), launch)
             advanceUntilIdle()
 
             vm.onHomeShown()
             advanceUntilIdle()
-
-            // The Fastest run is about to start (or has) and covers the active server.
+            // Both starts suspend before marking rows, so measuring now could race the launch test.
             tunnel.measuredIds shouldBe emptyList()
+
+            // The launch test measured the active server, then the sequence ended.
+            tunnel.deliver(1L, LatencyResult.ok(30))
+            launch.running.value = false
+            advanceUntilIdle()
+
+            tunnel.measuredIds shouldBe emptyList()
+        }
+
+    @Test
+    fun `home measures the active server when the automation skipped it`() =
+        runTest {
+            val (_, tunnel, source) = latencyFixture()
+            tunnel.launchPingEnabled = true
+            val launch = FakeLaunchProgress()
+            launch.running.value = true
+            val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), launch)
+            advanceUntilIdle()
+
+            vm.onHomeShown()
+            advanceUntilIdle()
+            tunnel.measuredIds shouldBe emptyList()
+
+            // A metered network or a Last-picked connect: the launch test did not run.
+            launch.running.value = false
+            advanceUntilIdle()
+
+            tunnel.measuredIds shouldBe listOf(1L)
         }
 }

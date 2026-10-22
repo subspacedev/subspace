@@ -38,6 +38,8 @@ import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.model.automation.NetworkKind
 import space.getsub.feature.home.TunnelConnection
 
+// One case per spec rule, sharing one set of fakes; splitting would duplicate the fakes instead.
+@Suppress("LargeClass")
 @OptIn(ExperimentalCoroutinesApi::class)
 class LaunchAutomationTest {
     // Group 1 holds 1..3, group 2 holds 4..5. Names are placeholders, never real servers.
@@ -650,6 +652,93 @@ class LaunchAutomationTest {
             h.latency.starts shouldBe listOf(listOf(1L, 2L, 4L, 5L), listOf(3L))
         }
 
+    // ---- running, and stale requests ------------------------------------------------------
+
+    @Test
+    fun runningFromFreshOpenUntilTheSequenceEnds() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall, timeoutSeconds = 5), active = 1)
+            h.latency.finishes = false
+            h.automation.running.value shouldBe false
+
+            h.automation.onFreshOpen()
+            // Set before the sequence is even dispatched: no gap a reader could fall into.
+            h.automation.running.value shouldBe true
+            runCurrent()
+            h.automation.running.value shouldBe true
+
+            advanceUntilIdle()
+            h.automation.running.value shouldBe false
+        }
+
+    @Test
+    fun runningStaysTrueUntilTheLaunchTestHasStarted() =
+        runTest {
+            val h = harness(settings(autoConnect = false, pingOnLaunch = true), active = 1)
+            var runningAtStart: Boolean? = null
+            h.latency.onStart = { runningAtStart = h.automation.running.value }
+
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+
+            runningAtStart shouldBe true
+            h.automation.running.value shouldBe false
+        }
+
+    @Test
+    fun abandonClearsRunning() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+
+            h.automation.cancel()
+            h.automation.running.value shouldBe false
+            advanceUntilIdle()
+            h.automation.running.value shouldBe false
+        }
+
+    @Test
+    fun aSupersededRunDoesNotClearTheNextOnesRunning() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+
+            h.automation.onFreshOpen()
+            runCurrent()
+            // The first run's finally has run by now; the second is still measuring.
+            h.automation.running.value shouldBe true
+        }
+
+    @Test
+    fun aRequestAbandonedBeforeItIsCollectedNeverAsksForConsent() =
+        runTest {
+            // Built by hand: the harness collects at once, and this needs no collector yet.
+            val automation =
+                LaunchAutomation(
+                    scope = this,
+                    settings = FakeSettings(settings(mode = AutoConnectMode.LastPicked), initialActive = 2),
+                    servers = FakeServers(servers),
+                    latency = FakeLatency(answers),
+                    tunnel = FakeTunnel(),
+                    network = FakeNetwork(NetworkKind.Other),
+                )
+            automation.onFreshOpen()
+            advanceUntilIdle()
+            // Buffered with no collector, as while the activity is gone; then the user acts.
+            automation.onUserTookOver()
+
+            val delivered = mutableListOf<Unit>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                automation.connectRequests.collect { delivered += it }
+            }
+            runCurrent()
+            delivered.shouldBeEmpty()
+        }
+
     // ---- harness ---------------------------------------------------------------------------
 
     private fun allFailed(outcome: LatencyOutcome): Map<Long, LatencyResult> =
@@ -762,6 +851,9 @@ class LaunchAutomationTest {
         var finishes = true
         var startReturns = true
 
+        /** Runs as a start is called, before it returns. */
+        var onStart: (() -> Unit)? = null
+
         fun seed(values: Map<Long, LatencyResult>) {
             _results.value = _results.value + values
         }
@@ -788,6 +880,7 @@ class LaunchAutomationTest {
         ): Boolean {
             starts += profileIds
             this.modes += modes
+            onStart?.invoke()
             // TunnelClient reports a refused run finished at once, so no row is left testing.
             if (!startReturns) return false
             this.onResult = onResult
