@@ -6,6 +6,33 @@ All notable changes to Subspace are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-alpha05]
+
+### Added
+- **Connect automatically when Subspace opens.** Under Settings > Latency > "When Subspace
+  opens", switch on "Connect automatically" and choose the server: "Last picked", "Fastest
+  in this subscription" or "Fastest overall". It runs when the app's screen opens fresh,
+  for example from the launcher after you backed out or after Android closed the app. It
+  does not run when you switch back from recent apps or after a phone restart, and it
+  reconnects even if you disconnected on purpose. It is off by default.
+- **Fastest server.** Subspace tests the candidates, connects to the quickest one and makes
+  it your active server. Home shows "Finding the fastest server…" with a Cancel button. If
+  nothing answers, it connects to your last picked server. If another VPN app is active,
+  it skips the test and connects to your last server.
+- **Choose what the launch test covers.** "Active subscription" or "All servers".
+- **Wi-Fi and mobile markers.** A server name containing WIFI or WI-FI is used only on
+  Wi-Fi; one containing LTE, 4G, 5G or MOBILE only on mobile data. Only automatic choices
+  skip servers marked for the other network; you can still pick any server yourself. You
+  can turn this off with "Use Wi-Fi / mobile markers in server names".
+- **Pinning.** "Pin to top" and "Unpin" in each group's menu; pinned groups come first.
+
+### Changed
+- The speed test of your servers now runs when the app opens, not when the Servers screen
+  is first shown. The mobile-data switch still applies to it.
+- A provider's "test on open", "auto-connect" and "pin" settings no longer change
+  anything. Your own settings decide, and the subscription's details list them as
+  "Not applied".
+
 ## [0.1.0-alpha04]
 
 ### Added

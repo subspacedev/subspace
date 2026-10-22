@@ -2450,12 +2450,26 @@ above cosmetic parity:
 
 ### A.3.5 Behavior automation
 
-- [ ] `subscription-autoconnect` + `-type`: `lastused` / `lowestdelay` /
-      `random`
-- [ ] `subscription-ping-onopen-enabled` — auto-test the server list on open
-- [ ] Wi-Fi/mobile server filtering by name marker ("only WiFi" /
-      "only Mobile"), with an opt-out
-- [ ] Subscription pinning
+M10-C built all four items below as Subspace's own settings (Settings > Latency,
+"When Subspace opens"). The provider's directives for them are deliberately not
+honoured: the user's settings decide (M10-C spec §1). `subscription-autoconnect`,
+`subscription-autoconnect-type`, `subscription-ping-onopen-enabled` and
+`subscription-pin` are still parsed and stored, read by nothing, and the
+subscription's details list them as "Not applied".
+
+- [x] Auto-connect when the app opens, to the last picked server or the fastest one
+      (`lastused` / `lowestdelay` map to the "Last picked" / "Fastest" choices;
+      `random` is not built). Off by default.
+- [x] Connect to the fastest server, in the active subscription or overall: test the
+      candidates, connect to the quickest and make it the active server. It falls back
+      to the last picked server when nothing answers, and skips the test when another
+      VPN app is active.
+- [x] Auto-test the server list when the app opens, replacing the old "when Servers is
+      first shown" trigger, with a scope choice of the active subscription or all servers.
+- [x] Wi-Fi/mobile server filtering by name marker (whole words `WIFI` / `WI-FI`, and
+      `LTE` / `4G` / `5G` / `MOBILE`), with an opt-out. Only automatic choices skip a
+      server marked for the other network; manual picks are never filtered.
+- [x] Subscription pinning ("Pin to top" / "Unpin"; pinned groups first).
 
 ## A.4 Tier 3 — provider ecosystem compatibility
 
