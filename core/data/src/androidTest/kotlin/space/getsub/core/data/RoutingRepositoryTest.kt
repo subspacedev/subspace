@@ -893,6 +893,7 @@ private suspend fun insertSubscription(database: SubspaceDatabase): Long {
             lastFetchStatus = "NoServers",
             lastFetchDetail = "EmptyBody",
             createdAt = 12L,
+            hwid = "TestHwid0123456789",
         ),
     )
 }

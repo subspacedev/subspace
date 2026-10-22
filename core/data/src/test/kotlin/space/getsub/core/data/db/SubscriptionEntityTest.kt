@@ -27,6 +27,7 @@ import space.getsub.core.data.StoredSubscription
 class SubscriptionEntityTest {
     private val secretUrl = "https://provider.example/sub/aB3dEfGhIjKlMnOpQrSt"
     private val secretDirectiveValue = "https://provider.example/support/aB3dEfGh"
+    private val secretHwid = "SecretHwid0123456789abcdefXYZ"
 
     private fun subscription() =
         SubscriptionEntity(
@@ -40,6 +41,7 @@ class SubscriptionEntityTest {
             lastFetchStatus = "OK",
             lastFetchDetail = null,
             createdAt = 100L,
+            hwid = secretHwid,
         )
 
     @Test
@@ -57,7 +59,25 @@ class SubscriptionEntityTest {
             "resolveAddress=none, hostHeader=none, linkFragment=none, " +
             "insecureIgnored=false, redirectTrust=UNASKED, " +
             "movedFromHost=none, movedAt=null, lastFetchVia=null, resolverTrust=UNASKED, resolverTrustHost=none, " +
-            "routeExclusionTrust=null, routeExclusionFingerprint=none)"
+            "routeExclusionTrust=null, routeExclusionFingerprint=none, " +
+            "hwid=<redacted>, deviceOsEnabled=true, osVersionEnabled=true, " +
+            "deviceModelEnabled=true, appVersionEnabled=true, " +
+            "deviceOsLiteral=none, osVersionLiteral=none, deviceModelLiteral=none, appVersionLiteral=none)"
+    }
+
+    // M10-B constraints: an HWID and a typed header value are never printed (ARCHITECTURE.md §5.6).
+    @Test
+    fun `toString keeps the hwid and the header literals out`() {
+        val literals = listOf("LiteralOs", "LiteralOsVersion", "LiteralModel", "LiteralAppVersion")
+        val text =
+            subscription()
+                .copy(
+                    deviceOsLiteral = literals[0],
+                    osVersionLiteral = literals[1],
+                    deviceModelLiteral = literals[2],
+                    appVersionLiteral = literals[3],
+                ).toString()
+        (literals + secretHwid).forEach { text shouldNotContain it }
     }
 
     // M9-B spec §5: the route and the origin a subscription moved from are as secret as the URL.

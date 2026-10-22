@@ -96,6 +96,7 @@ class SubscriptionRepositoryTest {
                         lastFetchStatus = null,
                         lastFetchDetail = null,
                         createdAt = 0L,
+                        hwid = "TestHwid0123456789",
                     ),
                 )
             }

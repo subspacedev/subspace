@@ -20,6 +20,7 @@ import space.getsub.core.data.preresolve.PreResolvePolicy
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.preresolve.providerResolverOf
+import space.getsub.core.model.identity.Hwid
 import space.getsub.core.parser.SubscriptionLink
 import space.getsub.core.parser.directive.DirectiveKind
 import space.getsub.core.parser.directive.KindResult
@@ -214,10 +215,15 @@ internal constructor(
      * HWID defaults to **on** — §A.4.1 and §A.5. Happ sends by default; Throne
      * ships it off by default and consequently breaks limit-enabled providers
      * out of the box. Do the opposite.
+     *
+     * [hwid] is stored as this subscription's own identity and never derived again (M10-B spec
+     * §3.5). The add flow passes the value it generated once per URL, so every retry of a failed
+     * first fetch sends the same one; the default is for callers that have none to keep.
      */
     public suspend fun add(
         url: String,
         name: String,
+        hwid: String = Hwid.random(),
     ): AddedSubscription =
         addMutex.withLock {
             // One transaction, not two committed writes. The group insert and the subscription
@@ -255,6 +261,7 @@ internal constructor(
                         hostHeader = link.hostHeader,
                         linkFragment = link.fragment,
                         insecureIgnored = link.insecure,
+                        hwid = hwid,
                     ),
                 ).let { AddedSubscription(it, created = true) }
             }
