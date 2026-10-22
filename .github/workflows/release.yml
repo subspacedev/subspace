@@ -1,7 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Additional permission: see Stores Exception in LICENSE.
+
 name: Release
 
 # Publishes signed APKs to a GitHub Release when a version tag is pushed
-# (M10-A spec §6.3).
+# (M10-A spec §6.4).
 #
 # The job runs in the `release` environment, which holds these secrets. Restrict the
 # environment to tags matching v* and require a reviewer if wanted:
@@ -53,6 +56,12 @@ jobs:
 
       - uses: ./.github/actions/setup-android-build
 
+      # Same gates as ci.yml: the release and reproducibility script tests.
+      - name: Test the release scripts
+        run: |
+          scripts/test-compare-apks.sh
+          scripts/test-release-scripts.sh
+
       - name: Check and test
         run: ./gradlew checkAll build test
 
@@ -63,13 +72,21 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
+      # checkAll build test above leaves unsigned release APKs in $APK_DIR.
+      # collect-release-apks.sh refuses any directory holding anything but the four
+      # signed APKs, so clear it first or every release would be refused.
+      - name: Remove unsigned APKs left by the checks
+        run: rm -rf "$APK_DIR"
+
       - name: Build signed release APKs
         env:
           SUBSPACE_SIGNING_STORE_FILE: ${{ runner.temp }}/release.jks
           SUBSPACE_SIGNING_STORE_PASSWORD: ${{ secrets.SUBSPACE_SIGNING_STORE_PASSWORD }}
           SUBSPACE_SIGNING_KEY_ALIAS: ${{ secrets.SUBSPACE_SIGNING_KEY_ALIAS }}
           SUBSPACE_SIGNING_KEY_PASSWORD: ${{ secrets.SUBSPACE_SIGNING_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease
+        # --no-build-cache and --no-configuration-cache match reproducible.yml and keep
+        # the signing values out of the configuration-cache store (M10-A spec §5).
+        run: ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
 
       # apksigner is not on PATH; setup-android exports ANDROID_HOME.
       - name: Verify every APK is signed by the pinned certificate

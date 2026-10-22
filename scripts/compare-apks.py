@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Additional permission: see Stores Exception in LICENSE.
-"""Compare two APKs, ignoring only signature material (M10-A spec §8).
+"""Compare two APKs, ignoring signatures and zip metadata (M10-A spec §6.5).
 
 Usage: compare-apks.py <a.apk> <b.apk>
 Exit 0 when equal, 1 when they differ (each differing entry is printed),
 2 on a usage or read error.
+
+Compared: entry names, order, compression method, CRC, sizes and the compressed
+bytes. Ignored: signature files, the APK signing block and other zip metadata
+(timestamps, extra fields, attributes).
 
 Entries are compared in memory, in order, keyed by exact name. Real APKs hold
 names that differ only in letter case, so extracting them to a case-insensitive

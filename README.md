@@ -223,7 +223,7 @@ This is the one thing that is expensive to retrofit — it shapes the settings, 
 Signed APKs are attached to each [GitHub Release](https://github.com/subspacedev/subspace/releases), with a `SHA256SUMS`
 file. Pick the one for your phone: **`arm64-v8a`** for nearly every modern phone,
 `armeabi-v7a` for old 32-bit ARM phones, `x86_64` for emulators, or `universal` (about
-three times the size) if unsure. Do not install the universal APK over a split APK of
+two and a half times the size) if unsure. Do not install the universal APK over a split APK of
 the same release; Android treats it as a downgrade. How releases are built and
 verified: [`RELEASING.md`](RELEASING.md).
 

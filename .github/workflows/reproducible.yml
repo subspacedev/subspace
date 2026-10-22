@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Additional permission: see Stores Exception in LICENSE.
+
 name: Reproducible build
 
 # Not on every pull request: two release builds roughly double CI time. It runs on
@@ -10,7 +13,7 @@ on:
       tag:
         description: >-
           Release tag to verify. Builds it unsigned and compares each APK attached to
-          that GitHub Release with the local build, ignoring only signature material.
+          that GitHub Release with the local build, ignoring signatures and zip metadata (see scripts/compare-apks.py).
         required: false
         type: string
 
@@ -71,7 +74,7 @@ jobs:
 
       - name: Install diffoscope
         if: failure()
-        run: sudo apt-get install -y diffoscope
+        run: sudo apt-get update && sudo apt-get install -y diffoscope
 
       # diffoscope exits non-zero when it finds differences, which is the case here.
       - name: Explain the differences

@@ -51,7 +51,7 @@ android {
     }
 
     // One APK per ABI plus a universal one (M10-A spec §6.1). AGP applies splits to
-    // every build type, so debug builds split too; accepted (spec §10 leaves it open).
+    // every build type, so debug builds split too; accepted (M10-A spec §10 leaves it open).
     // reset() clears the default ABI list so exactly these three remain: 32-bit x86
     // stays excluded, matching ndk.abiFilters above.
     splits {
@@ -66,7 +66,7 @@ android {
     // Release signing (M10-A spec §6.3). Read through providers so the configuration cache
     // tracks the inputs. All four set -> signed; none -> an unsigned release APK; some ->
     // fail. Never fall back to signingConfigs.debug: a release signed with the debug key
-    // would install, then break every upgrade (spec §5).
+    // would install, then break every upgrade (M10-A spec §5).
     val signing =
         resolveSigning(
             gradleProperty = { providers.gradleProperty(it).orNull },

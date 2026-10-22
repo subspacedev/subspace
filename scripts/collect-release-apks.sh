@@ -4,7 +4,7 @@
 #
 # Usage: collect-release-apks.sh <apk-dir> <version> <out-dir>
 # Copies the four signed release APKs as subspace-<version>-<abi>.apk and
-# writes SHA256SUMS over them (M10-A spec §6). Refuses anything else: a missing
+# writes SHA256SUMS over them (M10-A spec §6.4). Refuses anything else: a missing
 # APK, an "-unsigned" APK (a release must never ship unsigned), or an out-dir
 # that already holds files. AGP's output-metadata.json and baselineProfiles/
 # next to the APKs are ignored.

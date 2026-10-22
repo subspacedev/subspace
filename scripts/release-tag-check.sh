@@ -3,7 +3,7 @@
 # Additional permission: see Stores Exception in LICENSE.
 #
 # Usage: release-tag-check.sh <tag>
-# Exit 0 iff <tag> is "v" + versionName from version.properties (M10-A spec §6:
+# Exit 0 iff <tag> is "v" + versionName from version.properties (M10-A spec §6.4:
 # the tag is the release, so it must name the version the build will embed).
 # Prints "prerelease=true|false" on stdout for $GITHUB_OUTPUT; a name with a
 # "-" suffix (0.1.0-alpha01) is a prerelease.

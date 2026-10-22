@@ -4,7 +4,7 @@
 #
 # Usage: changelog-section.sh <version> [file]   (file defaults to CHANGELOG.md)
 # Prints the body under "## [<version>]" up to the next "## " heading, with
-# leading and trailing blank lines removed (release notes, M10-A spec §6).
+# leading and trailing blank lines removed (release notes, M10-A spec §6.4).
 # Exit 1 when the heading is absent or its body is blank. The bracketed
 # version must match exactly, so 0.1.0 never picks up 0.1.0-alpha02.
 

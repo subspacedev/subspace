@@ -96,7 +96,7 @@ release is an upgrade and works.
 
 ## Which APK to download
 
-Each release attaches `subspace-<version>-<abi>.apk`: four APKs (one per ABI) plus `SHA256SUMS`.
+Each release attaches `subspace-<version>-<abi>.apk`: four APKs (one per ABI, plus a universal build) plus `SHA256SUMS`.
 Check the download with `sha256sum -c SHA256SUMS` (`shasum -a 256 -c SHA256SUMS` on macOS).
 
 | File | Size (0.1.0-alpha01) | Use it for |
@@ -104,7 +104,7 @@ Check the download with `sha256sum -c SHA256SUMS` (`shasum -a 256 -c SHA256SUMS`
 | `arm64-v8a` | 17.85 MB | nearly every phone made in the last several years |
 | `armeabi-v7a` | 18.40 MB | older 32-bit ARM phones |
 | `x86_64` | 18.95 MB | emulators and x86 Chromebooks |
-| `universal` | 45.65 MB | when unsure; works everywhere, three times the size |
+| `universal` | 45.65 MB | when unsure; works everywhere, about two and a half times the size |
 
 32-bit x86 is not built. Native libraries are stored compressed, which is why the
 splits are small.
@@ -113,8 +113,10 @@ splits are small.
 
 Reproducibility means two builds of the same commit, from checkouts at different
 paths with the same toolchain, give byte-identical unsigned APKs. A signed APK
-differs from its unsigned build only in signature material, which
-`scripts/compare-apks.py` ignores.
+differs from its unsigned build in its signature files and the APK signing block,
+which `scripts/compare-apks.py` ignores along with other zip metadata (timestamps,
+extra fields, attributes). It compares entry names, order, method, CRC, sizes and
+compressed bytes.
 
 Two caveats up front:
 
@@ -134,11 +136,10 @@ tags created after M10-A can be verified this way.
 **Option 2, locally on the Linux toolchain:**
 
 ```
-git clone --recurse-submodules https://github.com/subspacedev/subspace && cd subspace
-git checkout v1.0.0
+git clone --recurse-submodules --branch v1.0.0 https://github.com/subspacedev/subspace && cd subspace
 scripts/fetch-native.sh
+# Run with the signing properties and SUBSPACE_SIGNING_* variables unset.
 ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
-# (run with the signing properties and SUBSPACE_SIGNING_* variables unset)
 python3 scripts/compare-apks.py \
   app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk \
   subspace-1.0.0-arm64-v8a.apk
@@ -147,6 +148,10 @@ python3 scripts/compare-apks.py \
 If you build with signing configured, the file is the signed `app-<abi>-release.apk`
 instead; `compare-apks.py` ignores signatures either way, but unsetting the inputs keeps
 the `-unsigned` name used above.
+
+Verifying an old tag months later may run on a newer JDK patch or runner image than the
+release used, so a mismatch on an old tag should first be retried with the tag-era
+toolchain before it is treated as a real difference.
 
 Exit 0 means equal apart from signatures; each differing entry is printed otherwise.
 To confirm who signed the download, compare `apksigner verify --print-certs` with

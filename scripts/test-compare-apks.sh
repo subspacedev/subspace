@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Additional permission: see Stores Exception in LICENSE.
 #
-# Exercises compare-apks.py on synthetic zips (M10-A spec §8: reproducibility
+# Exercises compare-apks.py on synthetic zips (M10-A spec §6.5: reproducibility
 # compares APKs while ignoring only the signature).
 
 set -euo pipefail

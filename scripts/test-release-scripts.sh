@@ -3,7 +3,7 @@
 # Additional permission: see Stores Exception in LICENSE.
 #
 # Exercises release-tag-check.sh, changelog-section.sh and collect-release-apks.sh
-# on fixtures (M10-A spec §6: tag, changelog and asset rules for a release).
+# on fixtures (M10-A spec §6.4: tag, changelog and asset rules for a release).
 
 set -euo pipefail
 
