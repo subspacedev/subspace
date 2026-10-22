@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -22,4 +23,6 @@ internal data class ProfileGroupEntity(
     val source: String,
     val position: Int,
     val createdAt: Long,
+    /** Pinned groups list first (M10-C spec §3.4). Only [ProfileDao.setPinned] writes it after creation. */
+    @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )

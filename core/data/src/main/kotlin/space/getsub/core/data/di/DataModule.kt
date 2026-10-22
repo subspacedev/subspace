@@ -20,6 +20,7 @@ import space.getsub.core.data.db.MIGRATION_4_5
 import space.getsub.core.data.db.MIGRATION_5_6
 import space.getsub.core.data.db.MIGRATION_6_7
 import space.getsub.core.data.db.MIGRATION_7_8
+import space.getsub.core.data.db.MIGRATION_9_10
 import space.getsub.core.data.db.ProfileDao
 import space.getsub.core.data.db.RoutingRuleSetDao
 import space.getsub.core.data.db.SettingDao
@@ -89,6 +90,7 @@ internal fun subspaceDatabase(
             MIGRATION_6_7,
             MIGRATION_7_8,
             migration8To9(legacyHwid),
+            MIGRATION_9_10,
         )
         .build()
 

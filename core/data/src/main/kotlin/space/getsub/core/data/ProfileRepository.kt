@@ -187,7 +187,12 @@ private fun StreamSettings.connectable(): Boolean {
 }
 
 /** A folder of profiles, in display order. */
-public data class ProfileGroup(val id: Long, val name: String, val profiles: List<StoredProfile>)
+public data class ProfileGroup(
+    val id: Long,
+    val name: String,
+    val profiles: List<StoredProfile>,
+    val pinned: Boolean = false,
+)
 
 /**
  * The repository API `:feature:*` modules and `:bg` use to reach the profile tables.
@@ -235,6 +240,7 @@ internal constructor(
                 ProfileGroup(
                     id = group.id,
                     name = group.name,
+                    pinned = group.pinned,
                     profiles = profilesByGroup[group.id].orEmpty().mapNotNull { it.toStoredProfile() },
                 )
             }
@@ -285,8 +291,15 @@ internal constructor(
         id: Long,
         name: String,
     ) {
-        val existing = dao.observeGroups().first().firstOrNull { it.id == id } ?: return
-        dao.updateGroup(existing.copy(name = name))
+        dao.renameGroup(id, name)
+    }
+
+    /** Pins a group to the top of the list, or unpins it (M10-C spec §3.4). */
+    public suspend fun setGroupPinned(
+        groupId: Long,
+        pinned: Boolean,
+    ) {
+        dao.setPinned(groupId, pinned)
     }
 
     /** Deletes a group. `ON DELETE CASCADE` removes every profile in it with it. */
