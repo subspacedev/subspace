@@ -3,7 +3,7 @@
 # Additional permission: see Stores Exception in LICENSE.
 #
 # Exercises compare-apks.py on synthetic zips (M10-A spec §6.5: reproducibility
-# compares APKs while ignoring only the signature).
+# compares APKs while ignoring signatures and zip metadata).
 
 set -euo pipefail
 
