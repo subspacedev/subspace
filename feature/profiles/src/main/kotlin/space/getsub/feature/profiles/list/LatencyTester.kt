@@ -7,16 +7,13 @@ import android.net.ConnectivityManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import space.getsub.core.data.LatencyCache
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.model.ConnectionState
-import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyResult
-import space.getsub.core.model.LatencyTarget
 import space.getsub.core.model.PingMode
 import space.getsub.service.TunnelClient
-import java.util.concurrent.atomic.AtomicLong
+import space.getsub.service.latency.LatencyRuns
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -101,60 +98,22 @@ constructor(
     private val cache: LatencyCache,
     private val tunnel: TunnelClient,
     private val settings: SettingsRepository,
+    private val runs: LatencyRuns,
     @ApplicationContext private val context: Context,
 ) : LatencyTester {
-    override val results: StateFlow<Map<Long, LatencyResult>> = cache.results
-    override val testing: StateFlow<Set<Long>> = cache.testing
+    override val results: StateFlow<Map<Long, LatencyResult>> = runs.results
+    override val testing: StateFlow<Set<Long>> = runs.testing
     override val pingOnLaunch: Flow<Boolean> = settings.pingOnLaunch
     override val pingOnLaunchMetered: Flow<Boolean> = settings.pingOnLaunchMetered
 
-    /**
-     * Monotonic, and the fence both sides of the binder check. Cancellation
-     * cannot interrupt an in-flight native ping, so a superseded run's results
-     * still arrive; without a fresh id per run they would land on rows the new
-     * run is retesting.
-     */
-    private val runId = AtomicLong(0)
-
+    // The run-id fence and the supersede-clears-testing rule live in LatencyRuns, shared
+    // with Home (M10-C spec §3.1).
     override suspend fun test(
         profileIds: List<Long>,
         modes: Map<Long, PingMode>,
-    ): Boolean {
-        if (profileIds.isEmpty()) return false
-        // Starting a run supersedes any run in flight, and a superseded run never
-        // reaches its own onFinished — that is fenced on the run id in :bg.
-        // Without this, the rows it had marked would sit on "…" for the rest of
-        // the session. Clearing here is what makes supersession safe.
-        cache.finish(cache.testing.value)
-        // Resolved here rather than in :bg, so the service never has to reach
-        // into settings to interpret a run.
-        val options =
-            LatencyOptions(
-                mode = settings.pingMode.first(),
-                timeoutSeconds = settings.pingTimeoutSeconds.first(),
-                checkUrl = settings.pingCheckUrl.first(),
-            )
-        val id = runId.incrementAndGet()
-        cache.markTesting(profileIds)
-        return tunnel.startLatencyRun(
-            runId = id,
-            // Per profile: `ping-type` is scoped to the subscription that
-            // delivered it (§A.1), so one run spanning two groups can need two
-            // modes. Absent means the user's global setting.
-            targets = profileIds.map { id -> LatencyTarget(id, modes[id] ?: options.mode) },
-            options = options,
-            onResult = { profileId, result -> cache.put(profileId, result) },
-            // Clears the in-flight flag without writing results for rows that
-            // never produced one — a measurement that did not happen must not be
-            // recorded as one.
-            onFinished = { cache.finish(profileIds) },
-        )
-    }
+    ): Boolean = runs.start(profileIds, modes)
 
-    override fun cancel() {
-        tunnel.cancelLatencyRun(runId.get())
-        cache.finish(cache.testing.value)
-    }
+    override fun cancel() = runs.cancel()
 
     override fun claimLaunchRun(groupId: Long): Boolean = cache.claimLaunchRun(groupId)
 
