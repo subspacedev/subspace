@@ -56,7 +56,6 @@ class ServersUpdateResultTest {
                         onTestGroup = {},
                         onCancelTests = {},
                         onGroupSortChanged = { _, _ -> },
-                        onServersShown = {},
                     ),
                 )
             }

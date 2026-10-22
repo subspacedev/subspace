@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import space.getsub.core.data.toProfile
+import space.getsub.feature.home.launch.LaunchAutomationState
+import space.getsub.feature.home.launch.LaunchProgress
 import javax.inject.Inject
 
 @HiltViewModel
@@ -21,6 +23,7 @@ internal class HomeViewModel @Inject constructor(
     private val tunnel: TunnelConnection,
     private val profileSource: ActiveProfileSource,
     private val policySource: TrafficPolicySource,
+    private val launch: LaunchProgress,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state.asStateFlow()
@@ -73,6 +76,8 @@ internal class HomeViewModel @Inject constructor(
             .combine(profileSource.activeSubscription) { partial, info ->
                 partial.copy(activeSubscription = homeSubscriptionLine(info))
             }
+            // A twelfth: the fresh-open automation's progress and notes (M10-C spec §3.1).
+            .combine(launch.state) { partial, automation -> partial.copy(launchAutomation = automation) }
             .onEach { _state.value = it }
             .launchIn(viewModelScope)
     }
@@ -93,14 +98,40 @@ internal class HomeViewModel @Inject constructor(
      * measuring forty servers on cellular is real data; one server is a single
      * connect, and skipping it would recreate the empty-Home inconsistency this
      * exists to remove.
+     *
+     * Kept beside LaunchAutomation's launch test (M10-C spec §3.2), which covers the active
+     * server only when it runs: its metered gate and the Last-picked connect both skip it, and
+     * a pick in another group under "Active subscription" leaves the new server unmeasured. It
+     * therefore yields to any run in flight and to a Fastest choice: Home and Servers share one
+     * runner, and a one-server start would supersede that run and release its rows unmeasured.
      */
     fun onHomeShown() {
         viewModelScope.launch {
             if (!tunnel.pingOnLaunch.first()) return@launch
             val profileId = _state.value.activeProfile?.id ?: return@launch
-            if (profileId in tunnel.latencies.value || profileId in tunnel.measuring.value) return@launch
+            if (profileId in tunnel.latencies.value || tunnel.measuring.value.isNotEmpty()) return@launch
+            if (launch.state.value == LaunchAutomationState.Finding) return@launch
             tunnel.measure(profileId)
         }
+    }
+
+    /**
+     * A Connect tap, before consent is asked: the user's action wins over the fresh-open
+     * automation (M10-C spec §3.1). At the tap rather than at the consent answer, so the
+     * automation's own request cannot connect while the user's dialog is open.
+     */
+    fun onConnectTapped() {
+        launch.onUserTookOver()
+    }
+
+    /** Cancel on "Finding the fastest server…": stops the choice and connects nothing (M10-C spec §3.1). */
+    fun onCancelFinding() {
+        launch.cancel()
+    }
+
+    /** Home has shown the automation's note; it clears so it is shown once. */
+    fun onLaunchNoteShown() {
+        launch.onNoteShown()
     }
 
     /**

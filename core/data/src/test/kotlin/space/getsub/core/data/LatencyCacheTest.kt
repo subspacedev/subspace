@@ -46,13 +46,4 @@ class LatencyCacheTest {
     fun `an unmeasured profile is absent rather than zero`() {
         cache.results.value.containsKey(99L) shouldBe false
     }
-
-    @Test
-    fun `a launch run can be claimed once per group per session`() {
-        // This is what makes ping-on-launch fire once per app start rather than
-        // once per navigation to the list.
-        cache.claimLaunchRun(7L) shouldBe true
-        cache.claimLaunchRun(7L) shouldBe false
-        cache.claimLaunchRun(8L) shouldBe true
-    }
 }

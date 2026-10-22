@@ -85,16 +85,6 @@ constructor(
     val state: StateFlow<ServersState> = _state.asStateFlow()
 
     /**
-     * Each group's `subscription-ping-onopen-enabled`, refreshed whenever state
-     * is rebuilt.
-     *
-     * Kept beside the state rather than inside it because it is not something the
-     * screen renders — it only decides whether [onServersShown] measures a group.
-     * A `MANUAL` group is simply absent, which leaves our own setting in charge.
-     */
-    private var providerPingOnOpen: Map<Long, String?> = emptyMap()
-
-    /**
      * Each group's `ping-type`, refreshed whenever state is rebuilt. Absent means
      * that group follows the user's global mode setting.
      */
@@ -180,8 +170,6 @@ constructor(
          * rows.
          */
         val sortType: String?,
-        /** This subscription's `subscription-ping-onopen-enabled`, or null when unset. */
-        val pingOnOpen: String?,
         /**
          * This subscription's `ping-type`, or null when its provider sent none.
          *
@@ -204,7 +192,6 @@ constructor(
     /** The provider directives this screen reads for one subscription, effective values. */
     private data class ProviderDirectives(
         val sortType: String?,
-        val pingOnOpen: String?,
         val pingType: String?,
         /** The [INFO_DIRECTIVE_KEYS] that have a value, for [subscriptionInfo]. */
         val info: Map<String, String>,
@@ -240,11 +227,10 @@ constructor(
                 val directives =
                     combine(
                         profileSource.observeEffective(sub.id, KEY_SUBSCRIPTIONS_SORT_TYPE, default = null),
-                        profileSource.observeEffective(sub.id, KEY_PING_ON_OPEN, default = null),
                         profileSource.observeEffective(sub.id, KEY_PING_TYPE, default = null),
                         infoDirectives,
-                    ) { sortType, pingOnOpen, pingType, info ->
-                        ProviderDirectives(sortType.value, pingOnOpen.value, pingType.value, info)
+                    ) { sortType, pingType, info ->
+                        ProviderDirectives(sortType.value, pingType.value, info)
                     }
                 combine(
                     profileSource.observeUserInfo(sub.id),
@@ -260,7 +246,6 @@ constructor(
                             userInfo = userInfo,
                             lastFetchedAtEpochMillis = sub.lastFetchedAt,
                             sortType = provider.sortType,
-                            pingOnOpen = provider.pingOnOpen,
                             pingType = provider.pingType,
                             redirectRequestHosts =
                             if (sub.redirectTrust == RedirectTrust.Unasked) redirects.targetHosts else emptyList(),
@@ -430,46 +415,6 @@ constructor(
         latencyTester.cancel()
     }
 
-    private val launchPinger =
-        LaunchPinger(
-            tester = latencyTester,
-            isMetered = { latencyTester.isMetered() },
-            connectionState = { latencyTester.connectionState() },
-        )
-
-    /**
-     * Called by the screen once it has groups to show.
-     *
-     * Every group is offered on every call; [LaunchPinger] decides, and its
-     * once-per-session claim is what makes calling this on each recomposition
-     * safe. Tied to first view of the list rather than to process start so that a
-     * user who launches into Home and connects never pays for measurements they
-     * did not look at, and so `:bg` is not started for a run nobody will see.
-     */
-    fun onServersShown() {
-        viewModelScope.launch {
-            val enabled = latencyTester.pingOnLaunch.first()
-            val allowMetered = latencyTester.pingOnLaunchMetered.first()
-            // Collected into **one** run rather than one per group. Starting a run
-            // supersedes any run in flight, so a loop of per-group starts left only
-            // the last group actually measured — invisible with a single group, and
-            // silently wrong with two. Found by review, not by the device run.
-            val eligible =
-                _state.value.groups.filter { group ->
-                    launchPinger.shouldRun(group.id, enabled, allowMetered, providerPingOnOpen[group.id])
-                }
-            if (eligible.isEmpty()) return@launch
-            val ids = eligible.flatMap { group -> group.profiles.map { it.id } }
-            // A dropped run gives its claims back. `:bg` binds asynchronously
-            // across a process fork, so a list that composes first would otherwise
-            // spend each group's single launch run on a measurement that never
-            // happened — a gate must mean "not yet", never "not this session".
-            if (!latencyTester.test(ids, modesFor(eligible))) {
-                latencyTester.releaseLaunchRun(eligible.map { it.id })
-            }
-        }
-    }
-
     /**
      * Each profile's measurement mode, from the `ping-type` its own group's
      * provider set. Absent leaves that profile on the user's global setting.
@@ -506,8 +451,6 @@ constructor(
     ): ServersState {
         val filters = presentation.filters
         val totalCountById = raw.associate { it.id to it.profiles.size }
-        providerPingOnOpen =
-            subscriptionContextByGroupId.mapValues { (_, context) -> context.pingOnOpen }
         providerPingType =
             subscriptionContextByGroupId.mapValues { (_, context) -> context.pingType }
         val groups =
@@ -580,7 +523,6 @@ constructor(
 
 /** `DirectiveRegistry` keys this screen resolves per subscription. */
 private const val KEY_SUBSCRIPTIONS_SORT_TYPE = "subscriptions-sort-type"
-private const val KEY_PING_ON_OPEN = "subscription-ping-onopen-enabled"
 private const val KEY_PING_TYPE = "ping-type"
 
 /** What [subscriptionInfo] reads (M10-B spec §3.1); `sub-info-color` is deliberately absent. */
@@ -662,5 +604,4 @@ internal fun ServersViewModel.screenActions(
     onTestGroup = this::onTestGroup,
     onCancelTests = this::onCancelTests,
     onGroupSortChanged = this::onGroupSortChanged,
-    onServersShown = this::onServersShown,
 )

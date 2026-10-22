@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import space.getsub.core.model.LatencyResult
-import java.util.Collections
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,12 +47,6 @@ constructor() {
     /** Profile ids with a measurement in flight. */
     public val testing: StateFlow<Set<Long>> = _testing.asStateFlow()
 
-    /**
-     * Synchronised because [claimLaunchRun] is reachable from any collector of the
-     * group list, and its whole contract is that exactly one caller wins.
-     */
-    private val launchRunClaimed: MutableSet<Long> = Collections.synchronizedSet(mutableSetOf())
-
     public fun markTesting(profileIds: Collection<Long>) {
         _testing.update { current -> current + profileIds }
     }
@@ -76,28 +69,5 @@ constructor() {
      */
     public fun finish(profileIds: Collection<Long>) {
         _testing.update { current -> current - profileIds.toSet() }
-    }
-
-    /**
-     * True the first time it is called for [groupId] in this process.
-     *
-     * This is what makes ping-on-launch fire once per app start rather than once
-     * per navigation to the list. Because this object dies with `:main`, "not yet
-     * claimed" is true exactly once per launch — no timestamp, no TTL, and
-     * nothing to reset.
-     */
-    public fun claimLaunchRun(groupId: Long): Boolean = launchRunClaimed.add(groupId)
-
-    /**
-     * Hands a claim back when the run it was taken for never started.
-     *
-     * `TunnelClient` drops a run outright when nothing is bound yet, and binding
-     * is asynchronous across a process fork — so a list that composes before
-     * `onServiceConnected` lands would otherwise burn that group's single launch
-     * run on a measurement that never happened. `LaunchPinger` treats every gate
-     * as "not yet, not never"; this keeps the drop path honest to the same rule.
-     */
-    public fun releaseLaunchRun(groupIds: Collection<Long>) {
-        launchRunClaimed.removeAll(groupIds.toSet())
     }
 }

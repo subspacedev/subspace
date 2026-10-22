@@ -35,7 +35,7 @@ class HomeLongTextSnapshotTest {
             )
         paparazzi.snapshot(name = "home-long-text-${ThemeVariant.FriendlyLight.fileSuffix}") {
             SubspacePreviewTheme(ThemeVariant.FriendlyLight) {
-                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
+                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
             }
         }
     }
@@ -54,7 +54,7 @@ class HomeLongTextSnapshotTest {
             )
         paparazzi.snapshot(name = "home-longest-status-${ThemeVariant.FriendlyLight.fileSuffix}") {
             SubspacePreviewTheme(ThemeVariant.FriendlyLight) {
-                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
+                HomeScreenContent(state, HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {}), nowMillis = { 0L })
             }
         }
     }

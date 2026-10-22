@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +37,7 @@ import space.getsub.core.ui.component.blob.ConnectBlob
 import space.getsub.core.ui.component.blob.ConnectBlobDefaults
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.tabular
+import space.getsub.feature.home.launch.LaunchAutomationState
 
 private const val UPTIME_TICK_MILLIS = 1_000L
 private const val MILLIS_PER_SECOND = 1_000L
@@ -133,6 +135,10 @@ internal fun HomeHero(
 
         HomeStatusLine(label, status.detail, nowMillis)
 
+        if (state.launchAutomation == LaunchAutomationState.Finding) {
+            FindingFastestLine(onCancel = actions.onCancelFinding)
+        }
+
         ActiveServerNotes(state)
 
         if (state.connection.isBlocked()) {
@@ -141,6 +147,25 @@ internal fun HomeHero(
                 text = stringResource(R.string.home_blocked_banner),
                 tone = BannerTone.Blocked,
             )
+        }
+    }
+}
+
+/**
+ * "Finding the fastest server…" with Cancel, while a Fastest auto-connect measures on open
+ * (M10-C spec §3.1). Under the state line rather than in it: the tunnel itself is still down,
+ * and the state line mirrors only the service (ARCHITECTURE.md §5.5).
+ */
+@Composable
+private fun FindingFastestLine(onCancel: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.home_finding_fastest),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        TextButton(onClick = onCancel) {
+            Text(stringResource(R.string.home_finding_fastest_cancel))
         }
     }
 }

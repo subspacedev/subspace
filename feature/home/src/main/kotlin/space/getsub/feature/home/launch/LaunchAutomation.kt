@@ -125,7 +125,7 @@ internal constructor(
         if (_state.value == LaunchAutomationState.Finding) _state.value = LaunchAutomationState.Idle
     }
 
-    // One early return per gate, each a distinct reason to stop, as in LaunchPinger.shouldRun.
+    // One early return per gate, each a distinct reason to stop.
     @Suppress("ReturnCount")
     private suspend fun runSequence() {
         val snapshot = settings.snapshot()
@@ -141,8 +141,8 @@ internal constructor(
         // (ARCHITECTURE.md §5.5). No bind in time means the state is unknown, so do nothing.
         withTimeoutOrNull(budget) { tunnel.bound.first { it } } ?: return
         val state = tunnel.state.value
-        // A start sequence under way: neither auto-connect nor the launch test (M10-C spec §3.1,
-        // and the gate LaunchPinger keeps for the launch test).
+        // A start sequence under way: neither auto-connect nor the launch test (M10-C spec §3.1
+        // and §3.2, which keeps the old Servers launch run's gate).
         if (state.isStartSequenceBusy()) return
         val all = servers.all()
         val active = activeIn(all)
@@ -253,7 +253,7 @@ internal constructor(
         }
     }
 
-    // One early return per gate, each a distinct reason to stop, as in LaunchPinger.shouldRun.
+    // One early return per gate, each a distinct reason to stop.
     @Suppress("ReturnCount")
     private suspend fun decide(
         snapshot: LaunchSettingsSnapshot,
@@ -312,8 +312,8 @@ internal constructor(
         // Re-read: the Fastest run above can take seconds.
         if (tunnel.state.value.isStartSequenceBusy()) return
         // A large list measured with proxy-head starts one Xray instance per server; doing that
-        // unprompted on cellular is real data and battery (LaunchPinger's gate, kept, M10-C
-        // spec §3.2).
+        // unprompted on cellular is real data and battery (the old Servers launch run's gate,
+        // kept by M10-C spec §3.2).
         if (network.isMetered() && !snapshot.pingOnLaunchMetered) return
         val pool =
             if (snapshot.testScope == LaunchTestScope.ActiveSubscription && active != null) {
@@ -368,8 +368,8 @@ private fun List<LaunchCandidate>.modes() = mapNotNull { c -> c.mode?.let { c.id
 
 private fun ConnectionState.isIdle(): Boolean = this is ConnectionState.Disconnected || this is ConnectionState.Failed
 
-// Exhaustive with no `else`, as LaunchPinger's gate is: a state added later must not fall through
-// whichever branch happens to catch it.
+// Exhaustive with no `else`: M8 added Reconnecting and an `is`-chain once absorbed it silently. A
+// state added later must not fall through whichever branch happens to catch it.
 private fun ConnectionState.isStartSequenceBusy(): Boolean =
     when (this) {
         is ConnectionState.Connecting,

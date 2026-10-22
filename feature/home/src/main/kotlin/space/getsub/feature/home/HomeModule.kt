@@ -18,10 +18,12 @@ import space.getsub.core.model.Profile
 import space.getsub.core.model.TrafficSample
 import space.getsub.feature.home.launch.AndroidNetworkKindReader
 import space.getsub.feature.home.launch.BoundLaunchLatency
+import space.getsub.feature.home.launch.BoundLaunchProgress
 import space.getsub.feature.home.launch.BoundLaunchServers
 import space.getsub.feature.home.launch.BoundLaunchSettings
 import space.getsub.feature.home.launch.LaunchAutomationScope
 import space.getsub.feature.home.launch.LaunchLatency
+import space.getsub.feature.home.launch.LaunchProgress
 import space.getsub.feature.home.launch.LaunchServers
 import space.getsub.feature.home.launch.LaunchSettings
 import space.getsub.feature.home.launch.NetworkKindReader
@@ -102,6 +104,10 @@ internal object HomeModule {
     @Provides
     @Singleton
     fun launchLatency(impl: BoundLaunchLatency): LaunchLatency = impl
+
+    @Provides
+    @Singleton
+    fun launchProgress(impl: BoundLaunchProgress): LaunchProgress = impl
 
     @Provides
     @Singleton

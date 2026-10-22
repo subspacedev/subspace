@@ -13,6 +13,7 @@ import space.getsub.core.model.subscription.Expiry
 import space.getsub.core.model.subscription.SubscriptionInfo
 import space.getsub.core.model.subscription.Usage
 import space.getsub.core.model.subscription.isSoon
+import space.getsub.feature.home.launch.LaunchAutomationState
 
 /**
  * What [HomeScreen] renders.
@@ -78,6 +79,13 @@ internal data class HomeState(
     val perApp: PerAppSelection = PerAppSelection.OFF,
     /** The active server's limit and expiry for the one slim line on its card, or `null` when none applies. */
     val activeSubscription: HomeSubscriptionLine? = null,
+    /**
+     * What the fresh-open automation is doing (M10-C spec §3.1), mirrored from LaunchAutomation.
+     * [LaunchAutomationState.Finding] draws "Finding the fastest server…" with Cancel; the two
+     * notes are shown once as a snackbar. The connect control stays offered while finding: a tap
+     * takes over from the automation rather than starting a second connect beside it.
+     */
+    val launchAutomation: LaunchAutomationState = LaunchAutomationState.Idle,
 ) {
     /**
      * Whether tapping the connect control should attempt a connection.

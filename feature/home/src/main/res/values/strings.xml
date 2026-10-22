@@ -140,4 +140,10 @@
     <!-- M10-B spec §3.3: %1$s and %2$s are already-formatted byte counts. -->
     <string name="home_active_server_usage">%1$s of %2$s</string>
     <string name="home_active_server_meta">%1$s · %2$s</string>
+    <!-- M10-C spec §3.1: a Fastest auto-connect measuring on open, and its Cancel. -->
+    <string name="home_finding_fastest">Finding the fastest server…</string>
+    <string name="home_finding_fastest_cancel">Cancel</string>
+    <!-- M10-C spec §3.1: shown once, after the fresh-open automation. -->
+    <string name="home_launch_no_server_answered">No server answered</string>
+    <string name="home_launch_foreign_vpn_fallback">Another VPN was active, so Subspace connected to your last server</string>
 </resources>

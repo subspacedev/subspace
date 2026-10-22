@@ -44,7 +44,6 @@ class ServersSnapshotTest {
             onTestGroup = {},
             onCancelTests = {},
             onGroupSortChanged = { _, _ -> },
-            onServersShown = {},
         )
 
     @Suppress("LongParameterList")

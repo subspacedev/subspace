@@ -159,6 +159,7 @@ class HomeHeroTest {
             onOpenRouting = {},
             onOpenPerApp = {},
             onOpenSessionLog = {},
+            onCancelFinding = {},
         )
 
     /**

@@ -161,6 +161,7 @@ class HomeReconnectingTest {
             onOpenRouting = {},
             onOpenPerApp = {},
             onOpenSessionLog = {},
+            onCancelFinding = {},
         )
 
     /**

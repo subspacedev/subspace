@@ -201,14 +201,6 @@ internal data class ServersActions(
     val onCancelTests: () -> Unit,
     /** M4.5: this group's own order, outranking its provider's (§A.1). */
     val onGroupSortChanged: (Long, SortOrder) -> Unit,
-    /**
-     * M4.5: the screen has groups to show.
-     *
-     * Called on every composition with a non-empty list; `LaunchPinger`'s
-     * once-per-session claim is what makes that safe, and is why this does not
-     * need a `LaunchedEffect` key that tries to guess "first time".
-     */
-    val onServersShown: () -> Unit,
 )
 
 /**
@@ -228,15 +220,6 @@ internal fun ServersScreenContent(
     var expandedGroups by rememberSaveable { mutableStateOf(initiallyExpanded) }
     var renameTarget by remember { mutableStateOf<ServersGroup?>(null) }
     var deleteTarget by remember { mutableStateOf<ServersGroup?>(null) }
-
-    // Keyed on the group ids rather than on Unit, so groups that arrive after the
-    // first composition — the ordinary case, since the list comes from Room —
-    // still get offered. Re-running is harmless: LaunchPinger claims each group
-    // once per session, which is what makes this "once per app start" rather than
-    // "once per navigation".
-    LaunchedEffect(state.groups.map { it.id }) {
-        if (state.groups.isNotEmpty()) actions.onServersShown()
-    }
 
     Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
         ServersHeader(onAddProfile = actions.onAddProfile, showAddAction = state.groups.isNotEmpty())

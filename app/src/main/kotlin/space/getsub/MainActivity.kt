@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,12 +26,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import space.getsub.core.data.PendingRoutingImport
 import space.getsub.core.ui.theme.SubspaceTheme
 import space.getsub.core.ui.theme.reducedMotion
 import space.getsub.core.ui.theme.rememberAnimatorDurationScale
+import space.getsub.feature.home.launch.LaunchAutomation
 import space.getsub.navigation.SubspaceNavHost
 import space.getsub.service.TunnelClient
 import javax.inject.Inject
@@ -42,6 +46,10 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     internal lateinit var themeSource: ThemeSource
+
+    /** Auto-connect and the launch test on a fresh open (M10-C spec §6). */
+    @Inject
+    lateinit var launchAutomation: LaunchAutomation
 
     /**
      * Where an `ACTION_VIEW` routing link waits for the routing screen.
@@ -62,6 +70,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) recordRoutingLink(intent)
+        // M10-C spec §6: "opening the app" is this screen created fresh. Not a return from
+        // Recents (no onCreate) and not a configuration change or restore (saved state), and
+        // never SubspaceApplication, so a tile, receiver or boot start with no UI never
+        // auto-connects.
+        if (savedInstanceState == null) launchAutomation.onFreshOpen()
 
         // Task 22 persisted the Appearance choice correctly, but nothing
         // ever read it back: SubspaceTheme was called with no darkTheme
@@ -124,43 +137,71 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = appearance?.dynamicColor ?: true,
                 reducedMotion = reduced,
             ) {
-                // The action to run once consent comes back. Held across the
-                // activity-result round trip, which is why it cannot just be a
-                // local in the click handler.
-                var pendingConnect by remember { mutableStateOf<(() -> Unit)?>(null) }
-
-                val consentLauncher =
-                    rememberLauncherForActivityResult(
-                        ActivityResultContracts.StartActivityForResult(),
-                    ) { result ->
-                        if (result.resultCode == Activity.RESULT_OK) {
-                            pendingConnect?.invoke()
-                        }
-                        pendingConnect = null
-                    }
+                val requestConsent = rememberConsentRequest()
 
                 Surface(modifier = Modifier.fillMaxSize()) {
                     SubspaceNavHost(
                         pendingRoutingImport = pendingRoutingImport,
-                        onRequestConsent = { onGranted ->
-                            // A null intent means consent was already granted.
-                            // Without consent establish() returns null and the
-                            // start sequence fails at EstablishingTun, which
-                            // reads as a bug rather than a missing permission —
-                            // so this gate comes first, and it lives here because
-                            // a ViewModel cannot start an activity for a result.
-                            val intent = VpnService.prepare(this@MainActivity)
-                            if (intent == null) {
-                                onGranted()
-                            } else {
-                                pendingConnect = onGranted
-                                consentLauncher.launch(intent)
-                            }
-                        },
+                        onRequestConsent = { onGranted -> requestConsent(onGranted, null) },
                     )
                 }
             }
         }
+    }
+
+    /**
+     * VPN consent for both callers: a Home tap and the fresh-open automation (M10-C spec §3.1),
+     * which takes the same path a Connect tap does.
+     *
+     * A null intent means consent was already granted. Without consent establish() returns null
+     * and the start sequence fails at EstablishingTun, which reads as a bug rather than a missing
+     * permission, so this gate comes first; it lives here because a ViewModel cannot start an
+     * activity for a result.
+     *
+     * @return `(onGranted, onDenied)`: only the automation passes an `onDenied`; a Home tap's
+     *   refusal just drops its pending action, as it always has.
+     */
+    @Composable
+    private fun rememberConsentRequest(): (onGranted: () -> Unit, onDenied: (() -> Unit)?) -> Unit {
+        // Held across the activity-result round trip, which is why these cannot just be
+        // locals in the click handler.
+        var pendingConnect by remember { mutableStateOf<(() -> Unit)?>(null) }
+        var pendingDenied by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+        val consentLauncher =
+            rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult(),
+            ) { result ->
+                if (result.resultCode == Activity.RESULT_OK) {
+                    pendingConnect?.invoke()
+                } else {
+                    pendingDenied?.invoke()
+                }
+                pendingConnect = null
+                pendingDenied = null
+            }
+
+        val requestConsent: (() -> Unit, (() -> Unit)?) -> Unit = { onGranted, onDenied ->
+            val intent = VpnService.prepare(this@MainActivity)
+            if (intent == null) {
+                onGranted()
+            } else {
+                pendingConnect = onGranted
+                pendingDenied = onDenied
+                consentLauncher.launch(intent)
+            }
+        }
+
+        // Collected only while started: a request made before the screen is visible waits in
+        // its conflated channel rather than launching a dialog over nothing.
+        LaunchedEffect(Unit) {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launchAutomation.connectRequests.collect {
+                    requestConsent(launchAutomation::onConsentGranted, launchAutomation::onConsentDenied)
+                }
+            }
+        }
+        return requestConsent
     }
 
     /**

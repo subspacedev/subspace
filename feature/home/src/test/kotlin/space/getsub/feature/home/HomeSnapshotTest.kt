@@ -22,6 +22,7 @@ import space.getsub.core.model.subscription.Expiry
 import space.getsub.core.model.subscription.Usage
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
+import space.getsub.feature.home.launch.LaunchAutomationState
 import java.time.LocalDate
 
 /** M8.6 spec §7.1: Home in representative states, in all four themes. Fixed clock: goldens never tick. */
@@ -31,7 +32,7 @@ class HomeSnapshotTest {
 
     private val since = 1_000_000L
     private val now = { since + 724_000L } // "Up 12:04"
-    private val actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {})
+    private val actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {})
 
     private fun shoot(
         name: String,
@@ -154,6 +155,18 @@ class HomeSnapshotTest {
                 ),
                 hasAnyProfile = true,
                 latency = LatencyResult.failed(LatencyOutcome.CERT_UNTRUSTED),
+            ),
+        )
+
+    /** M10-C spec §3.1: a Fastest auto-connect measuring on open, with Cancel under the state line. */
+    @Test
+    fun findingFastest() =
+        shoot(
+            "home-finding-fastest",
+            HomeState(
+                activeProfile = snapshotProfile("Example server"),
+                hasAnyProfile = true,
+                launchAutomation = LaunchAutomationState.Finding,
             ),
         )
 }
