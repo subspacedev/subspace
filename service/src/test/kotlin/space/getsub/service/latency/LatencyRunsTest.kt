@@ -66,6 +66,22 @@ class LatencyRunsTest {
     private val ok = LatencyResult(42, LatencyOutcome.OK)
 
     @Test
+    fun onResultSeesThisRunsResultsAfterTheyAreCached() =
+        runTest {
+            cache.put(9, ok)
+            val seen = mutableListOf<Pair<Long, LatencyResult>>()
+            runs.start(listOf(1, 2), emptyMap()) { id, result ->
+                // Cached first, so a reader of results never lags the hook.
+                runs.results.value[id] shouldBe result
+                seen += id to result
+            }
+
+            dispatcher.started.single().onResult(2, ok)
+
+            seen shouldBe listOf(2L to ok)
+        }
+
+    @Test
     fun startSupersedesAndClearsTheOldRowsTesting() =
         runTest {
             runs.start(listOf(1, 2), emptyMap())

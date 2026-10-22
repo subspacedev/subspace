@@ -103,11 +103,15 @@ internal constructor(
      * @param modes per-profile overrides. `ping-type` is scoped to the subscription that
      *   delivered it (ARCHITECTURE.md §A.1), so one run spanning two groups can need two
      *   modes; an absent entry means the user's global setting.
+     * @param onResult called with each result of *this* run, right after it is cached. [results]
+     *   also holds earlier runs' values, so a caller that must decide on this run alone (the
+     *   fastest pick, M10-C spec §3.1) collects here. Called on a binder thread.
      * @return false when nothing was started (empty list, or nothing bound to the tunnel).
      */
     public suspend fun start(
         profileIds: List<Long>,
         modes: Map<Long, PingMode>,
+        onResult: ((Long, LatencyResult) -> Unit)? = null,
     ): Boolean {
         if (profileIds.isEmpty()) return false
         // Resolved first: it suspends (Room reads), and everything after it must not. Two
@@ -129,7 +133,10 @@ internal constructor(
             // Per profile: see [modes].
             targets = profileIds.map { profileId -> LatencyTarget(profileId, modes[profileId] ?: resolved.mode) },
             options = resolved,
-            onResult = { profileId, result -> cache.put(profileId, result) },
+            onResult = { profileId, result ->
+                cache.put(profileId, result)
+                onResult?.invoke(profileId, result)
+            },
             // Clears the in-flight flag without writing results for rows that
             // never produced one — a measurement that did not happen must not be
             // recorded as one.

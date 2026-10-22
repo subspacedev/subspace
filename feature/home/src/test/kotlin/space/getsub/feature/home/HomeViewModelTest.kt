@@ -151,6 +151,8 @@ class HomeViewModelTest {
         private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
         override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
+        override val bound: StateFlow<Boolean> = MutableStateFlow(true)
+
         var lastConnected: ConnectAttempt? = null
             private set
 

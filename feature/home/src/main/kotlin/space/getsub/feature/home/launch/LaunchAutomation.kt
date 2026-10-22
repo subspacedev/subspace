@@ -13,14 +13,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import space.getsub.core.data.automation.LaunchCandidate
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyOutcome
+import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.automation.AutoConnectMode
 import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.model.automation.PickCandidate
 import space.getsub.core.model.automation.pickFastest
 import space.getsub.feature.home.TunnelConnection
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -80,6 +83,9 @@ internal constructor(
         val id = chosen ?: return
         chosen = null
         scope.launch {
+            // Never on the client's default state: an unbound client reads Disconnected even
+            // while the tunnel is up in :bg (ARCHITECTURE.md §5.5).
+            if (!tunnel.bound.value) return@launch
             // Re-read, not assumed from when consent was asked: the dialog is asynchronous, and
             // the same reasoning as HomeViewModel.onConsentGranted applies.
             if (!tunnel.state.value.isIdle()) return@launch
@@ -119,103 +125,159 @@ internal constructor(
         if (_state.value == LaunchAutomationState.Finding) _state.value = LaunchAutomationState.Idle
     }
 
+    // One early return per gate, each a distinct reason to stop, as in LaunchPinger.shouldRun.
+    @Suppress("ReturnCount")
     private suspend fun runSequence() {
         val snapshot = settings.snapshot()
+        // "The whole choice is bounded by the ping timeout plus a small margin" (M10-C spec §3.1),
+        // and the same bound caps waiting for the service, so launch never hangs on a bind.
+        val budget = snapshot.pingTimeoutSeconds * MILLIS + MARGIN_MILLIS
+        if (snapshot.autoConnect && snapshot.mode != AutoConnectMode.LastPicked) {
+            fastestSequence(snapshot, budget)
+            return
+        }
+        // Until the handshake lands, tunnel.state is the client's default Disconnected, not the
+        // service's: a tunnel still up in :bg after :main restarted would read as down
+        // (ARCHITECTURE.md §5.5). No bind in time means the state is unknown, so do nothing.
+        withTimeoutOrNull(budget) { tunnel.bound.first { it } } ?: return
+        val state = tunnel.state.value
         // A start sequence under way: neither auto-connect nor the launch test (M10-C spec §3.1,
         // and the gate LaunchPinger keeps for the launch test).
-        if (tunnel.state.value.isStartSequenceBusy()) return
+        if (state.isStartSequenceBusy()) return
         val all = servers.all()
-        val storedActive = settings.activeProfileIdNow()
-        // A stored id that names no row (a deleted server) is no active server.
-        val active = all.firstOrNull { it.id == storedActive }
-
-        var measured: Set<Long> = emptySet()
+        val active = activeIn(all)
         // Connected is settled but already connected: nothing to auto-connect, the test may run.
-        if (snapshot.autoConnect && tunnel.state.value.isIdle()) {
-            when (val outcome = autoConnect(snapshot, all, active, storedActive)) {
-                // The connect is itself a start sequence, so the launch test would be refused by
-                // its gate anyway: skipping it is M10-C spec §3.2's allowed choice.
-                AutoConnectOutcome.Requested, AutoConnectOutcome.Stopped -> return
-                is AutoConnectOutcome.NothingConnected -> measured = outcome.measured
-            }
+        // Last picked does not check markers: the user picked it (M10-C spec §3.3). The connect
+        // is itself a start sequence, so the launch test would be refused by its gate anyway:
+        // skipping it is M10-C spec §3.2's allowed choice.
+        if (snapshot.autoConnect && state.isIdle() && active != null) {
+            request(active.id)
+            return
         }
-        launchTest(snapshot, all, active, measured)
+        launchTest(snapshot, all, active, emptySet())
     }
 
-    private suspend fun autoConnect(
+    /** The stored active row, or null; a stored id that names no row (a deleted server) is none. */
+    private suspend fun activeIn(all: List<LaunchCandidate>): LaunchCandidate? {
+        val stored = settings.activeProfileIdNow()
+        return all.firstOrNull { it.id == stored }
+    }
+
+    /**
+     * A Fastest mode, from "Finding" to a request or a note. The bind wait, the state check,
+     * reading the candidates and the run all sit inside one [budget], so the whole visible
+     * "Finding" phase is capped, bind included.
+     */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "LongMethod")
+    private suspend fun fastestSequence(
         snapshot: LaunchSettingsSnapshot,
-        all: List<LaunchCandidate>,
-        active: LaunchCandidate?,
-        storedActive: Long?,
-    ): AutoConnectOutcome =
-        when (snapshot.mode) {
-            // Markers are not checked: the user picked it (M10-C spec §3.3).
-            AutoConnectMode.LastPicked ->
-                if (active != null) {
-                    request(active.id)
-                    AutoConnectOutcome.Requested
-                } else {
-                    AutoConnectOutcome.NothingConnected(emptySet())
-                }
-
-            AutoConnectMode.FastestInSubscription, AutoConnectMode.FastestOverall ->
-                fastest(snapshot, all, active, storedActive)
-        }
-
-    @Suppress("ReturnCount")
-    private suspend fun fastest(
-        snapshot: LaunchSettingsSnapshot,
-        all: List<LaunchCandidate>,
-        active: LaunchCandidate?,
-        storedActive: Long?,
-    ): AutoConnectOutcome {
-        // With no active server, "Fastest in this subscription" uses all servers (M10-C spec §3.1).
-        val pool =
-            if (snapshot.mode == AutoConnectMode.FastestInSubscription && active != null) {
-                servers.inGroup(active.groupId)
-            } else {
-                all
-            }
-        // Mirror what Connect refuses: undecodable rows and transports :core:xray cannot emit.
-        val candidates = pool.filter { it.connectable }
-        // "If there are no servers at all, it does nothing" (M10-C spec §3.1).
-        if (candidates.isEmpty()) return fallBack(active, emptySet(), noteIfNone = false)
-
-        val ids = candidates.map { it.id }
+        budget: Long,
+    ) {
         _state.value = LaunchAutomationState.Finding
-        coroutineScope {
-            // A server pick elsewhere reaches us only as a changed active_profile_id; the
-            // automation has written nothing yet, so any change is the user's.
-            val watcher =
-                launch {
-                    settings.activeProfileId.first { it != storedActive }
-                    abandon()
+        // This run's own results. LatencyCache keeps every earlier run's values too, and a stale
+        // number must not decide the pick. Written from binder threads.
+        val fresh = ConcurrentHashMap<Long, LatencyResult>()
+        var bound = false
+        var choice: Choice? = null
+        val phase =
+            withTimeoutOrNull(budget) {
+                tunnel.bound.first { it }
+                bound = true
+                val state = tunnel.state.value
+                if (state.isStartSequenceBusy()) return@withTimeoutOrNull Phase.Busy
+                val all = servers.all()
+                val storedActive = settings.activeProfileIdNow()
+                val active = all.firstOrNull { it.id == storedActive }
+                // With no active server, "Fastest in this subscription" uses all servers.
+                val pool =
+                    if (snapshot.mode == AutoConnectMode.FastestInSubscription && active != null) {
+                        servers.inGroup(active.groupId)
+                    } else {
+                        all
+                    }
+                // Mirror what Connect refuses: undecodable rows and transports :core:xray cannot emit.
+                val candidates = pool.filter { it.connectable }
+                choice = Choice(all, active, candidates)
+                if (!state.isIdle()) return@withTimeoutOrNull Phase.AlreadyConnected
+                // "If there are no servers at all, it does nothing" (M10-C spec §3.1).
+                if (candidates.isEmpty()) return@withTimeoutOrNull Phase.NoCandidates
+                val ids = candidates.map { it.id }
+                coroutineScope {
+                    // A server pick elsewhere reaches us only as a changed active_profile_id;
+                    // the automation has written nothing yet, so any change is the user's.
+                    val watcher =
+                        launch {
+                            settings.activeProfileId.first { it != storedActive }
+                            abandon()
+                        }
+                    // No metered gate: the user asked to be connected (M10-C spec §3.1, "Mobile data").
+                    val started = latency.start(ids, candidates.modes()) { id, result -> fresh[id] = result }
+                    if (started) latency.awaitDone(ids, budget)
+                    // Stopped before any write below, so our own write is never mistaken for a pick.
+                    watcher.cancel()
                 }
-            // No metered gate: the user asked to be connected (M10-C spec §3.1, "Mobile data").
-            val started = latency.start(ids, candidates.modes())
-            // Bounded so launch can never hang on a run that never reports back.
-            if (started) latency.awaitDone(ids, snapshot.pingTimeoutSeconds * MILLIS + MARGIN_MILLIS)
-            // Stopped before the write below, so our own write is never mistaken for a pick.
-            watcher.cancel()
-        }
+                Phase.Measured
+            }
 
-        val results = latency.results.value
+        val chosenFrom = choice
+        when {
+            // No bind: the tunnel's state is unknown (ARCHITECTURE.md §5.5), so neither connect
+            // nor test. Nothing has been written.
+            !bound || chosenFrom == null || phase == Phase.Busy -> {
+                _state.value = LaunchAutomationState.Idle
+                return
+            }
+
+            phase == Phase.AlreadyConnected -> {
+                _state.value = LaunchAutomationState.Idle
+                launchTest(snapshot, chosenFrom.all, chosenFrom.active, emptySet())
+                return
+            }
+
+            phase == Phase.NoCandidates -> {
+                val outcome = fallBack(chosenFrom.active, emptySet(), noteIfNone = false)
+                if (outcome is AutoConnectOutcome.NothingConnected) {
+                    launchTest(snapshot, chosenFrom.all, chosenFrom.active, outcome.measured)
+                }
+                return
+            }
+
+            else -> Unit
+        }
+        // Measured, or the budget ran out mid-run: decide on what this run delivered.
+        val results = HashMap(fresh)
+        when (val outcome = decide(snapshot, chosenFrom, results)) {
+            AutoConnectOutcome.Requested, AutoConnectOutcome.Stopped -> Unit
+            is AutoConnectOutcome.NothingConnected ->
+                launchTest(snapshot, chosenFrom.all, chosenFrom.active, outcome.measured)
+        }
+    }
+
+    // One early return per gate, each a distinct reason to stop, as in LaunchPinger.shouldRun.
+    @Suppress("ReturnCount")
+    private suspend fun decide(
+        snapshot: LaunchSettingsSnapshot,
+        choice: Choice,
+        results: Map<Long, LatencyResult>,
+    ): AutoConnectOutcome {
+        val ids = choice.candidates.map { it.id }
         // Ruling for this task: another VPN is read from the run's own results, not probed for
         // beforehand. Every candidate refused means nothing was measurable (M10-C spec §3.1).
         if (ids.all { results[it]?.outcome == LatencyOutcome.FOREIGN_VPN }) {
             _state.value = LaunchAutomationState.ForeignVpnFallback
-            active?.let { request(it.id) }
+            choice.active?.let { request(it.id) }
             return AutoConnectOutcome.Stopped
         }
-
+        // On no winner, only ids with a fresh result count as measured: a refused or cut-short
+        // run leaves the rest to the launch test.
         val winner =
             pickFastest(
-                candidates = candidates.map { PickCandidate(it.id, it.name, it.listIndex) },
+                candidates = choice.candidates.map { PickCandidate(it.id, it.name, it.listIndex) },
                 results = results,
                 network = network.current(),
                 useMarkers = snapshot.useMarkers,
-                activeId = active?.id,
-            ) ?: return fallBack(active, ids.toSet(), noteIfNone = true)
+                activeId = choice.active?.id,
+            ) ?: return fallBack(choice.active, results.keys, noteIfNone = true)
 
         // The winner becomes "last picked", so Home shows what is connected (M10-C spec §3.1).
         settings.setActiveProfile(winner)
@@ -270,6 +332,15 @@ internal constructor(
         chosen = id
         requests.trySend(Unit)
     }
+
+    /** What a Fastest sequence read before measuring. */
+    private class Choice(
+        val all: List<LaunchCandidate>,
+        val active: LaunchCandidate?,
+        val candidates: List<LaunchCandidate>,
+    )
+
+    private enum class Phase { Busy, AlreadyConnected, NoCandidates, Measured }
 
     private sealed interface AutoConnectOutcome {
         /** A connect request went out. */

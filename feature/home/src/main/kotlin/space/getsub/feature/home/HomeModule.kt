@@ -44,6 +44,8 @@ internal class BoundTunnelConnection @Inject constructor(
 ) : TunnelConnection {
     override val state: StateFlow<ConnectionState> get() = client.state
 
+    override val bound: StateFlow<Boolean> get() = client.bound
+
     override val latencies: StateFlow<Map<Long, LatencyResult>> get() = runs.results
 
     override val measuring: StateFlow<Set<Long>> get() = runs.testing

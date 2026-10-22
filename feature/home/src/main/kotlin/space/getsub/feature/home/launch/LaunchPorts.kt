@@ -67,9 +67,11 @@ internal interface LaunchServers {
 internal interface LaunchLatency {
     val results: StateFlow<Map<Long, LatencyResult>>
 
+    /** @param onResult each result of this run alone; see `LatencyRuns.start`. Binder thread. */
     suspend fun start(
         profileIds: List<Long>,
         modes: Map<Long, PingMode>,
+        onResult: ((Long, LatencyResult) -> Unit)? = null,
     ): Boolean
 
     suspend fun awaitDone(
@@ -130,7 +132,8 @@ constructor(
     override suspend fun start(
         profileIds: List<Long>,
         modes: Map<Long, PingMode>,
-    ): Boolean = runs.start(profileIds, modes)
+        onResult: ((Long, LatencyResult) -> Unit)?,
+    ): Boolean = runs.start(profileIds, modes, onResult)
 
     override suspend fun awaitDone(
         profileIds: Collection<Long>,

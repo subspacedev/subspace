@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
@@ -298,16 +299,117 @@ class LaunchAutomationTest {
         }
 
     @Test
-    fun foreignVpnIsReadFromResultsWhenTheRunIsRefused() =
+    fun aRefusedRunIgnoresOldResultsAndFallsBackToActive() =
         runTest {
             val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 2)
             h.latency.startReturns = false
+            // From an earlier run this session: not this run's answer, so no note.
             h.latency.seed(allFailed(LatencyOutcome.FOREIGN_VPN))
             h.automation.onFreshOpen()
             advanceUntilIdle()
 
-            h.automation.state.value shouldBe LaunchAutomationState.ForeignVpnFallback
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+            h.settings.writes.shouldBeEmpty()
             h.requests.size shouldBe 1
+            h.automation.onConsentGranted()
+            advanceUntilIdle()
+            h.tunnel.connected shouldBe listOf(2L)
+        }
+
+    @Test
+    fun resultsFromAnEarlierRunDoNotDecideThePick() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestInSubscription), active = 3)
+            h.latency.seed(mapOf(1L to LatencyResult.ok(10)))
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+            h.latency.deliver(2)
+            // 1 and 3 never answer this run; the bound ends it.
+            advanceUntilIdle()
+
+            h.settings.writes shouldBe listOf(2L)
+            h.requests.size shouldBe 1
+        }
+
+    @Test
+    fun aRefusedRunLeavesEveryServerToTheLaunchTest() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall, pingOnLaunch = true), active = null)
+            h.latency.startReturns = false
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+
+            h.automation.state.value shouldBe LaunchAutomationState.NoServerAnswered
+            h.latency.starts shouldBe listOf(listOf(1L, 2L, 3L, 4L, 5L), listOf(1L, 2L, 3L, 4L, 5L))
+        }
+
+    // ---- the service bind ------------------------------------------------------------------
+
+    @Test
+    fun aBindThatNeverArrivesEndsWithinTheBound() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall, timeoutSeconds = 5), active = 1)
+            h.tunnel.bound.value = false
+            h.automation.onFreshOpen()
+            runCurrent()
+            h.automation.state.value shouldBe LaunchAutomationState.Finding
+
+            advanceTimeBy(7_999)
+            h.automation.state.value shouldBe LaunchAutomationState.Finding
+            advanceTimeBy(2)
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+
+            advanceUntilIdle()
+            h.requests.shouldBeEmpty()
+            h.settings.writes.shouldBeEmpty()
+            h.latency.starts.shouldBeEmpty()
+        }
+
+    @Test
+    fun stateIsReadAfterBindNotBefore() =
+        runTest {
+            for (mode in listOf(AutoConnectMode.LastPicked, AutoConnectMode.FastestOverall)) {
+                val h = harness(settings(mode = mode), active = 1)
+                // An unbound client reads its default Disconnected while the tunnel is up in :bg.
+                h.tunnel.bound.value = false
+                h.automation.onFreshOpen()
+                runCurrent()
+                h.tunnel.emit(ConnectionState.Connected(sinceEpochMillis = 1L, socksPort = 10808))
+                h.tunnel.bound.value = true
+                advanceUntilIdle()
+                withClue(mode) {
+                    h.requests.shouldBeEmpty()
+                    h.settings.writes.shouldBeEmpty()
+                    h.automation.state.value shouldBe LaunchAutomationState.Idle
+                }
+            }
+        }
+
+    @Test
+    fun lastPickedWaitsForBind() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.LastPicked), active = 1)
+            h.tunnel.bound.value = false
+            h.automation.onFreshOpen()
+            advanceTimeBy(1_000)
+            h.requests.shouldBeEmpty()
+
+            h.tunnel.bound.value = true
+            advanceUntilIdle()
+            h.requests.size shouldBe 1
+        }
+
+    @Test
+    fun consentGrantedBeforeBindConnectsNothing() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.LastPicked), active = 1)
+            h.automation.onFreshOpen()
+            advanceUntilIdle()
+            h.tunnel.bound.value = false
+            h.automation.onConsentGranted()
+            advanceUntilIdle()
+            h.tunnel.connected.shouldBeEmpty()
         }
 
     @Test
@@ -664,19 +766,31 @@ class LaunchAutomationTest {
             _results.value = _results.value + values
         }
 
+        private var onResult: ((Long, LatencyResult) -> Unit)? = null
+
+        /** Delivers one row's answer to this run, as LatencyRuns does: cached, then the hook. */
+        fun deliver(id: Long) {
+            val result = answers.getValue(id)
+            _results.value = _results.value + (id to result)
+            testing.value = testing.value - id
+            onResult?.invoke(id, result)
+        }
+
         fun finishNow() {
-            val ids = testing.value
-            _results.value = _results.value + answers.filterKeys { it in ids }
+            testing.value.filter { it in answers }.forEach(::deliver)
             testing.value = emptySet()
         }
 
         override suspend fun start(
             profileIds: List<Long>,
             modes: Map<Long, PingMode>,
+            onResult: ((Long, LatencyResult) -> Unit)?,
         ): Boolean {
             starts += profileIds
             this.modes += modes
+            // TunnelClient reports a refused run finished at once, so no row is left testing.
             if (!startReturns) return false
+            this.onResult = onResult
             testing.value = testing.value + profileIds
             if (finishes) finishNow()
             return true
@@ -694,6 +808,7 @@ class LaunchAutomationTest {
     private class FakeTunnel : TunnelConnection {
         private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
         override val state: StateFlow<ConnectionState> = _state.asStateFlow()
+        override val bound = MutableStateFlow(true)
         val connected = mutableListOf<Long>()
 
         fun emit(next: ConnectionState) {

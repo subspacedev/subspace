@@ -25,6 +25,13 @@ internal interface TunnelConnection {
     val state: StateFlow<ConnectionState>
 
     /**
+     * Whether the service handshake has completed. Until it has, [state] is the client's default,
+     * not the service's (ARCHITECTURE.md §5.5), so anything deciding on [state] without a user
+     * looking at it, such as launch automation, waits for this first.
+     */
+    val bound: StateFlow<Boolean>
+
+    /**
      * @param rowId the Room primary key of the profile being connected —
      *   see [space.getsub.service.TunnelClient.connect]'s KDoc for
      *   why this is required rather than defaulted.

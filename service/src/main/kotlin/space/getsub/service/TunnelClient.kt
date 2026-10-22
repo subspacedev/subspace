@@ -90,12 +90,20 @@ public class TunnelClient private constructor(
      * port before the asynchronous handshake replaces it. This is ARCHITECTURE.md §5.5's "declining to guess"
      * applied to a cache that has gone stale rather than one that was never populated.
      *
-     * `@Volatile` because [bind]/[unbind] run on the main thread (Activity lifecycle callbacks)
-     * while a background worker's read of this can run on [kotlinx.coroutines.Dispatchers.IO].
+     * Backed by [bound], whose value is safely published across threads: [bind]/[unbind] run on
+     * the main thread (Activity lifecycle callbacks) while a background worker's read of this can
+     * run on [kotlinx.coroutines.Dispatchers.IO].
      */
-    @Volatile
-    public var isBound: Boolean = false
-        private set
+    public val isBound: Boolean get() = _bound.value
+
+    private val _bound = MutableStateFlow(false)
+
+    /**
+     * [isBound] as a flow, so a caller can wait for the handshake rather than poll. Launch
+     * automation waits on it before trusting [state] (M10-C spec §3.1, ARCHITECTURE.md §5.5):
+     * until it is true, [state] is the default [ConnectionState.Disconnected], not the service's.
+     */
+    public val bound: StateFlow<Boolean> = _bound.asStateFlow()
 
     private var service: ITunnelService? = null
 
@@ -147,9 +155,9 @@ public class TunnelClient private constructor(
                     service = svc
                     // Publish this last. A worker that observes true must also
                     // observe the refreshed state above, never the stale cache.
-                    isBound = true
+                    _bound.value = true
                 } catch (e: android.os.RemoteException) {
-                    isBound = false
+                    _bound.value = false
                     service = null
                     runCatching { svc.unregisterCallback(callback) }
                     Log.w(TAG, "bind handshake failed: ${e.javaClass.simpleName}")
@@ -157,7 +165,7 @@ public class TunnelClient private constructor(
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                isBound = false
+                _bound.value = false
                 service = null
                 // Deliberately NOT Disconnected: :bg died, which says nothing
                 // about whether the tunnel is down. Claiming Disconnected here
@@ -180,7 +188,7 @@ public class TunnelClient private constructor(
      */
     public fun bind() {
         if (!bindHolders.acquire()) return
-        isBound = false
+        _bound.value = false
         context.bindService(
             Intent(context, TunnelService::class.java),
             connection,
@@ -197,7 +205,7 @@ public class TunnelClient private constructor(
     public fun unbind() {
         // Another holder (a relaunched MainActivity whose onStart ran first) still needs it.
         if (!bindHolders.release()) return
-        isBound = false
+        _bound.value = false
         try {
             service?.unregisterCallback(callback)
         } catch (e: android.os.RemoteException) {
