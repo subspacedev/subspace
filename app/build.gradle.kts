@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
+import com.android.build.api.variant.FilterConfiguration
 import space.getsub.build.Abi
 import space.getsub.build.AppVersion
 import space.getsub.build.parse
@@ -42,6 +43,19 @@ android {
         }
     }
 
+    // One APK per ABI plus a universal one (M10-A spec §6.1). AGP applies splits to
+    // every build type, so debug builds split too; accepted (spec §10 leaves it open).
+    // reset() clears the default ABI list so exactly these three remain: 32-bit x86
+    // stays excluded, matching ndk.abiFilters above.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -61,6 +75,27 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // Compressed native libraries (M10-A spec §6.1a): download size over install
+        // footprint. Measured with gzip -9, libgojni.so shrinks 37.9 -> 12.8 MB
+        // (arm64-v8a), and the release downloads drop from ~42/121 MB to ~17/46 MB
+        // (per-ABI/universal). Sets extractNativeLibs="true" in the merged manifest.
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+// Per-output version codes (M10-A spec §6.2): the split APKs outrank the universal one
+// of the same release, and every code rises with the version, so an upgrade between
+// universal and split installs works in either direction.
+androidComponents {
+    onVariants { variant ->
+        val version = AppVersion.parse(readVersionName(rootProject.file("version.properties")))
+        variant.outputs.forEach { output ->
+            val abiFilter =
+                output.filters
+                    .firstOrNull { it.filterType == FilterConfiguration.FilterType.ABI }
+                    ?.identifier
+            output.versionCode.set(version.versionCode(Abi.fromFilter(abiFilter)))
+        }
     }
 }
 
