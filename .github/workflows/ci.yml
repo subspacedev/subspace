@@ -23,9 +23,10 @@ jobs:
 
       - uses: ./.github/actions/setup-android-build
 
-      # Task 7 adds its own script tests to this step.
-      - name: Test the APK comparison script
-        run: scripts/test-compare-apks.sh
+      - name: Test the release scripts
+        run: |
+          scripts/test-compare-apks.sh
+          scripts/test-release-scripts.sh
 
       - name: Verify module boundaries, format, static analysis, licence headers
         run: ./gradlew checkAll
