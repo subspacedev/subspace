@@ -19,6 +19,8 @@
 *.iml
 .gradle/
 build/
+# build-logic sources live in a package named "build" (space.getsub.build).
+!/build-logic/src/**/build/
 captures/
 local.properties
 .cxx/

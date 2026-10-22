@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
+import space.getsub.build.Abi
+import space.getsub.build.AppVersion
+import space.getsub.build.parse
+import space.getsub.build.readVersionName
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -21,8 +26,11 @@ android {
         applicationId = "space.getsub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-alpha01"
+        // One committed name, one derived code (M10-A spec §6.2): version.properties
+        // is the only place a release bump is written.
+        val appVersionName = readVersionName(rootProject.file("version.properties"))
+        versionName = appVersionName
+        versionCode = AppVersion.parse(appVersionName).versionCode(Abi.Universal)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Mirrors :service's abiFilters (service/build.gradle.kts, Application.mk).

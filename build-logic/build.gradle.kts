@@ -17,4 +17,7 @@ dependencies {
     compileOnly(libs.plugin.ktlint.gradle)
     compileOnly(libs.plugin.detekt.gradle)
     compileOnly(libs.plugin.kover.gradle)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotest.assertions)
 }
