@@ -552,6 +552,19 @@ class SettingsViewModelTest {
             model.state.value.showAutoConnectMode shouldBe false
         }
 
+    @Test
+    fun `the launch test scope is enabled only while the launch test is on`() =
+        runTest {
+            val model = viewModel(FakeSettingsSource())
+            model.onPingOnLaunchChanged(false)
+            advanceUntilIdle()
+            model.state.value.launchTestScopeEnabled shouldBe false
+
+            model.onPingOnLaunchChanged(true)
+            advanceUntilIdle()
+            model.state.value.launchTestScopeEnabled shouldBe true
+        }
+
     // ── M6.5: DNS setting ──────────────────────────────────────────────────
 
     @Test

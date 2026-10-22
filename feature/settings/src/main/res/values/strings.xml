@@ -39,11 +39,11 @@
     <string name="settings_ping_timeout">Timeout</string>
     <string name="settings_ping_timeout_value">%1$d s</string>
     <string name="settings_ping_on_launch">Test servers at launch</string>
-    <string name="settings_ping_on_launch_summary">Measures each group once when you open the server list.</string>
+    <string name="settings_ping_on_launch_summary">Tests servers each time you open the app.</string>
     <string name="settings_ping_on_launch_metered">Also on mobile data</string>
     <string name="settings_open_section">When Subspace opens</string>
     <string name="settings_auto_connect">Connect automatically</string>
-    <string name="settings_auto_connect_summary">Connects when you open the app, unless a VPN is already running.</string>
+    <string name="settings_auto_connect_summary">Connects when you open the app, unless Subspace is already connected.</string>
     <string name="settings_auto_connect_server">Server</string>
     <string name="settings_auto_connect_last_picked">Last picked</string>
     <string name="settings_auto_connect_fastest_subscription">Fastest in this subscription</string>

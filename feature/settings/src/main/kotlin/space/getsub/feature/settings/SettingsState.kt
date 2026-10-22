@@ -180,6 +180,10 @@ internal data class SettingsState(
     val showAutoConnectMode: Boolean
         get() = autoConnectOnLaunch
 
+    /** Which servers the launch test covers means nothing while that test is off (M10-C spec §3.2). */
+    val launchTestScopeEnabled: Boolean
+        get() = pingOnLaunch
+
     /** DNS endpoints stay out of diagnostic output (ARCHITECTURE.md §5.6). */
     override fun toString(): String =
         "SettingsState(theme=$theme, appVersion=$appVersion, xrayVersion=$xrayVersion, " +

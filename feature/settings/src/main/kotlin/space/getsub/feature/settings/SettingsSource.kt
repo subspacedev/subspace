@@ -87,13 +87,13 @@ internal interface SettingsSource {
     /** "Connect automatically" on a fresh open (M10-C spec §3.1). */
     val autoConnectOnLaunch: Flow<Boolean>
 
-    /** Which server auto-connect picks (M10-C spec §3.2). */
+    /** Which server auto-connect picks (M10-C spec §3.1). */
     val autoConnectMode: Flow<AutoConnectMode>
 
     /** Whether Wi-Fi / mobile words in server names steer the fastest-server choice (M10-C spec §3.3). */
     val useNetworkMarkers: Flow<Boolean>
 
-    /** Which servers the launch test measures (M10-C spec §3.3). */
+    /** Which servers the launch test measures (M10-C spec §3.2). */
     val launchTestScope: Flow<LaunchTestScope>
 
     suspend fun setAutoConnectOnLaunch(enabled: Boolean)

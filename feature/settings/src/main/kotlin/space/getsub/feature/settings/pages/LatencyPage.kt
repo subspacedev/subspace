@@ -120,13 +120,13 @@ private fun OpenSection(
     )
 }
 
-/** Which servers the launch test measures; only meaningful while the launch run is on (M10-C spec §3.3). */
+/** Which servers the launch test measures; only meaningful while the launch run is on (M10-C spec §3.2). */
 @Composable
 private fun LaunchScopeChoice(
     state: SettingsState,
     actions: SettingsActions,
 ) {
-    val enabled = state.pingOnLaunch
+    val enabled = state.launchTestScopeEnabled
     Text(
         text = stringResource(R.string.settings_launch_test_scope),
         style = MaterialTheme.typography.titleSmall,

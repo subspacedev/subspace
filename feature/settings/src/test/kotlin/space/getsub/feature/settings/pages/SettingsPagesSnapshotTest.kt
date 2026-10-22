@@ -92,6 +92,16 @@ class SettingsPagesSnapshotTest {
             ),
         )
 
+    /**
+     * M10-C spec §3.2: the launch test off greys out its scope choice. The page is taller than
+     * the screen and the scope choice sits at its foot, so this one renders the page whole.
+     */
+    @Test
+    fun latencyLaunchScopeDisabled() {
+        paparazzi.unsafeUpdateConfig(DeviceConfig.PIXEL_5.copy(screenWidth = 990, screenHeight = 3600))
+        shoot(SettingsPageId.Latency, base.copy(pingOnLaunch = false))
+    }
+
     @Test
     fun dns() = shoot(SettingsPageId.Dns, base.copy(dnsOverriddenByProfile = true))
 
