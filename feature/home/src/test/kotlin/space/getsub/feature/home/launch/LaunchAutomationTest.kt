@@ -651,6 +651,28 @@ class LaunchAutomationTest {
         }
 
     @Test
+    fun aCancelFromOutsideDuringTheChoiceAbandonsIt() =
+        runTest {
+            val h = harness(settings(mode = AutoConnectMode.FastestOverall, pingOnLaunch = true), active = 1)
+            h.latency.finishes = false
+            h.automation.onFreshOpen()
+            runCurrent()
+            h.latency.deliver(2)
+
+            // Servers' Cancel: the user stopping the run is taking over as much as starting one.
+            h.latency.cancel()
+            advanceUntilIdle()
+
+            h.automation.state.value shouldBe LaunchAutomationState.Idle
+            withClue("no pick from the cut-short set") {
+                h.settings.writes.shouldBeEmpty()
+                h.requests.shouldBeEmpty()
+            }
+            withClue("no launch test after the user stopped testing") { h.latency.starts.size shouldBe 1 }
+            h.automation.running.value shouldBe false
+        }
+
+    @Test
     fun aSessionStartedDuringTheChoiceIsNotOverwritten() =
         runTest {
             val h = harness(settings(mode = AutoConnectMode.FastestOverall), active = 1)
@@ -1193,6 +1215,8 @@ class LaunchAutomationTest {
         override fun cancel() {
             cancels++
             onCancel?.invoke()
+            // As LatencyRuns: a cancel moves the run id too, so a waiting caller sees a takeover.
+            currentRun++
             testing.value = emptySet()
         }
 

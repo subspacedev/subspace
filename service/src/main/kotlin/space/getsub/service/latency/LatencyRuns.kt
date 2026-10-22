@@ -96,9 +96,9 @@ internal constructor(
     private val runId = AtomicLong(0)
 
     /**
-     * The id of the latest run started, from any caller. Read right after a caller's own [start]
-     * and again later, it says whether another start has superseded that run since: auto-connect
-     * treats one as the user taking over (M10-C spec §3.1). [cancel] does not move it.
+     * Moves on every [start] and every [cancel], from any caller. Read right after a caller's own
+     * [start] and again later, it says whether anyone has superseded or cancelled that run since:
+     * auto-connect treats either as the user taking over (M10-C spec §3.1).
      */
     public val currentRun: Long get() = runId.get()
 
@@ -158,6 +158,10 @@ internal constructor(
      */
     public fun cancel() {
         dispatcher.cancel(runId.get())
+        // A cancel is a takeover too: a caller waiting on its run (auto-connect's fastest pick)
+        // must see that the run was cut short by someone else, not that it finished. The next
+        // start still gets a fresh, higher id, so the fence in :bg is unaffected.
+        runId.incrementAndGet()
         cache.finish(cache.testing.value)
     }
 

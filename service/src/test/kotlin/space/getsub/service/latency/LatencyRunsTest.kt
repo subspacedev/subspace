@@ -94,14 +94,15 @@ class LatencyRunsTest {
         }
 
     @Test
-    fun currentRunMovesOnEveryStartButNotOnCancel() =
+    fun currentRunMovesOnEveryStartAndEveryCancel() =
         runTest {
             runs.start(listOf(1), emptyMap())
             val first = runs.currentRun
             first shouldBe dispatcher.started.single().runId
 
             runs.cancel()
-            runs.currentRun shouldBe first
+            dispatcher.cancelled shouldBe listOf(first)
+            (runs.currentRun > first) shouldBe true
 
             runs.start(listOf(2), emptyMap())
             runs.currentRun shouldBe dispatcher.started.last().runId
