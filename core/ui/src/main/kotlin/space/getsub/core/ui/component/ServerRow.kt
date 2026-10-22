@@ -80,6 +80,7 @@ fun ServerRow(
     modifier: Modifier = Modifier,
     noteTone: NoteTone = NoteTone.Error,
     latencyDescription: String? = null,
+    caption: String? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val dim = Modifier.alpha(if (enabled) 1f else UNSUPPORTED_ALPHA)
@@ -98,7 +99,7 @@ fun ServerRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(flag, style = MaterialTheme.typography.titleLarge, modifier = dim)
-            ServerRowText(note, noteTone, rank, name, detail, dim, Modifier.weight(1f))
+            ServerRowText(note, noteTone, rank, name, caption, detail, dim, Modifier.weight(1f))
             if (selected) {
                 Icon(
                     painterResource(SubspaceIcons.Check),
@@ -127,6 +128,7 @@ private fun ServerRowText(
     noteTone: NoteTone,
     rank: Int?,
     name: String,
+    caption: String?,
     detail: String,
     dim: Modifier,
     modifier: Modifier = Modifier,
@@ -157,6 +159,18 @@ private fun ServerRowText(
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (caption != null) {
+            // The provider's own words under the name (Happ serverDescription, M10-B spec §2): muted,
+            // one line, so a long caption cannot push the protocol detail off the row.
+            Text(
+                caption,
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = dim,
             )
         }
         Text(

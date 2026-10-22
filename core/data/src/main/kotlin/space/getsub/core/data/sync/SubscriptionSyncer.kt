@@ -580,6 +580,7 @@ private fun buildUpserts(
                 kind = kind.name,
                 identityHash = identityHash,
                 name = profile.name,
+                caption = profile.caption,
                 protocol = profile.outbound.protocolName(),
                 address = profile.outbound.address,
                 port = profile.outbound.port,

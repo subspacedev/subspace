@@ -81,6 +81,8 @@ public data class StoredProfile(
      * core accepts the config is a separate gate applied by `:service`.
      */
     val passthroughRejection: PassthroughRejection? = null,
+    /** The provider's per-server caption (`serverDescription`, M10-B spec §2), or null. */
+    val caption: String? = null,
 ) {
     // ARCHITECTURE.md §5.6: this is the type that crosses out of :core:data carrying a server address, an
     // Outbound (UUID and REALITY key material) and the raw config, so the redaction has to hold
@@ -387,6 +389,7 @@ internal constructor(
                     kind = kind.name,
                     identityHash = identityHash,
                     name = profile.name,
+                    caption = profile.caption,
                     protocol = profile.outbound.protocolName(),
                     address = profile.outbound.address,
                     port = profile.outbound.port,
@@ -559,6 +562,7 @@ internal constructor(
             lastError = lastError,
             droppedFromSubscriptionAt = droppedFromSubscriptionAt,
             passthroughRejection = passthroughRejection?.let(::decodePassthroughRejection),
+            caption = caption,
         )
     }
 }

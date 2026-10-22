@@ -218,6 +218,7 @@ private fun ServerRows(
         ServerRow(
             flag = row.leadingMark(),
             name = row.displayName(),
+            caption = row.displayCaption(),
             detail = "${row.protocolDisplay} · ${row.transport}",
             latencyText = pillText(row.pill()),
             // The pill's text is shortened to fit; a screen reader gets the full sentence.

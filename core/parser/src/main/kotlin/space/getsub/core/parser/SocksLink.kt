@@ -61,11 +61,13 @@ internal fun parseSocksLink(
             username = username,
             password = password,
         )
+    val named = splitCaption(uri.fragment)
     return LinkResult.Ok(
         Profile(
             id = profileId("socks", uri.host, uri.port, credentialMaterial(username, password)),
-            name = uri.fragment.ifBlank { uri.host },
+            name = named.name.ifBlank { uri.host },
             outbound = outbound,
+            caption = named.caption,
         ),
     )
 }

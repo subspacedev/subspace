@@ -194,6 +194,8 @@ internal data class ServerRow(
     val latency: LatencyResult? = null,
     /** True while a measurement for this row is in flight. */
     val isTesting: Boolean = false,
+    /** The provider's per-server caption (M10-B spec §2), or null. */
+    val caption: String? = null,
 )
 
 /**

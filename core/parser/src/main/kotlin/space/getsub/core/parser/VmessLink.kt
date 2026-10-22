@@ -137,6 +137,7 @@ internal fun parseVmessLink(
             id = profileId("vmess", address, port, uuid),
             name = obj.nonBlankString("ps") ?: address,
             outbound = outbound,
+            caption = obj.nonBlankString("serverDescription")?.let(::clampCaption),
         ),
     )
 }

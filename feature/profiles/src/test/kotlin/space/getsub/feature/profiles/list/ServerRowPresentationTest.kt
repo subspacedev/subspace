@@ -61,6 +61,13 @@ class ServerRowPresentationTest {
         name.codeTileInitials() shouldBe name.codeTileInitials()
     }
 
+    @Test
+    fun `a caption is shown trimmed and a blank one is not shown`() {
+        row().copy(caption = "  Example caption ").displayCaption() shouldBe "Example caption"
+        row().copy(caption = "   ").displayCaption() shouldBe null
+        row().displayCaption() shouldBe null
+    }
+
     private fun row(
         id: Long = 1,
         name: String = "Server",

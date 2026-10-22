@@ -568,6 +568,7 @@ private fun StoredProfile.toRow(
         // Absent stays absent: an unmeasured row renders an em-dash, never a zero.
         latency = latencies[id],
         isTesting = id in testing,
+        caption = caption,
     )
 
 private fun List<ProfileGroup>.availableProtocolLabels(): List<String> =

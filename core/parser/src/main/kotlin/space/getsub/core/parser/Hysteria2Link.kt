@@ -77,11 +77,13 @@ internal fun parseHysteria2Link(
         is Step.Fail -> LinkResult.Bad(parseFailure(index, step.reason, step.detail))
         is Step.Ok -> {
             val outbound = step.value
+            val named = splitCaption(nameOf(raw))
             LinkResult.Ok(
                 Profile(
                     id = profileId("hysteria2", outbound.address, outbound.port, outbound.password),
-                    name = nameOf(raw).ifBlank { outbound.address },
+                    name = named.name.ifBlank { outbound.address },
                     outbound = outbound,
+                    caption = named.caption,
                 ),
             )
         }
