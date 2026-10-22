@@ -30,6 +30,11 @@ project.
 - **Android SDK Platform 37.1** must be installed (`compileSdk` is 37.1,
   required by the Compose 1.13 alpha; `targetSdk` stays 36).
 
+## Releases
+
+Version bumps, the changelog, signing and verifying a published APK are described in
+[`RELEASING.md`](RELEASING.md).
+
 ## License and Store distribution
 
 Subspace is licensed under **AGPL-3.0-or-later**, with the **Stores Exception**
