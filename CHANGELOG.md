@@ -6,6 +6,30 @@ All notable changes to Subspace are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-alpha04]
+
+### Added
+- **Device ID per subscription.** Each subscription now has its own random device ID.
+  You can see it, edit it, make a new one, or switch it off, from the subscription's
+  details. When you add a subscription, the "Device ID (HWID)" field is filled in for you;
+  paste the ID from a previous install there to keep your device slot with the provider.
+- **Device headers.** The device name, system version, model and app version that a
+  provider sees are now listed under "Sent to the provider". Each one can be switched off
+  or replaced with your own text, next to the User-Agent and request timeout.
+- **Fuller subscription card.** The Servers screen shows traffic used (with "unlimited"
+  spelled out), the expiry date or "no expiry", the provider's announcement and info
+  banner, and Support and Account buttons. Expiry turns red within 3 days and offers
+  Renew.
+- **Home.** The server card shows one line with the subscription's traffic limit and
+  expiry when they apply.
+- **Server captions.** The provider's short description for a server appears under its name.
+
+### Changed
+- The device-wide Device ID page in Settings is gone; the ID now lives with each
+  subscription.
+- Your existing subscriptions keep their device ID, so nothing changes with your provider
+  after updating.
+
 ## [0.1.0-alpha03]
 
 The first public build. This is an early alpha: expect rough edges and breaking changes
