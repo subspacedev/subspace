@@ -97,6 +97,8 @@ public class PingService : Service() {
 
     private val binder =
         object : IPingService.Stub() {
+            override fun pid(): Int = Process.myPid()
+
             override fun pingBatch(
                 request: PingBatchParcel?,
                 callback: IPingCallback?,

@@ -45,7 +45,13 @@ import space.getsub.core.model.XrayRange
  * from this generator, and every one passes `xray run -test` on the v26.10.10 binary (task 6 report).
  */
 class XrayConfigGeneratorD2Test {
-    private val settings = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 10808,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val uuid = "70cc48c5-b2f4-4a1e-9f3d-0123456789ab"
     private val tlsK = Security.Tls("k.example.com", "chrome", allowInsecure = false)
     private val tlsU = Security.Tls("u.example.com", "chrome", allowInsecure = false)

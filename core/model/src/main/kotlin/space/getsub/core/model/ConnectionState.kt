@@ -33,6 +33,15 @@ public sealed interface ConnectionState {
          * saying so is the point.
          */
         val health: Health = Health.Idle,
+        /**
+         * The account both loopback inbounds require this session (M9-E spec §5.3), or null when
+         * the tunnel publishes none. `:main` sends it with every fetch through [httpProxyPort].
+         *
+         * Part of equality, so a new session's credentials are a new state. Never printed:
+         * [ProxyCredentials.toString] is redacted, so this class's generated `toString` is too.
+         * Defaulted so states built for tests and before a core starts need not invent one.
+         */
+        val proxyCredentials: ProxyCredentials? = null,
     ) : ConnectionState
 
     public data object Disconnecting : ConnectionState

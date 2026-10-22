@@ -2,14 +2,18 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.xray
 
+import space.getsub.core.model.Applied
 import space.getsub.core.model.DnsValidation
 import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.HttpOutbound
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.KcpRules
+import space.getsub.core.model.MuxApplicability
+import space.getsub.core.model.MuxSpec
 import space.getsub.core.model.Obfuscation
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
@@ -32,7 +36,20 @@ public data class TunnelSettings(
     val socksPort: Int,
     /** Advertised to both the `dns` block and `VpnService.Builder.addDnsServer` (ARCHITECTURE.md §5.2). */
     val dnsServer: String,
+    /**
+     * The resolved sniffing value (M9-E spec §2). Off drops the SOCKS inbound's `sniffing` block,
+     * except that a FakeDNS [dns] plan keeps `destOverride: ["fakedns"]` alone ([sniffingFor]).
+     */
     val enableSniffing: Boolean,
+    /**
+     * The username and password both loopback inbounds require (M9-E spec §5.3).
+     *
+     * Required, with no default, so no call site can build an open inbound by forgetting it:
+     * a loopback proxy without auth is reachable by every app on the device. The tunnel passes
+     * the session's credentials, shared with hev; callers whose inbounds nobody dials pass
+     * `ProxyCredentialsFactory.random()`.
+     */
+    val proxyCredentials: ProxyCredentials,
     /**
      * The active routing rule set, or null when routing is off.
      *
@@ -93,6 +110,21 @@ public data class TunnelSettings(
      * `env` key, so the output is byte-identical to a build from before this existed.
      */
     val geoAssetDir: String? = null,
+    /**
+     * Whether [enableSniffing] is the user's own override (M9-E spec §2). Read only by the pure
+     * passthrough branch: false (the default, or a provider's value) keeps a raw config's own
+     * `sniffing` block as written; true replaces it with the resolved value. The typed and
+     * override branches always emit the resolved value.
+     */
+    val sniffingReplacesOwn: Boolean = false,
+    /**
+     * The resolved mux (M9-E spec §3), or null when nothing sets it. Written on the proxy outbound
+     * only where `MuxApplicability` says the core can use it. A null spec is your switch On with mux
+     * off: the typed path writes nothing, and the raw path removes a config's own block ([MuxInjector]).
+     * [Applied.replaceOwn] is true exactly for your own setting. Null emits nothing, so the output is
+     * byte-identical to a build from before mux existed.
+     */
+    val mux: Applied<MuxSpec?>? = null,
 )
 
 /**
@@ -347,19 +379,12 @@ public object XrayConfigGenerator {
         sb: StringBuilder,
         settings: TunnelSettings,
     ) {
-        val sniffing =
-            if (!settings.enableSniffing) {
-                null
-            } else if (settings.dns?.fakeDns == true) {
-                SniffingSettings(DEFAULT_SNIFFING.destOverride + "fakedns")
-            } else {
-                DEFAULT_SNIFFING
-            }
+        val sniffing = sniffingFor(settings.enableSniffing, fakeDns = settings.dns?.fakeDns == true)
         sb.appendLine("""  "inbounds": [""")
-        sb.append(socksInboundJson(settings.socksPort, sniffing))
+        sb.append(socksInboundJson(settings.socksPort, sniffing, settings.proxyCredentials))
         sb.appendLine(if (settings.httpPort != null) "," else "")
         settings.httpPort?.let { port ->
-            sb.appendLine(httpInboundJson(port))
+            sb.appendLine(httpInboundJson(port, settings.proxyCredentials))
         }
         sb.appendLine("""  ],""")
     }
@@ -384,6 +409,7 @@ public object XrayConfigGenerator {
             appendWireGuard(sb, out, address, obfuscation)
         } else {
             appendProtocolSettings(sb, out, address)
+            appendMux(sb, out, settings.mux?.spec)
             appendStream(sb, out, obfuscation, pinDomain)
         }
         sb.appendLine("""    },""")
@@ -399,6 +425,25 @@ public object XrayConfigGenerator {
             sb.appendLine("""    $DNS_OUT_OUTBOUND_JSON""")
         }
         sb.appendLine("""  ],""")
+    }
+
+    /**
+     * M9-E spec §3: `mux` on the proxy outbound, only where [MuxApplicability] says the core can use
+     * it, so the report (which asks the same table) never claims mux the tunnel does not run. Between
+     * `settings` and `streamSettings`, both always present here, so it always ends with a comma.
+     * Keys per Xray-core v26.10.10 `infra/conf/xray.go:106-128` (`MuxConfig`); WireGuard never
+     * reaches here and is not eligible anyway.
+     */
+    private fun appendMux(
+        sb: StringBuilder,
+        out: Outbound,
+        spec: MuxSpec?,
+    ) {
+        if (spec == null || !MuxApplicability.applies(out)) return
+        sb.appendLine(
+            """      "mux": {"enabled": true, "concurrency": ${spec.concurrency}, """ +
+                """"xudpConcurrency": ${spec.xudpConcurrency}, "xudpProxyUDP443": ${jsonString(spec.udp443.wire)}},""",
+        )
     }
 
     private fun appendStream(

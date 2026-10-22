@@ -30,12 +30,16 @@ import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionStatus
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningReport
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
@@ -46,8 +50,10 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 
 /**
@@ -375,7 +381,36 @@ class ServersViewModelTest {
             resolverTrustWrites += Triple(id, trust, host)
         }
 
+        /** Route-exclusion status by subscription id; absent means the provider offers none. */
+        val routeStatusById: MutableMap<Long, RouteExclusionStatus> = mutableMapOf()
+        val routeTrustWrites = mutableListOf<Triple<Long, RouteExclusionTrust, String>>()
+
+        override fun observeRouteExclusionStatus(id: Long): Flow<RouteExclusionStatus> =
+            MutableStateFlow(routeStatusById[id] ?: RouteExclusionStatus.NONE)
+
+        override suspend fun setRouteExclusionTrust(
+            id: Long,
+            trust: RouteExclusionTrust,
+            fingerprint: String,
+        ) {
+            routeTrustWrites += Triple(id, trust, fingerprint)
+        }
+
+        var activeSubscriptionId: Long? = null
+        var tuningReapplies = 0
+
+        override suspend fun activeRowSubscriptionId(): Long? = activeSubscriptionId
+
+        override fun reapplyTuning() {
+            tuningReapplies++
+        }
+
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun tuningReport(id: Long): TuningReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
@@ -1041,6 +1076,60 @@ class ServersViewModelTest {
                     Triple(7L, ResolverTrust.Allowed, "dns.example"),
                     Triple(8L, ResolverTrust.Denied, "other.example"),
                 )
+        }
+
+    @Test
+    fun `an unasked provider route exclusion carries the request and an answered one does not`() =
+        runTest {
+            val lan = CidrRange("172.16.0.0", 12, isV6 = false)
+            val unasked =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            unasked.routeStatusById[9L] = RouteExclusionStatus(RouteExclusionTrust.Unasked, "fp", listOf(lan))
+            val unaskedModel = ServersViewModel(unasked, tester)
+            val answered =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionFor()))
+            answered.routeStatusById[9L] = RouteExclusionStatus(RouteExclusionTrust.Allowed, "fp", listOf(lan))
+            val answeredModel = ServersViewModel(answered, tester)
+            advanceUntilIdle()
+
+            unaskedModel.state.value.groups.single().routeExclusionRequest shouldBe
+                RouteExclusionRequest("fp", applied = listOf("172.16.0.0/12"), refused = emptyList())
+            answeredModel.state.value.groups.single().routeExclusionRequest shouldBe null
+        }
+
+    @Test
+    fun `allow and deny write the route trust for the fingerprint the card showed`() =
+        runTest {
+            viewModel.onRouteExclusionAnswered(subscriptionId = 7L, fingerprint = "a", allowed = true)
+            viewModel.onRouteExclusionAnswered(subscriptionId = 8L, fingerprint = "b", allowed = false)
+            advanceUntilIdle()
+
+            source.routeTrustWrites shouldBe
+                listOf(Triple(7L, RouteExclusionTrust.Allowed, "a"), Triple(8L, RouteExclusionTrust.Denied, "b"))
+        }
+
+    @Test
+    fun `allowing the active row's subscription's routes restarts the session once, after the write`() =
+        runTest {
+            source.activeSubscriptionId = 7L
+            viewModel.onRouteExclusionAnswered(subscriptionId = 8L, fingerprint = "b", allowed = true)
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
+
+            viewModel.onRouteExclusionAnswered(subscriptionId = 7L, fingerprint = "a", allowed = true)
+            advanceUntilIdle()
+            source.routeTrustWrites.last() shouldBe Triple(7L, RouteExclusionTrust.Allowed, "a")
+            source.tuningReapplies shouldBe 1
+        }
+
+    @Test
+    fun `denying routes restarts nothing, since nothing applied before the answer`() =
+        runTest {
+            source.activeSubscriptionId = 7L
+            viewModel.onRouteExclusionAnswered(subscriptionId = 7L, fingerprint = "a", allowed = false)
+            advanceUntilIdle()
+
+            source.tuningReapplies shouldBe 0
         }
 
     @Test

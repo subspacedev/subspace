@@ -142,6 +142,7 @@ internal fun SettingsHubContent(
             PageRow(SubspaceIcons.Speed, SettingsPageId.Latency, latencyText(state), open)
             PageRow(SubspaceIcons.Dns, SettingsPageId.Dns, dnsText(state), open)
             PageRow(SubspaceIcons.Shield, SettingsPageId.Censorship, stringResource(censorshipTextRes(state)), open)
+            PageRow(SubspaceIcons.Tune, SettingsPageId.Tunnel, stringResource(tunnelTextRes(state)), open)
         }
 
         SectionTitle(stringResource(R.string.settings_section_diagnostics), Modifier.padding(horizontal = 4.dp))

@@ -56,8 +56,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.data.MaskReport
 import space.getsub.core.data.ObfuscationOrigin
+import space.getsub.core.data.TuningReport
 import space.getsub.core.model.SHADOWSOCKS_CORE_METHODS
 import space.getsub.core.model.ShadowsocksRefusal
+import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.shadowsocks2022KeyLength
 import space.getsub.core.model.shadowsocks2022TakesSeveralKeys
 import space.getsub.core.parser.DetailField
@@ -103,6 +105,9 @@ internal const val EDITOR_TLS_INSECURE_IGNORED_TEST_TAG = "editor-tls-insecure-i
 
 /** Identifies the duplicate-identity banner (Task 21 fix round 1) to instrumented tests. */
 internal const val EDITOR_DUPLICATE_IDENTITY_TEST_TAG = "editor-duplicate-identity"
+
+/** Tag on the "Mux isn't used for this server" line (M9-E spec §3). */
+internal const val EDITOR_MUX_NOT_USED_TEST_TAG = "editor-mux-not-used"
 
 private val VMESS_SECURITY_OPTIONS = listOf("auto", "aes-128-gcm", "chacha20-poly1305", "none")
 
@@ -350,6 +355,61 @@ private fun MaskReport.label(): String {
     }
 }
 
+/**
+ * Where sniffing and mux come from (M9-E spec §1), labelled as [MaskReport.label] labels masks. Mux on
+ * but not used for this server says so, since the core cannot mux every protocol (spec §3).
+ */
+@Composable
+private fun TuningLines(
+    report: TuningReport,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(top = FIELD_GAP),
+        verticalArrangement = Arrangement.spacedBy(FIELD_GAP),
+    ) {
+        Text(
+            text = stringResource(
+                R.string.editor_sniffing_line,
+                tuningLabel(report.sniffing.value, report.sniffing.origin)
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.editor_mux_line, tuningLabel(report.mux.value != null, report.mux.origin)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (report.mux.value != null && !report.muxUsed) {
+            Text(
+                text = stringResource(R.string.editor_mux_not_used),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag(EDITOR_MUX_NOT_USED_TEST_TAG),
+            )
+        }
+    }
+}
+
+@Composable
+private fun tuningLabel(
+    on: Boolean,
+    origin: TuningOrigin,
+): String =
+    stringResource(
+        R.string.tuning_value_with_origin,
+        stringResource(if (on) R.string.tuning_value_on else R.string.tuning_value_off),
+        stringResource(
+            when (origin) {
+                TuningOrigin.Yours -> R.string.obfuscation_origin_yours
+                TuningOrigin.Subscription -> R.string.obfuscation_origin_subscription
+                TuningOrigin.Config -> R.string.obfuscation_origin_config
+                TuningOrigin.Default -> R.string.tuning_origin_default
+            },
+        ),
+    )
+
 @Composable
 private fun EditorForm(
     state: EditorState,
@@ -387,6 +447,8 @@ private fun EditorForm(
                 )
             }
         }
+
+        state.tuning?.let { report -> TuningLines(report) }
 
         if (state.duplicateIdentity) {
             TonalBanner(
@@ -753,7 +815,7 @@ private fun EditorSecurityKind.icon(): Int =
 private fun EditorSecurityKind.displayLabel(): String =
     when (this) {
         // "Reality"/"TLS" are Xray's own technical transport names, not sentences — same
-        // un-resourced treatment ServersViewModel.toProtocolDisplayName() gives "VLESS"/"VMess".
+        // un-resourced treatment protocolDisplayName() gives "VLESS"/"VMess".
         EditorSecurityKind.None -> stringResource(R.string.editor_security_none)
         EditorSecurityKind.Reality -> "Reality"
         EditorSecurityKind.Tls -> "TLS"

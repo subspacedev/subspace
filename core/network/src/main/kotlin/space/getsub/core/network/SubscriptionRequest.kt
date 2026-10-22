@@ -2,6 +2,8 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.network
 
+import space.getsub.core.model.LocalProxy
+
 /**
  * Everything [SubscriptionFetcher] needs to perform one subscription fetch.
  *
@@ -12,9 +14,9 @@ package space.getsub.core.network
  * @property timeoutSeconds documented range 5–15, default 9. Supplied by the
  *   caller because it arrives as a directive delivered *by* the fetch it
  *   configures — the previous fetch's value, or the default on first contact.
- * @property proxyPort the tunnel's loopback HTTP proxy, or null to fetch
- *   directly. Defaults to null so every pre-existing call site keeps the old
- *   behaviour unchanged.
+ * @property proxy the tunnel's loopback HTTP proxy and the session's account for it (M9-E
+ *   spec §5.3), or null to fetch directly. Defaults to null so every pre-existing call site keeps
+ *   the old behaviour unchanged.
  * @property route M9-B: fronting and fetch fragmentation; see [FetchRoute].
  */
 public data class SubscriptionRequest(
@@ -22,7 +24,7 @@ public data class SubscriptionRequest(
     val hwidEnabled: Boolean,
     val userAgentOverride: String?,
     val timeoutSeconds: Int,
-    val proxyPort: Int? = null,
+    val proxy: LocalProxy? = null,
     val route: FetchRoute = FetchRoute(),
 ) {
     // ARCHITECTURE.md §5.6: url is a secret. The generated data-class toString() would print
@@ -32,11 +34,9 @@ public data class SubscriptionRequest(
     // exists today. The other fields are not secrets and stay visible: they
     // are what makes a logged instance useful for debugging at all.
     //
-    // proxyPort is deliberately not printed either — not because it is a
-    // secret (ARCHITECTURE.md §5.6: a port is not one) but because adding it here would be
-    // scope creep on a redaction override that exists for exactly one
-    // reason. Leaving it off keeps the printed shape stable for anyone
-    // already relying on it in a log line.
+    // proxy is deliberately not printed either. Its port is not a secret (ARCHITECTURE.md §5.6),
+    // but it carries the session's proxy credentials (M9-E spec §5.3), which are; ProxyCredentials
+    // redacts itself, and leaving the whole field off keeps that from resting on one override.
     override fun toString(): String =
         "SubscriptionRequest(url=<redacted>, hwidEnabled=$hwidEnabled, " +
             "userAgentOverride=$userAgentOverride, timeoutSeconds=$timeoutSeconds)"

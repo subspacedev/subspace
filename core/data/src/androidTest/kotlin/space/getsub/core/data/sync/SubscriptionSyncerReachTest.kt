@@ -21,6 +21,7 @@ import space.getsub.core.data.SettingsRepository
 import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.db.SubspaceDatabase
 import space.getsub.core.model.FragmentSettings
+import space.getsub.core.model.LocalProxy
 import space.getsub.core.model.TunnelProxyLocator
 import space.getsub.core.model.XrayRange
 import space.getsub.core.network.FetchFailure
@@ -62,11 +63,11 @@ class SubscriptionSyncerReachTest {
         responseForRequest(request)
     }
 
-    /** No tunnel bound by default; individual tests override to assert the port is threaded through. */
-    private var proxyPort: Int? = null
+    /** No tunnel bound by default; individual tests override to assert the proxy is threaded through. */
+    private var proxy: LocalProxy? = null
 
     private fun syncer() =
-        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxyPort })
+        SubscriptionSyncer(db.subscriptionDao(), subscriptions, settings, source, TunnelProxyLocator { proxy })
 
     @Before
     fun setUp() {

@@ -7,14 +7,26 @@ import app.cash.paparazzi.Paparazzi
 import org.junit.Rule
 import org.junit.Test
 import space.getsub.core.data.InstalledGeoAsset
+import space.getsub.core.data.ResolvedTuning
+import space.getsub.core.data.TuningValue
 import space.getsub.core.model.DnsTransport
+import space.getsub.core.model.ExcludeRoutesUserSetting
 import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.GeoSourceCatalogue
+import space.getsub.core.model.MuxSpec
+import space.getsub.core.model.MuxUserSettings
 import space.getsub.core.model.NoiseMode
 import space.getsub.core.model.NoisePacketType
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.ProxyAuthMode
+import space.getsub.core.model.ProxyAuthSettings
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.SniffingUserSetting
+import space.getsub.core.model.TunMtuUserSetting
+import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.Udp443Mode
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.settings.SettingsActions
@@ -153,6 +165,48 @@ class SettingsPagesSnapshotTest {
                         lastAttemptedAt = 1_760_000_000_000,
                         lastFailure = null,
                     ),
+                ),
+            ),
+        )
+    }
+
+    /** M9-E: every switch off, each showing what the active server's subscription sets. */
+    @Test
+    fun tunnelDefault() {
+        paparazzi.unsafeUpdateConfig(DeviceConfig.PIXEL_5.copy(screenWidth = 990, screenHeight = 3600))
+        shoot(
+            SettingsPageId.Tunnel,
+            base.copy(
+                tunnelWithoutYourOverrides =
+                ResolvedTuning(
+                    sniffing = TuningValue(false, TuningOrigin.Subscription),
+                    mux = TuningValue(MuxSpec(8, 16, Udp443Mode.Reject), TuningOrigin.Subscription),
+                    tunMtu = TuningValue(8500, TuningOrigin.Default),
+                    excludedRoutes = TuningValue(emptyList(), TuningOrigin.Default),
+                ),
+                sniffingOffWarning = SniffingRuleWarning.DomainRulesStop,
+            ),
+        )
+    }
+
+    /**
+     * M9-E: every section on, connected. The stored text is invalid on purpose so the field errors
+     * show: an MTU under 1280, a bad excluded-route line, and an empty manual password.
+     */
+    @Test
+    fun tunnelCustom() {
+        paparazzi.unsafeUpdateConfig(DeviceConfig.PIXEL_5.copy(screenWidth = 990, screenHeight = 5600))
+        shoot(
+            SettingsPageId.Tunnel,
+            base.copy(
+                sessionConnected = true,
+                tunnel =
+                TunnelDraft(
+                    sniffing = SniffingUserSetting(override = true, enabled = false),
+                    mux = MuxUserSettings(override = true, enabled = true, "-1", "2000", "skip"),
+                    mtu = TunMtuUserSetting(override = true, value = "1000"),
+                    routes = ExcludeRoutesUserSetting(override = true, ranges = "10.0.0.0/8\n10.0.0.0/33"),
+                    proxyAuth = ProxyAuthSettings(ProxyAuthMode.Manual, "subspace", ""),
                 ),
             ),
         )

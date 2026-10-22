@@ -11,12 +11,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import space.getsub.core.model.ProxyCredentials
+import space.getsub.core.model.ProxyCredentialsFactory
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
+import java.util.Base64
 import java.util.UUID
 
 /**
@@ -69,13 +72,15 @@ public class LibXrayProbeCore : ProbeCore {
 }
 
 /**
- * One proxied exchange to [target] (`host:port`) through the HTTP inbound on loopback [proxyPort].
- * Throws on any failure; the caller ignores the outcome, because the verdict is in the core's log.
+ * One proxied exchange to [target] (`host:port`) through the HTTP inbound on loopback [proxyPort],
+ * authenticating with [credentials] (the inbound answers 407 without them). Throws on any failure;
+ * the caller ignores the outcome, because the verdict is in the core's log.
  */
 public fun interface ProbeConnect {
     public fun exchange(
         proxyPort: Int,
         target: String,
+        credentials: ProxyCredentials,
     )
 }
 
@@ -136,6 +141,8 @@ public object CertificateProbe {
      * there is nothing to probe: no JSON, no `proxy` outbound, or a `dialerProxy` naming an
      * outbound that is not there. Never throws, so no exception can quote the config.
      *
+     * [credentials] is the one account the inbound accepts; the caller's raw `CONNECT` must send it.
+     *
      * The outbound is copied as is, with any `sockopt.dialerProxy` chain it depends on — the same
      * selection libXray's `pingBatch` makes (`xray/ping_batch.go`, `pingOutboundDependencyTags`).
      * No `dns`, `stats`, `api` or `env`: nothing here needs them, and the core resolves the
@@ -146,6 +153,7 @@ public object CertificateProbe {
         xrayJson: String,
         port: Int,
         logFile: String,
+        credentials: ProxyCredentials,
     ): String? {
         val outbounds =
             try {
@@ -163,16 +171,9 @@ public object CertificateProbe {
                 put("access", "none")
             }
             putJsonArray("inbounds") {
-                add(
-                    buildJsonObject {
-                        put("tag", INBOUND_TAG)
-                        put("protocol", "http")
-                        // ARCHITECTURE.md §6: loopback only, never 0.0.0.0.
-                        put("listen", PROBE_LOOPBACK.hostAddress)
-                        put("port", port)
-                        putJsonObject("settings") {}
-                    },
-                )
+                // The tunnel's own HTTP inbound shape: loopback only (ARCHITECTURE.md §6) and a single
+                // account, because any app on the device can reach 127.0.0.1.
+                add(Json.parseToJsonElement(httpInboundJson(port, credentials, INBOUND_TAG)))
             }
             put("outbounds", buildJsonArray { selected.forEach { add(it) } })
             putJsonObject("routing") {
@@ -230,7 +231,8 @@ private const val MAX_LOG_BYTES = 64 * 1024
 
 /**
  * Production [ProbeConnect]: a raw socket to the probe's loopback HTTP inbound, one
- * `CONNECT <target>`, the status line, one byte, then read until EOF or the deadline. Xray's http
+ * `CONNECT <target>` carrying `Proxy-Authorization: Basic`, the status line, one byte, then read until
+ * EOF or the deadline. Xray's http
  * inbound dispatches the CONNECT to the outbound, which dials the server — that dial is what
  * produces the certificate verdict; the byte only keeps the inbound's copy loop busy.
  *
@@ -244,13 +246,17 @@ public class SocketProbeConnect(
     override fun exchange(
         proxyPort: Int,
         target: String,
+        credentials: ProxyCredentials,
     ) {
         val deadline = nowMillis() + deadlineMillis
         fun left(): Int = (deadline - nowMillis()).coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         Socket().use { socket ->
             socket.connect(InetSocketAddress(PROBE_LOOPBACK, proxyPort), left())
             val output = socket.getOutputStream()
-            output.write("CONNECT $target HTTP/1.1\r\nHost: $target\r\n\r\n".toByteArray(Charsets.US_ASCII))
+            val userInfo = "${credentials.user}:${credentials.pass}".toByteArray(Charsets.UTF_8)
+            val basic = Base64.getEncoder().encodeToString(userInfo)
+            val request = "CONNECT $target HTTP/1.1\r\nHost: $target\r\nProxy-Authorization: Basic $basic\r\n\r\n"
+            output.write(request.toByteArray(Charsets.US_ASCII))
             output.flush()
             val input = socket.getInputStream()
             // Status line and headers end at the first blank line; anything after is the tunnel.
@@ -323,11 +329,11 @@ public fun sweepCertificateProbeDir(dir: File) {
  * over-reports on purpose: the cost is one retired `:ping` process, while under-reporting would let
  * `pingBatch` run beside an instance.
  *
- * **The loopback inbound is unauthenticated.** Anything on the device could proxy through it while
- * it lives. Acceptable here: it lives for seconds (one [CertificateProbe.BOUND_MILLIS] probe), it
- * listens on 127.0.0.1 only, its one outbound is a server that just failed to answer `pingBatch`
- * (so it most likely carries nothing), and the access log is off, so nothing that did use it is
- * recorded anywhere.
+ * **The loopback inbound is authenticated per probe.** Another app on the device can reach
+ * 127.0.0.1, so the inbound accepts one random account made for this probe alone
+ * ([ProxyCredentialsFactory.random]), sent by the raw `CONNECT` as `Proxy-Authorization: Basic`.
+ * Without it the inbound answers 407 and closes, so nothing else can proxy through it or put a
+ * `CONNECT` in the log. The credentials are never logged or put in an exception.
  *
  * [logDir] is private to the probe (`:ping`'s `cacheDir/cert-probe`; the core creates the file
  * mode 0600, `common/log/logger.go`). Every file in it is deleted before and after each probe, on
@@ -344,6 +350,7 @@ public class CertificateProbeRunner(
     private val freePort: () -> Int = ::loopbackFreePort,
     private val sleep: (Long) -> Unit = Thread::sleep,
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val newCredentials: () -> ProxyCredentials = { ProxyCredentialsFactory.random() },
 ) {
     // TooGenericExceptionCaught/SwallowedException: every seam may throw anything, and its message
     // can quote the config (a libXray error does); each one maps to a verdict, never to text.
@@ -360,8 +367,10 @@ public class CertificateProbeRunner(
             logDir.mkdirs()
             val file = File(logDir, "${UUID.randomUUID()}.log")
             val port = freePort()
+            // Fresh per probe: the account lives exactly as long as this one instance.
+            val credentials = newCredentials()
             val config =
-                CertificateProbe.config(xrayJson, port, file.absolutePath)
+                CertificateProbe.config(xrayJson, port, file.absolutePath, credentials)
                     ?: return CertificateProbeResult.DID_NOT_RUN
             started = true
             try {
@@ -375,7 +384,7 @@ public class CertificateProbeRunner(
             var untrusted: Boolean
             try {
                 try {
-                    connect.exchange(port, target)
+                    connect.exchange(port, target, credentials)
                 } catch (e: Exception) {
                     // Expected: an untrusted server closes the proxied connection. The verdict is in the log.
                 }

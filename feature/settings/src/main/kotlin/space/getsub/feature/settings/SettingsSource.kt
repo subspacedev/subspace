@@ -6,14 +6,19 @@ import android.content.Context
 import android.os.PowerManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.withContext
 import space.getsub.core.data.PerAppRepository
+import space.getsub.core.data.ResolvedTuning
 import space.getsub.core.data.RoutingRepository
 import space.getsub.core.data.SettingsRepository
+import space.getsub.core.data.SubscriptionRepository
 import space.getsub.core.data.ThemePreference
+import space.getsub.core.data.TuningResolver
 import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.FragmentSettings
 import space.getsub.core.model.NoiseSettings
@@ -21,6 +26,10 @@ import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.ProfileDns
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.sniffingRuleWarning
+import space.getsub.core.model.usesFakeDns
+import space.getsub.feature.settings.pages.TunnelDraft
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -163,6 +172,24 @@ internal interface SettingsSource {
 
     suspend fun setPreResolveSettings(settings: PreResolveSettings)
 
+    /** The Tunnel page's five settings as stored (M9-E spec §1–§5). */
+    val tunnelSettings: Flow<TunnelDraft>
+
+    /** Writes all five; the caller restarts the session once afterwards. */
+    suspend fun saveTunnelSettings(draft: TunnelDraft)
+
+    /**
+     * What the active server gets with your overrides off: its own subscription's value, else the
+     * default (ARCHITECTURE.md §A.1: never another subscription's). Null with no active server.
+     */
+    val tunnelWithoutYourOverrides: Flow<ResolvedTuning?>
+
+    /**
+     * What turning sniffing off would do to the active rule set's domain rules: nothing, stop them,
+     * or (when its DNS block turns FakeDNS on) leave them matching only FakeDNS lookups.
+     */
+    val activeRuleSetSniffingOffWarning: Flow<SniffingRuleWarning>
+
     /**
      * A fresh platform read of whether Android already exempts this app from battery
      * optimization — not a [Flow], since the only caller needs its value at one instant (the
@@ -187,6 +214,8 @@ constructor(
     private val settingsRepository: SettingsRepository,
     private val routingRepository: RoutingRepository,
     perAppRepository: PerAppRepository,
+    private val subscriptionRepository: SubscriptionRepository,
+    private val tuningResolver: TuningResolver,
     @param:ApplicationContext private val context: Context,
 ) : SettingsSource {
     override val theme: Flow<ThemePreference> = settingsRepository.theme
@@ -282,6 +311,37 @@ constructor(
         settingsRepository.setPreResolveSettings(settings)
 
     override suspend fun setNoiseSettings(settings: NoiseSettings) = settingsRepository.setNoiseSettings(settings)
+
+    override val tunnelSettings: Flow<TunnelDraft> =
+        combine(
+            settingsRepository.sniffing,
+            settingsRepository.mux,
+            settingsRepository.tunMtu,
+            settingsRepository.excludeRoutes,
+            settingsRepository.proxyAuth,
+            ::TunnelDraft,
+        ).distinctUntilChanged()
+
+    override suspend fun saveTunnelSettings(draft: TunnelDraft) {
+        settingsRepository.setSniffing(draft.sniffing)
+        settingsRepository.setMux(draft.mux)
+        settingsRepository.setTunMtu(draft.mtu)
+        settingsRepository.setExcludeRoutes(draft.routes)
+        settingsRepository.setProxyAuth(draft.proxyAuth)
+    }
+
+    // Re-read when the active server or any subscription changes (a refresh can change directives).
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override val tunnelWithoutYourOverrides: Flow<ResolvedTuning?> =
+        combine(settingsRepository.activeProfileId, subscriptionRepository.observeSubscriptions()) { id, _ -> id }
+            .mapLatest { id -> id?.let { tuningResolver.withoutYourOverrides(it) } }
+            .distinctUntilChanged()
+
+    override val activeRuleSetSniffingOffWarning: Flow<SniffingRuleWarning> =
+        combine(settingsRepository.activeRoutingRuleSetId, routingRepository.observeAllStored()) { id, sets ->
+            val active = sets.firstOrNull { it.ruleSet.id == id }
+            sniffingRuleWarning(sniffing = false, ruleSet = active?.ruleSet, fakeDns = active?.dns.usesFakeDns())
+        }.distinctUntilChanged()
 
     override suspend fun isIgnoringBatteryOptimizations(): Boolean =
         withContext(Dispatchers.IO) {

@@ -343,7 +343,7 @@ private fun reviewState(
         defaultRouteIsDirect = profile.globalProxy == false,
         geoDownloads = preview.geoFiles.map { it.toDownloadPreview() },
         dns = profile.dns,
-        dnsState = dnsStateOf(profile.dns, sniffingEnabled = true),
+        dnsState = dnsStateOf(profile.dns),
         willActivate = willActivate,
         profile = profile,
         drops = drops,

@@ -62,9 +62,11 @@ import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.parser.RedirectRejection
+import space.getsub.core.ui.TuningIgnoreKind
 import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.HubRow
 import space.getsub.core.ui.component.QuotaBar
@@ -76,7 +78,10 @@ import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.textRes
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.core.ui.theme.mono
+import space.getsub.core.ui.tuningDirectiveLine
+import space.getsub.core.ui.tuningIgnoreKind
 import space.getsub.feature.profiles.R
+import space.getsub.feature.profiles.RouteExclusionRequestContent
 import space.getsub.feature.profiles.add.UserMessage
 import space.getsub.feature.profiles.add.toUserMessage
 import space.getsub.feature.profiles.add.userMessageText
@@ -136,13 +141,15 @@ fun SubscriptionDetailScreen(
             onAllowResolver = viewModel::onAllowResolver,
             onDenyResolver = viewModel::onDenyResolver,
             onResolverAllowedChanged = viewModel::onResolverAllowedChanged,
+            onAllowRouteExclusion = viewModel::onAllowRouteExclusion,
+            onDenyRouteExclusion = viewModel::onDenyRouteExclusion,
         ),
         modifier = modifier,
     )
 }
 
 /**
- * [SubscriptionDetailContent]'s sixteen callbacks, grouped for the same reason
+ * [SubscriptionDetailContent]'s callbacks, grouped for the same reason
  * [space.getsub.feature.profiles.editor.EditorActions] is.
  */
 internal data class SubscriptionDetailActions(
@@ -163,6 +170,9 @@ internal data class SubscriptionDetailActions(
     val onAllowResolver: () -> Unit = {},
     val onDenyResolver: () -> Unit = {},
     val onResolverAllowedChanged: (Boolean) -> Unit = {},
+    // M9-E spec §4, with the fingerprint of the rendered request. Defaulted for the same reason.
+    val onAllowRouteExclusion: (fingerprint: String) -> Unit = {},
+    val onDenyRouteExclusion: (fingerprint: String) -> Unit = {},
 )
 
 /**
@@ -305,7 +315,10 @@ private fun DetailBody(
     }
 }
 
-/** The provider's pending requests, redirects first (M9-B spec §4), then its DoH resolver (M9-C spec §1.3). */
+/**
+ * The provider's pending requests: redirects first (M9-B spec §4), then its DoH resolver (M9-C spec
+ * §1.3), then its excluded routes (M9-E spec §4).
+ */
 @Composable
 private fun TrustRequests(
     state: SubscriptionDetailState,
@@ -325,6 +338,21 @@ private fun TrustRequests(
             onAllow = actions.onAllowResolver,
             onDeny = actions.onDenyResolver,
         )
+    }
+    val routes = state.routeExclusionRequest
+    if (routes != null) {
+        Surface(
+            shape = SubspaceShapeTokens.card,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.fillMaxWidth().padding(top = CONTENT_PADDING),
+        ) {
+            RouteExclusionRequestContent(
+                request = routes,
+                onAllow = { actions.onAllowRouteExclusion(routes.fingerprint) },
+                onDeny = { actions.onDenyRouteExclusion(routes.fingerprint) },
+                modifier = Modifier.padding(CONTENT_PADDING),
+            )
+        }
     }
 }
 
@@ -551,10 +579,30 @@ private fun DirectivesSection(
             val reason = stringResource(problem.textRes())
             IgnoredDirectiveText(stringResource(R.string.subscription_noise_ignored, reason))
         }
+        TuningIssueLines(state.tuningIssues)
         state.rows.forEach { row ->
             DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
         }
     }
+}
+
+/**
+ * M9-E spec §3, §4, §7.1: each provider tuning directive that does not apply, worded by
+ * [tuningDirectiveLine] as Settings → Tunnel words it. A value waiting for (or refused) consent is a
+ * fact, not an error; an invalid one reads as an error, like the mask lines above.
+ */
+@Composable
+private fun TuningIssueLines(issues: TuningDirectiveIssues) {
+    listOfNotNull(issues.mux, issues.tunMtu, issues.excludedRoutes).forEach { issue ->
+        val text = tuningDirectiveLine(issue.key, issue.problem, issue.partial)
+        if (tuningIgnoreKind(issue.problem, issue.partial) == TuningIgnoreKind.NotApplied) {
+            ReachFact(text)
+        } else {
+            IgnoredDirectiveText(text)
+        }
+    }
+    // Which range covers the DNS server in use is only known to :bg at connect (M9-E spec §4).
+    if (issues.excludedRoutesApply) ReachFact(stringResource(R.string.subscription_route_exclusion_applies))
 }
 
 @Composable

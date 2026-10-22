@@ -29,17 +29,23 @@ import space.getsub.core.data.ProfileKind
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningReport
+import space.getsub.core.data.TuningValue
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.MuxSpec
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
 import space.getsub.core.model.ShadowsocksRefusal
 import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.Udp443Mode
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
 
@@ -322,6 +328,15 @@ class EditorViewModelTest {
 
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = obfuscationReports[id]
 
+        val tuningReports = mutableMapOf<Long, TuningReport>()
+
+        override suspend fun tuningReport(id: Long): TuningReport? = tuningReports[id]
+
+        val sniffingDecisions = mutableMapOf<Long, SniffingDecision>()
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            sniffingDecisions[id] ?: SniffingDecision(enabled = true, replacesOwn = false)
+
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation =
             ResolvedObfuscation(MaskResolution.Absent, MaskResolution.Absent)
 
@@ -383,6 +398,25 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.obfuscation shouldBe report
+        }
+
+    @Test
+    fun `load carries the tuning report`() =
+        runTest {
+            val report =
+                TuningReport(
+                    sniffing = TuningValue(true, TuningOrigin.Default),
+                    mux = TuningValue(MuxSpec(8, 16, Udp443Mode.Reject), TuningOrigin.Yours),
+                    muxUsed = false,
+                )
+            val source = FakeProfileSource(listOf(typedProfile))
+            source.tuningReports[typedProfile.id] = report
+            val viewModel = editorViewModel(source)
+
+            viewModel.load(typedProfile.id)
+            advanceUntilIdle()
+
+            viewModel.state.value.tuning shouldBe report
         }
 
     @Test
@@ -608,6 +642,37 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             viewModel.state.value.advisories shouldBe listOf(PassthroughAdvisory.DanglingRoutingReference)
+        }
+
+    // M9-E spec §2: the advisory judges the block the tunnel actually emits for this row.
+    @Test
+    fun `the sniffing advisory follows the row's resolved sniffing`() =
+        runTest {
+            val ownBlock =
+                rawJsonProfile.copy(
+                    id = 11L,
+                    rawJson =
+                    """
+                    {
+                      "routing": { "rules": [ { "domain": ["geosite:ru"], "outboundTag": "proxy" } ] },
+                      "inbounds": [ { "protocol": "socks", "sniffing": { "enabled": true, "destOverride": ["tls"] } } ],
+                      "outbounds": [ { "tag": "proxy", "protocol": "vless" } ]
+                    }
+                    """.trimIndent(),
+                )
+            val noBlock = ownBlock.copy(id = 12L, rawJson = ownBlock.rawJson?.replace(", \"sniffing\"", ", \"x\""))
+            val source = FakeProfileSource(listOf(ownBlock, noBlock))
+            source.sniffingDecisions[11L] = SniffingDecision(enabled = false, replacesOwn = true)
+            source.sniffingDecisions[12L] = SniffingDecision(enabled = true, replacesOwn = true)
+            val viewModel = editorViewModel(source)
+
+            viewModel.load(11L)
+            advanceUntilIdle()
+            viewModel.state.value.advisories shouldBe listOf(PassthroughAdvisory.SniffingCannotServeOwnRules)
+
+            viewModel.load(12L)
+            advanceUntilIdle()
+            viewModel.state.value.advisories shouldBe emptyList()
         }
 
     @Test

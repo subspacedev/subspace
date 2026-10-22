@@ -17,6 +17,8 @@ import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingEntries
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.RuleBucket
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.sniffingRuleWarning
 import javax.inject.Inject
 
 /**
@@ -80,6 +82,9 @@ internal sealed interface SaveProblem {
  * @param revealRequest set when [RuleSetEditorViewModel.save] refused because a field holds text
  *   it cannot add; the screen focuses and scrolls to that field, then calls
  *   [RuleSetEditorViewModel.revealHandled]. Transient, so it never counts toward [isDirty].
+ * @param userSniffingOff your sniffing override is on with sniffing off ([RoutingSource.sniffing]).
+ * @param ruleSetFakeDns the stored set's DNS block turns FakeDNS on ([RoutingSource.ruleSetUsesFakeDns]).
+ *   Not an edit, so it never counts toward [isDirty].
  */
 internal data class RuleSetEditorState(
     val loading: Boolean = true,
@@ -97,7 +102,21 @@ internal data class RuleSetEditorState(
     val drafts: Map<Pair<RouteOutcome, BucketField>, String> = emptyMap(),
     val baseline: RuleSetEdits = RuleSetEdits(),
     val revealRequest: RevealRequest? = null,
+    val userSniffingOff: Boolean = false,
+    val ruleSetFakeDns: Boolean = false,
 ) {
+    /**
+     * M9-E spec §2 "warn but obey": your sniffing override is off and the draft has entries that
+     * need it. Only your own setting counts ([userSniffingOff]); the tunnel still runs as chosen.
+     */
+    val sniffingWarning: SniffingRuleWarning
+        get() =
+            sniffingRuleWarning(
+                sniffing = !userSniffingOff,
+                fakeDns = ruleSetFakeDns,
+                ruleSet = RoutingRuleSet(name = name, buckets = buckets, order = order),
+            )
+
     /**
      * The stored entries for [outcome]/[field]. ARCHITECTURE.md §5.6: this is the
      * screen's whole job — display, never log.
@@ -199,6 +218,14 @@ constructor(
     private val _state = MutableStateFlow(RuleSetEditorState())
     val state: StateFlow<RuleSetEditorState> = _state.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            source.sniffing.collect { setting ->
+                _state.update { it.copy(userSniffingOff = setting.override && !setting.enabled) }
+            }
+        }
+    }
+
     /**
      * Loads [id] — an existing row, or [id] left in place as a fresh draft when
      * no row matches (the create-new-rule-set sentinel `NEW_RULE_SET` in `:app`
@@ -215,16 +242,20 @@ constructor(
         if (!current.loading && current.id == id) return
         viewModelScope.launch {
             val existing = source.ruleSet(id)
+            val fakeDns = source.ruleSetUsesFakeDns(id)
             val siteCategories = source.categoriesFor(BucketField.SITES)
             val ipCategories = source.categoriesFor(BucketField.IPS)
             val loaded = existing?.toEditorState() ?: RuleSetEditorState(loading = false, id = id)
-            _state.value =
+            _state.update { current ->
                 loaded.copy(
                     loading = false,
                     siteCategories = siteCategories,
                     ipCategories = ipCategories,
                     baseline = loaded.edits,
+                    userSniffingOff = current.userSniffingOff,
+                    ruleSetFakeDns = fakeDns,
                 )
+            }
         }
     }
 

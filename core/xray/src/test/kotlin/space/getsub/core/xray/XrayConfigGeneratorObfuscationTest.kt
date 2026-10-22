@@ -15,7 +15,13 @@ import space.getsub.core.model.Profile
 import space.getsub.core.model.XrayRange
 
 class XrayConfigGeneratorObfuscationTest {
-    private val base = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val base =
+        TunnelSettings(
+            socksPort = 10808,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val fragment =
         Applied(
             FragmentSpec(
@@ -55,7 +61,8 @@ class XrayConfigGeneratorObfuscationTest {
         json(base.copy(obfuscation = Obfuscation(fragment, null))) shouldBe golden("vless-reality-fragment.json")
     }
 
-    @Test fun `fragment and noise match their golden`() {
-        json(base.copy(obfuscation = Obfuscation(fragment, noise))) shouldBe golden("vless-reality-fragment-noise.json")
+    @Test fun `noise is dropped on a TCP outbound, leaving only the fragment golden`() {
+        json(base.copy(obfuscation = Obfuscation(fragment, noise))) shouldBe golden("vless-reality-fragment.json")
+        json(base.copy(obfuscation = Obfuscation(null, noise))) shouldBe golden("vless-reality.json")
     }
 }

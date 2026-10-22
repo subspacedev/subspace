@@ -88,8 +88,11 @@ import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.EntryProblem
 import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingEntries
+import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.ui.component.BannerTone
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
+import space.getsub.core.ui.component.TonalBanner
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.core.ui.theme.LocalSubspaceColors
 import space.getsub.core.ui.theme.SubspaceShapeTokens
@@ -312,6 +315,21 @@ private fun EditorForm(
         // so an edit made now would be lost when the screen leaves (fix round 1, minor 7).
         // RuleSetEditorViewModel refuses such edits too; this only stops offering them.
         val enabled = !state.saving
+
+        // M9-E spec §2 "warn but obey": the tunnel runs as chosen, this only says what it costs.
+        val sniffingWarning =
+            when (state.sniffingWarning) {
+                SniffingRuleWarning.DomainRulesStop -> R.string.rule_set_editor_sniffing_off_warning
+                SniffingRuleWarning.FakeDnsLookupsOnly -> R.string.rule_set_editor_sniffing_off_warning_fakedns
+                SniffingRuleWarning.None -> null
+            }
+        if (sniffingWarning != null) {
+            TonalBanner(
+                icon = SubspaceIcons.Warning,
+                text = stringResource(sniffingWarning),
+                tone = BannerTone.Warning,
+            )
+        }
 
         NameSection(name = state.name, onNameChanged = actions.onNameChanged, enabled = enabled)
 

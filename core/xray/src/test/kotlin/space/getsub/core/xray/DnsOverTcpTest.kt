@@ -58,7 +58,14 @@ class DnsOverTcpTest {
         outbound: Outbound,
         plan: DnsPlan?,
     ): JsonObject {
-        val settings = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true, dns = plan)
+        val settings =
+            TunnelSettings(
+                socksPort = 10808,
+                dnsServer = "1.1.1.1",
+                enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
+                dns = plan,
+            )
         val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = outbound), settings)
         check(result is ConfigResult.Ok) { "expected ConfigResult.Ok" }
         return Json.parseToJsonElement(result.json).jsonObject
@@ -105,8 +112,8 @@ class DnsOverTcpTest {
     @Test
     fun `the planner never returns no plan for an outbound that cannot carry udp`() {
         // With no plan there is no port-53 hijack, so an app's UDP query would meet the proxy outbound directly.
-        DnsPlanner.plan(null, DnsResolver.DEFAULT, null, sniffingEnabled = true) shouldBe null
-        val plan = DnsPlanner.plan(null, DnsResolver.DEFAULT, null, sniffingEnabled = true, outboundCarriesUdp = false)
+        DnsPlanner.plan(null, DnsResolver.DEFAULT, null) shouldBe null
+        val plan = DnsPlanner.plan(null, DnsResolver.DEFAULT, null, outboundCarriesUdp = false)
         plan shouldNotBe null
         val c = config(http, plan)
         c.servers().map { it.address() } shouldBe listOf("tcp://1.1.1.1:53")

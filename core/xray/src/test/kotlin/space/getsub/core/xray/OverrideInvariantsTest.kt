@@ -26,7 +26,12 @@ import space.getsub.core.parser.OverrideTarget
  */
 class OverrideInvariantsTest {
     private val settings =
-        TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true)
+        TunnelSettings(
+            socksPort = 10808,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
 
     private val dnsPlan =
         DnsPlan(

@@ -28,7 +28,13 @@ import space.getsub.core.xray.TunnelSettings
  */
 class PassthroughStartTest {
     private val settings =
-        TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true, httpPort = 41081)
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+            httpPort = 41081,
+        )
 
     private val config =
         """

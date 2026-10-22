@@ -21,6 +21,7 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.ui.component.SubspaceDialog
 import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
  * The hub's cross-module navigation callbacks, grouped so the hub takes one parameter for them.
@@ -80,6 +81,7 @@ internal data class SettingsActions(
     val onFragmentSettingsChanged: ((FragmentSettings) -> FragmentSettings) -> Unit = {},
     val onNoiseSettingsChanged: ((NoiseSettings) -> NoiseSettings) -> Unit = {},
     val onPreResolveSettingsChanged: ((PreResolveSettings) -> PreResolveSettings) -> Unit = {},
+    val onTunnelSettingsSaved: (TunnelDraft) -> Unit = {},
 )
 
 /** Every [SettingsActions] callback bound to [viewModel]; shared by the hub and the sub-pages. */
@@ -111,6 +113,7 @@ internal fun settingsActionsOf(viewModel: SettingsViewModel): SettingsActions =
         onFragmentSettingsChanged = viewModel::onFragmentSettingsChanged,
         onNoiseSettingsChanged = viewModel::onNoiseSettingsChanged,
         onPreResolveSettingsChanged = viewModel::onPreResolveSettingsChanged,
+        onTunnelSettingsSaved = viewModel::onTunnelSettingsSaved,
     )
 
 /**

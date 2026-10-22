@@ -3,6 +3,7 @@
 package space.getsub.core.xray
 
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.Security
 import space.getsub.core.model.ShadowsocksOutbound
 import space.getsub.core.model.SocksOutbound
@@ -11,6 +12,12 @@ import space.getsub.core.model.TransportOptions
 import space.getsub.core.model.TrojanOutbound
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.VmessOutbound
+
+/**
+ * The fixed inbound credentials every unit-test config is built with, so golden files stay
+ * byte-stable (M9-E spec §5.3: no test depends on an open inbound).
+ */
+internal val TEST_CREDENTIALS = ProxyCredentials("testuser", "testpass")
 
 /**
  * The VLESS+REALITY fixture `vless-reality.json` pins byte-for-byte — the M1

@@ -182,6 +182,26 @@ class AddressPinInjectorTest {
     }
 
     @Test
+    fun flatVlessVmessAndTrojanAreSwappedAndServerNameFilled() {
+        val settings =
+            mapOf(
+                "vless" to """{"address":"SRV.example","port":443,"id":"u","encryption":"none"}""",
+                "vmess" to """{"address":"SRV.example","port":443,"id":"u"}""",
+                "trojan" to """{"address":"SRV.example","port":443,"password":"p"}""",
+            )
+        for ((protocol, body) in settings) {
+            val raw =
+                """[{"protocol":"$protocol","settings":$body,
+                "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":""}}}]"""
+            val out = AddressPinInjector.apply(outbounds(raw), pin)
+            out.at(0, "settings", "address").jsonPrimitive.content shouldBe "203.0.113.5"
+            out.at(0, "settings", "port").jsonPrimitive.content shouldBe "443"
+            out.at(0, "streamSettings", "tlsSettings", "serverName").jsonPrimitive.content shouldBe "srv.example"
+            AddressPinInjector.matches("""{"outbounds":$raw}""", "srv.example") shouldBe true
+        }
+    }
+
+    @Test
     fun flatAddressOnANonServerProtocolIsUntouched() {
         val raw = """[{"protocol":"dns","settings":{"address":"srv.example","port":53}}]"""
         val input = outbounds(raw)
@@ -202,7 +222,13 @@ class AddressPinInjectorTest {
             "settings":{"vnext":[{"address":"srv.example","port":443}]},
             "streamSettings":{"security":"tls"}}]}"""
         val settings =
-            TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true, httpPort = 41081)
+            TunnelSettings(
+                socksPort = 41080,
+                dnsServer = "1.1.1.1",
+                enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
+                httpPort = 41081,
+            )
                 .copy(addressPin = pin)
         val result = RawConfigComposer.compose(raw, settings, assetDir = "/data/geo", override = null)
         val json = (result as ComposeResult.Ok).json

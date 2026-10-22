@@ -107,8 +107,6 @@ internal fun RuleSetCard(
                     Banner(text = stringResource(R.string.routing_dns_applied), icon = SubspaceIcons.Dns)
                 DnsState.Invalid ->
                     Banner(text = stringResource(R.string.routing_dns_invalid), icon = SubspaceIcons.Warning)
-                DnsState.NeedsSniffing ->
-                    Banner(text = stringResource(R.string.routing_dns_needs_sniffing), icon = SubspaceIcons.Warning)
             }
         }
     }

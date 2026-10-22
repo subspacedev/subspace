@@ -17,6 +17,7 @@ import org.junit.rules.TemporaryFolder
 import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentials
 import java.io.File
 import java.io.IOException
 
@@ -41,12 +42,62 @@ class CertificateProbeTest {
     private val rowConfig: String =
         checkNotNull(pingConfig(Profile(id = "1", name = "n", outbound = hysteria2), obfuscation = null))
 
+    private val creds = ProxyCredentials(user = "probe-user", pass = "probe-pass")
+
     private fun parse(json: String): JsonObject = Json.parseToJsonElement(json).jsonObject
 
     private fun probeConfig(): JsonObject =
-        parse(checkNotNull(CertificateProbe.config(rowConfig, port = 23456, logFile = "/cache/cert-probe/a.log")))
+        parse(checkNotNull(CertificateProbe.config(rowConfig, 23456, "/cache/cert-probe/a.log", creds)))
 
     // ── Config shape ─────────────────────────────────────────────────────────
+
+    @Test
+    fun theLoopbackHttpInboundCarriesTheProbesAccount() {
+        val inbound = probeConfig().getValue("inbounds").jsonArray.single().jsonObject
+        val account = inbound.getValue("settings").jsonObject.getValue("accounts").jsonArray.single().jsonObject
+
+        inbound.getValue("listen").jsonPrimitive.content shouldBe "127.0.0.1"
+        account.getValue("user").jsonPrimitive.content shouldBe "probe-user"
+        account.getValue("pass").jsonPrimitive.content shouldBe "probe-pass"
+    }
+
+    @Test
+    fun eachProbeStartsItsCoreWithFreshCredentialsAndTheExchangeUsesTheSameOnes() {
+        val seen = mutableListOf<ProxyCredentials>()
+        val configs = mutableListOf<String>()
+        val core =
+            object : ProbeCore {
+                override fun start(xrayJson: String) {
+                    configs += xrayJson
+                }
+
+                override fun stop() = Unit
+            }
+        // A clock that moves only when the runner sleeps, so the settle wait is bounded and instant.
+        var now = 0L
+        val runner =
+            CertificateProbeRunner(
+                logDir = temp.newFolder(),
+                core = core,
+                connect = { _, _, c -> seen += c },
+                freePort = { 34567 },
+                sleep = { now += it },
+                nowMillis = { now },
+            )
+
+        runner.probe(rowConfig, "https://x.invalid")
+        runner.probe(rowConfig, "https://x.invalid")
+
+        seen.size shouldBe 2
+        (seen[0] == seen[1]) shouldBe false
+        configs.zip(seen).forEach { (config, c) ->
+            val account =
+                parse(config).getValue("inbounds").jsonArray.single().jsonObject
+                    .getValue("settings").jsonObject.getValue("accounts").jsonArray.single().jsonObject
+            account.getValue("user").jsonPrimitive.content shouldBe c.user
+            account.getValue("pass").jsonPrimitive.content shouldBe c.pass
+        }
+    }
 
     @Test
     fun theCoreLogsAtInfoToTheFileOnlyWithNoAccessLog() {
@@ -98,7 +149,7 @@ class CertificateProbeTest {
               {"tag":"direct","protocol":"freedom"},
               {"tag":"frag","protocol":"freedom","settings":{"fragment":{}}}]}"""
         val outbounds =
-            parse(checkNotNull(CertificateProbe.config(chained, 1, "/f"))).getValue("outbounds").jsonArray
+            parse(checkNotNull(CertificateProbe.config(chained, 1, "/f", creds))).getValue("outbounds").jsonArray
 
         outbounds.map { it.jsonObject.getValue("tag").jsonPrimitive.content } shouldContainExactly
             listOf("proxy", "frag")
@@ -106,12 +157,18 @@ class CertificateProbeTest {
 
     @Test
     fun aConfigWithNoProxyOutboundOrNoJsonHasNoProbe() {
-        CertificateProbe.config("""{"outbounds":[{"tag":"direct","protocol":"freedom"}]}""", 1, "/f") shouldBe null
-        CertificateProbe.config("not json $password", 1, "/f") shouldBe null
+        CertificateProbe.config(
+            """{"outbounds":[{"tag":"direct","protocol":"freedom"}]}""",
+            1,
+            "/f",
+            creds,
+        ) shouldBe null
+        CertificateProbe.config("not json $password", 1, "/f", creds) shouldBe null
         CertificateProbe.config(
             """{"outbounds":[{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"missing"}}}]}""",
             1,
             "/f",
+            creds,
         ) shouldBe null
     }
 
@@ -149,7 +206,7 @@ class CertificateProbeTest {
 
     private fun runner(
         core: ProbeCore,
-        connect: ProbeConnect = ProbeConnect { _, _ -> throw IOException("closed") },
+        connect: ProbeConnect = ProbeConnect { _, _, _ -> throw IOException("closed") },
         dir: File = temp.newFolder(),
         onSleep: (Long) -> Unit = {},
     ): CertificateProbeRunner {
@@ -196,7 +253,7 @@ class CertificateProbeTest {
         lateinit var core: FakeCore
         core = FakeCore(onStart = { core.logFile().writeText(untrustedLine) })
 
-        val throwing = runner(core, connect = { _, _ -> throw IllegalStateException(password) })
+        val throwing = runner(core, connect = { _, _, _ -> throw IllegalStateException(password) })
 
         throwing.probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.UNTRUSTED
         core.events shouldContainExactly listOf("start", "stop")
@@ -208,7 +265,7 @@ class CertificateProbeTest {
         lateinit var core: FakeCore
         core = FakeCore(onStart = { core.logFile().writeText("[Info] tunnelling\n") })
 
-        runner(core, connect = { _, _ -> }).probe(rowConfig, "https://x.invalid") shouldBe
+        runner(core, connect = { _, _, _ -> }).probe(rowConfig, "https://x.invalid") shouldBe
             CertificateProbeResult.NOT_A_CERTIFICATE_FAILURE
         core.events shouldContainExactly listOf("start", "stop")
         core.logFile().exists() shouldBe false
@@ -276,7 +333,7 @@ class CertificateProbeTest {
     @Test
     fun theExchangeGoesThroughTheProbesOwnLoopbackPortToTheCheckHost() {
         val seen = mutableListOf<Pair<Int, String>>()
-        val probe = runner(FakeCore(), connect = { port, target -> seen += port to target })
+        val probe = runner(FakeCore(), connect = { port, target, _ -> seen += port to target })
 
         probe.probe(rowConfig, "https://u.invalid/204")
         probe.probe(rowConfig, "http://cleartext.invalid/generate_204")
@@ -319,7 +376,7 @@ class CertificateProbeTest {
         CertificateProbeRunner(
             logDir = temp.newFolder(),
             core = FakeCore(),
-            connect = { _, _ -> },
+            connect = { _, _, _ -> },
             freePort = { throw IOException(password) },
         ).probe(rowConfig, "https://x.invalid") shouldBe CertificateProbeResult.DID_NOT_RUN
     }

@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import space.getsub.core.model.ProxyCredentials
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -27,7 +28,8 @@ import java.util.concurrent.atomic.AtomicReference
  * manual on-device checklist in ARCHITECTURE.md §11 — as §10.1 insists.
  */
 class Tun2SocksTest {
-    private fun config() = tun2socksConfig(socksPort = 10808, mtu = 8500)
+    private fun config() =
+        tun2socksConfig(socksPort = 10808, mtu = 8500, credentials = ProxyCredentials("testuser", "testpass"))
 
     private fun pipe(): Array<ParcelFileDescriptor> = ParcelFileDescriptor.createPipe()
 

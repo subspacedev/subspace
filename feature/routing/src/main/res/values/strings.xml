@@ -62,7 +62,6 @@
 
     <string name="routing_dns_applied">Sets DNS</string>
     <string name="routing_dns_invalid">DNS block not understood — using your DNS setting</string>
-    <string name="routing_dns_needs_sniffing">Needs sniffing on for FakeDNS</string>
 
     <!-- Imported profiles are read-only; editing means editing a copy (M6 spec §4.2). -->
     <string name="routing_duplicate_label">Duplicate</string>
@@ -143,6 +142,11 @@
     <string name="rule_set_editor_problem_malformed_domain">Not a valid domain entry</string>
     <string name="rule_set_editor_problem_illegal_character">Entry cannot contain a quote or backslash</string>
 
+    <!-- M9-E spec §2 "warn but obey": shown while your sniffing override is off and the rule set has
+         domain or geosite: entries. No link: the Settings → Tunnel page arrives separately. -->
+    <string name="rule_set_editor_sniffing_off_warning">Sniffing is off, so domain rules can\'t match. Turn it on in Settings → Tunnel.</string>
+    <string name="rule_set_editor_sniffing_off_warning_fakedns">Sniffing is off. This rule set uses FakeDNS, so its domain rules match only names looked up through FakeDNS, not apps that use their own DNS.</string>
+
     <!-- Save-time problems (fix round 1, Findings 7/8) — distinct from the per-entry problems
          above, shown once near the Save button rather than on any one field. -->
     <string name="rule_set_editor_save_problem_invalid_entry">One of the stored entries is no longer valid. Remove or fix it before saving.</string>
@@ -218,7 +222,6 @@
     <string name="import_review_dns_domestic">Domestic DNS: %1$s %2$s</string>
     <string name="import_review_dns_invalid">This profile\'s DNS settings could not be read. Your own DNS setting will be used.</string>
     <string name="import_review_dns_fakedns">Uses FakeDNS</string>
-    <string name="import_review_dns_fakedns_needs_sniffing">Asks for FakeDNS, which needs sniffing enabled in Settings</string>
     <plurals name="import_review_dns_hosts">
         <item quantity="one">%1$d custom host mapping</item>
         <item quantity="other">%1$d custom host mappings</item>

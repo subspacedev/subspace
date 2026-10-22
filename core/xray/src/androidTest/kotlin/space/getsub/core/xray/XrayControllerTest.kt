@@ -82,6 +82,7 @@ class XrayControllerTest {
                     socksPort = controller.allocatePort(),
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
                 )
             val profile = Profile(id = "id", name = "n", outbound = outbound)
             val result = XrayConfigGenerator.generate(profile, settings)
@@ -99,6 +100,7 @@ class XrayControllerTest {
                     socksPort = controller.allocatePort(),
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
                     routing =
                     RoutingRuleSet(
                         name = "direct-default",
@@ -178,6 +180,7 @@ class XrayControllerTest {
                         socksPort = controller.allocatePort(),
                         dnsServer = "1.1.1.1",
                         enableSniffing = true,
+                        proxyCredentials = TEST_CREDENTIALS,
                         dns = plan,
                     )
                 val profile = Profile(id = "id", name = "n", outbound = outbound)
@@ -233,6 +236,7 @@ class XrayControllerTest {
                         socksPort = controller.allocatePort(),
                         dnsServer = "1.1.1.1",
                         enableSniffing = true,
+                        proxyCredentials = TEST_CREDENTIALS,
                     )
                 // Xray-core v26.10.10 (a1bf968) refuses VLESS without TLS/REALITY to a public
                 // address, so the plaintext cases dial a private one: this test is about the
@@ -272,6 +276,7 @@ class XrayControllerTest {
                     socksPort = controller.allocatePort(),
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
                 )
             val profile =
                 Profile(
@@ -317,6 +322,7 @@ class XrayControllerTest {
                         socksPort = controller.allocatePort(),
                         dnsServer = "1.1.1.1",
                         enableSniffing = true,
+                        proxyCredentials = TEST_CREDENTIALS,
                     )
                 val result = XrayConfigGenerator.generate(Profile(id = "id", name = "n", outbound = plain), settings)
                 check(result is ConfigResult.Ok) { "expected ConfigResult.Ok for $address, got $result" }
@@ -345,6 +351,7 @@ class XrayControllerTest {
                     socksPort = ports[0],
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
                     httpPort = ports[1],
                 )
             val profile = Profile(id = "id", name = "n", outbound = outbound)
@@ -409,6 +416,7 @@ class XrayControllerTest {
                     socksPort = controller.allocatePort(),
                     dnsServer = "1.1.1.1",
                     enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
                     routing = ruleSet,
                     geoAssetDir = geoDir.absolutePath,
                 )

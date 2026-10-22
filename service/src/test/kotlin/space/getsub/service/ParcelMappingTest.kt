@@ -18,6 +18,7 @@ import space.getsub.core.model.Hysteria2Tls
 import space.getsub.core.model.Hysteria2Unsupported
 import space.getsub.core.model.PortHopping
 import space.getsub.core.model.Profile
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
@@ -367,5 +368,36 @@ class ParcelMappingTest {
             ).map { state -> ConnectionStateParcel.from(state).kind }
 
         kinds.toSet().size shouldBe kinds.size
+    }
+
+    @Test
+    fun `connected carries the session proxy credentials across the boundary`() {
+        // M9-E spec §5.3: :main needs them to fetch through the authenticated HTTP inbound.
+        val state =
+            ConnectionState.Connected(
+                sinceEpochMillis = 42L,
+                socksPort = 1080,
+                httpProxyPort = 1081,
+                proxyCredentials = ProxyCredentials("parcel-user", "parcel-pass"),
+            )
+        ConnectionStateParcel.from(state).toState() shouldBe state
+    }
+
+    @Test
+    fun `connected without credentials round-trips as null`() {
+        val state = ConnectionState.Connected(sinceEpochMillis = 42L, socksPort = 1080, httpProxyPort = 1081)
+        (ConnectionStateParcel.from(state).toState() as ConnectionState.Connected).proxyCredentials.shouldBeNull()
+    }
+
+    @Test
+    fun `the parcel never prints the proxy password`() {
+        val state =
+            ConnectionState.Connected(
+                sinceEpochMillis = 42L,
+                socksPort = 1080,
+                httpProxyPort = 1081,
+                proxyCredentials = ProxyCredentials("parcel-user", "parcel-pass"),
+            )
+        ConnectionStateParcel.from(state).toString() shouldNotContain "parcel-pass"
     }
 }

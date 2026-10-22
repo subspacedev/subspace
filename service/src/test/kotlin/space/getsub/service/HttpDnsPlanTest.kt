@@ -25,7 +25,13 @@ import space.getsub.core.xray.XrayConfigGenerator
  */
 class HttpDnsPlanTest {
     private val http = HttpOutbound("proxy.example", 8080, null, null, Security.None)
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
 
     private val rawHttp =
         """
@@ -41,7 +47,6 @@ class HttpDnsPlanTest {
             profileDns = null,
             setting = DnsResolver.DEFAULT,
             routing = null,
-            sniffingEnabled = true,
             outboundCarriesUdp = dnsPlanOutboundCarriesUdp(http, runsAsWritten),
         )
 

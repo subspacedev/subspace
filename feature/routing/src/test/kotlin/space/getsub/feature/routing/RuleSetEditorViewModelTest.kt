@@ -24,6 +24,7 @@ import space.getsub.core.model.DomainStrategy
 import space.getsub.core.model.RouteOutcome
 import space.getsub.core.model.RoutingRuleSet
 import space.getsub.core.model.RuleBucket
+import space.getsub.core.model.SniffingUserSetting
 import java.io.IOException
 
 /**
@@ -72,6 +73,7 @@ class RuleSetEditorViewModelTest {
         override val ruleSets = flowOf(emptyList<StoredRuleSet>())
         override val activeRuleSetId = MutableStateFlow<Long?>(null)
         override val installedGeoFiles = MutableStateFlow(emptySet<String>())
+        override val sniffing = flowOf(SniffingUserSetting.DEFAULT)
         var upserted: RoutingRuleSet? = null
 
         override suspend fun setActive(id: Long?) = Unit

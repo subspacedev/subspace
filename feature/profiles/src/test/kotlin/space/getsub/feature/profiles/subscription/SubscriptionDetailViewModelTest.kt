@@ -27,15 +27,24 @@ import space.getsub.core.data.RedirectStatus
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolvedObfuscation
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionStatus
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
+import space.getsub.core.data.TuningDirectiveIssue
+import space.getsub.core.data.TuningDirectiveIssues
+import space.getsub.core.data.TuningReport
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SyncResult
+import space.getsub.core.model.CidrRange
 import space.getsub.core.model.ObfuscationProblem
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.TuningProblem
+import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.RouteExclusionRequest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SubscriptionDetailViewModelTest {
@@ -148,12 +157,44 @@ class SubscriptionDetailViewModelTest {
             lastResolverTrust = Triple(id, trust, host)
         }
 
+        val routeStatus = MutableStateFlow(RouteExclusionStatus.NONE)
+        var lastRouteTrust: Triple<Long, RouteExclusionTrust, String>? = null
+
+        override fun observeRouteExclusionStatus(id: Long): Flow<RouteExclusionStatus> = routeStatus
+        override suspend fun setRouteExclusionTrust(id: Long, trust: RouteExclusionTrust, fingerprint: String) {
+            lastRouteTrust = Triple(id, trust, fingerprint)
+        }
+
+        var activeSubscriptionId: Long? = null
+        var tuningReapplies = 0
+
+        override suspend fun activeRowSubscriptionId(): Long? = activeSubscriptionId
+
+        override fun reapplyTuning() {
+            tuningReapplies++
+        }
+
         val directiveIssues = mutableMapOf<Long, ResolvedObfuscation>()
         override suspend fun obfuscationReport(id: Long): ObfuscationReport? = null
+
+        override suspend fun tuningReport(id: Long): TuningReport? = null
+
+        override suspend fun sniffingDecision(id: Long): SniffingDecision =
+            SniffingDecision(enabled = true, replacesOwn = false)
 
         /** When set, the issues follow the pins the way the real resolver follows `effective`. */
         var issuesFromPins: ((Map<String, String>) -> ResolvedObfuscation)? = null
         var issuesFailure: Exception? = null
+
+        var tuningIssues = TuningDirectiveIssues.NONE
+
+        /** When set, the tuning issues follow the pins, as the real resolver follows `effective`. */
+        var tuningIssuesFromPins: ((Map<String, String>) -> TuningDirectiveIssues)? = null
+
+        override suspend fun tuningDirectiveIssues(subscriptionId: Long): TuningDirectiveIssues {
+            issuesFailure?.let { throw it }
+            return tuningIssuesFromPins?.invoke(pins.value) ?: tuningIssues
+        }
 
         override suspend fun obfuscationDirectiveIssues(subscriptionId: Long): ResolvedObfuscation {
             issuesFailure?.let { throw it }
@@ -189,6 +230,56 @@ class SubscriptionDetailViewModelTest {
 
             viewModel.state.value.fragmentIgnored shouldBe ObfuscationProblem.LengthFromZero
             viewModel.state.value.noiseIgnored shouldBe null
+        }
+
+    @Test
+    fun `ignored provider tuning directives surface with their reasons`() =
+        runTest {
+            val issues =
+                TuningDirectiveIssues(
+                    mux = TuningDirectiveIssue("mux-quic", TuningProblem.BadValue("mux-quic")),
+                    tunMtu =
+                    TuningDirectiveIssue("xray-tun-mtu", TuningProblem.OutOfRange(1280, 65_535, "xray-tun-mtu")),
+                    excludedRoutes = TuningDirectiveIssue("exclude-routes", TuningProblem.NeedsConsent),
+                )
+            source.tuningIssues = issues
+
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.tuningIssues shouldBe issues
+        }
+
+    @Test
+    fun `a pin that fixes a tuning directive clears its reason without a refresh`() =
+        runTest {
+            val mtu = TuningDirectiveIssue("xray-tun-mtu", TuningProblem.BadValue("xray-tun-mtu"))
+            val bad = TuningDirectiveIssues(tunMtu = mtu)
+            source.tuningIssuesFromPins = { pins ->
+                if (pins["xray-tun-mtu"] == null) bad else TuningDirectiveIssues.NONE
+            }
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.state.value.tuningIssues shouldBe bad
+
+            viewModel.onPinRow("xray-tun-mtu", "1400")
+            advanceUntilIdle()
+            viewModel.state.value.tuningIssues shouldBe TuningDirectiveIssues.NONE
+        }
+
+    @Test
+    fun `tuning issues follow the route answer`() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            val declined =
+                TuningDirectiveIssues(excludedRoutes = TuningDirectiveIssue("exclude-routes", TuningProblem.Declined))
+            source.tuningIssues = declined
+            source.routeStatus.value =
+                RouteExclusionStatus(RouteExclusionTrust.Denied, "fp", listOf(CidrRange("172.16.0.0", 12, false)))
+            advanceUntilIdle()
+
+            viewModel.state.value.tuningIssues shouldBe declined
         }
 
     @Test
@@ -454,6 +545,80 @@ class SubscriptionDetailViewModelTest {
             viewModel.onAllowResolver()
             advanceUntilIdle()
             source.lastResolverTrust shouldBe null
+        }
+
+    @Test
+    fun anUnaskedRouteExclusionShowsTheRequestAndAnswersBindToItsFingerprint() =
+        runTest {
+            val lan = CidrRange("172.16.0.0", 12, isV6 = false)
+            val wide = CidrRange("0.0.0.0", 0, isV6 = false)
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "fp", listOf(wide, lan))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.routeExclusionRequest shouldBe
+                RouteExclusionRequest("fp", applied = listOf("172.16.0.0/12"), refused = listOf("0.0.0.0/0"))
+            viewModel.onDenyRouteExclusion("fp")
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Denied, "fp")
+            viewModel.onAllowRouteExclusion("fp")
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
+        }
+
+    @Test
+    fun allowingRoutesForTheActiveRowsSubscriptionRestartsTheSession() =
+        runTest {
+            source.activeSubscriptionId = SUBSCRIPTION_ID
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onDenyRouteExclusion("fp")
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
+            viewModel.onAllowRouteExclusion("fp")
+            advanceUntilIdle()
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "fp")
+            source.tuningReapplies shouldBe 1
+        }
+
+    @Test
+    fun allowingRoutesForAnotherSubscriptionRestartsNothing() =
+        runTest {
+            source.activeSubscriptionId = SUBSCRIPTION_ID + 1
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.onAllowRouteExclusion("fp")
+            advanceUntilIdle()
+            source.tuningReapplies shouldBe 0
+        }
+
+    @Test
+    fun anAnsweredRouteExclusionShowsNothing() =
+        runTest {
+            source.routeStatus.value =
+                RouteExclusionStatus(RouteExclusionTrust.Allowed, "fp", listOf(CidrRange("172.16.0.0", 12, false)))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.routeExclusionRequest shouldBe null
+        }
+
+    @Test
+    fun theAnswerGoesToTheRenderedListEvenIfANewerOneArrived() =
+        runTest {
+            val lan = CidrRange("172.16.0.0", 12, isV6 = false)
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "shown", listOf(lan))
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            source.routeStatus.value = RouteExclusionStatus(RouteExclusionTrust.Unasked, "newer", listOf(lan))
+            advanceUntilIdle()
+
+            viewModel.onAllowRouteExclusion("shown")
+            advanceUntilIdle()
+
+            source.lastRouteTrust shouldBe Triple(SUBSCRIPTION_ID, RouteExclusionTrust.Allowed, "shown")
         }
 
     @Test

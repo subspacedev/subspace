@@ -60,7 +60,13 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class D2XrayTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val uuid = "70cc48c5-b2f4-4a1e-9f3d-0123456789ab"
     private val privateHost = "192.168.1.10"
     private val tls = Security.Tls("k.example.com", "chrome", allowInsecure = false)

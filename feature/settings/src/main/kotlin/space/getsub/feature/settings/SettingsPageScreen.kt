@@ -21,6 +21,7 @@ import space.getsub.feature.settings.pages.DeviceIdPage
 import space.getsub.feature.settings.pages.DnsPage
 import space.getsub.feature.settings.pages.GeoPage
 import space.getsub.feature.settings.pages.LatencyPage
+import space.getsub.feature.settings.pages.TunnelPage
 
 /**
  * The Settings hub's sub-pages (M8.6 spec §4.4, plan ruling R1). Routing and Per-app have their own routes.
@@ -37,6 +38,7 @@ enum class SettingsPageId(
     Latency(R.string.settings_latency_section),
     Dns(R.string.settings_dns_title),
     Censorship(R.string.settings_censorship_title),
+    Tunnel(R.string.settings_tunnel_title),
     Geo(R.string.settings_section_geo),
     About(R.string.settings_section_about),
 }
@@ -77,6 +79,7 @@ internal fun SettingsPageContent(
         SettingsPageId.Latency -> LatencyPage(state, actions, onBack, modifier)
         SettingsPageId.Dns -> DnsPage(state, actions, onBack, modifier)
         SettingsPageId.Censorship -> CensorshipPage(state, actions, onBack, modifier)
+        SettingsPageId.Tunnel -> TunnelPage(state, actions, onBack, modifier)
         SettingsPageId.Geo -> GeoPage(state, actions, onBack, modifier)
         SettingsPageId.About -> AboutPage(state, onBack, modifier)
     }

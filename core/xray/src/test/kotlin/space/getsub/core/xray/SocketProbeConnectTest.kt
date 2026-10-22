@@ -6,6 +6,7 @@ import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import org.junit.After
 import org.junit.Test
+import space.getsub.core.model.ProxyCredentials
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -19,6 +20,8 @@ import kotlin.concurrent.thread
  * target host, so an `http://` URL made `HttpURLConnection` throw before any traffic).
  */
 class SocketProbeConnectTest {
+    private val creds = ProxyCredentials(user = "probe-user", pass = "probe-pass")
+    private val basic = "Basic " + java.util.Base64.getEncoder().encodeToString("probe-user:probe-pass".toByteArray())
     private val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
 
     @After
@@ -54,10 +57,11 @@ class SocketProbeConnectTest {
         val seen = proxyThatClosesAfterTheTunnelOpens()
         val target = checkNotNull(CertificateProbe.connectTarget("https://www.gstatic.com/generate_204"))
 
-        SocketProbeConnect().exchange(server.localPort, target)
+        SocketProbeConnect().exchange(server.localPort, target, creds)
 
         val (header, byte) = seen.get(5, TimeUnit.SECONDS)
-        header shouldBe "CONNECT www.gstatic.com:443 HTTP/1.1\r\nHost: www.gstatic.com:443\r\n\r\n"
+        header shouldBe "CONNECT www.gstatic.com:443 HTTP/1.1\r\nHost: www.gstatic.com:443\r\n" +
+            "Proxy-Authorization: $basic\r\n\r\n"
         byte shouldBe 0
     }
 
@@ -66,10 +70,11 @@ class SocketProbeConnectTest {
         val seen = proxyThatClosesAfterTheTunnelOpens()
         val target = checkNotNull(CertificateProbe.connectTarget("http://cp.cloudflare.com/"))
 
-        SocketProbeConnect().exchange(server.localPort, target)
+        SocketProbeConnect().exchange(server.localPort, target, creds)
 
         seen.get(5, TimeUnit.SECONDS).first shouldBe
-            "CONNECT cp.cloudflare.com:80 HTTP/1.1\r\nHost: cp.cloudflare.com:80\r\n\r\n"
+            "CONNECT cp.cloudflare.com:80 HTTP/1.1\r\nHost: cp.cloudflare.com:80\r\n" +
+            "Proxy-Authorization: $basic\r\n\r\n"
     }
 
     @Test
@@ -80,7 +85,7 @@ class SocketProbeConnectTest {
         }
         val started = System.nanoTime()
 
-        runCatching { SocketProbeConnect(deadlineMillis = 300).exchange(server.localPort, "x.invalid:443") }
+        runCatching { SocketProbeConnect(deadlineMillis = 300).exchange(server.localPort, "x.invalid:443", creds) }
 
         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) shouldBeLessThan 2_000L
         held.complete(Unit)
@@ -99,7 +104,7 @@ class SocketProbeConnectTest {
         }
         val started = System.nanoTime()
 
-        runCatching { SocketProbeConnect(deadlineMillis = 300).exchange(server.localPort, "x.invalid:443") }
+        runCatching { SocketProbeConnect(deadlineMillis = 300).exchange(server.localPort, "x.invalid:443", creds) }
 
         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) shouldBeLessThan 2_000L
         held.complete(Unit)

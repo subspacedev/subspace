@@ -23,7 +23,13 @@ class AddressPinGeneratorTest {
         val r =
             XrayConfigGenerator.generate(
                 p,
-                TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true, addressPin = pin),
+                TunnelSettings(
+                    socksPort = 10808,
+                    dnsServer = "1.1.1.1",
+                    enableSniffing = true,
+                    proxyCredentials = TEST_CREDENTIALS,
+                    addressPin = pin,
+                ),
             )
         check(r is ConfigResult.Ok) { "expected Ok, got $r" }
         return r.json

@@ -42,6 +42,8 @@ internal class FakePingConnector(
         reply(PingBatchResultParcel(request.keys, IntArray(request.keys.size) { 7 }, IntArray(request.keys.size) { 0 }))
     },
     private val refuse: Boolean = false,
+    var pid: Int = 4242,
+    var pidFails: Boolean = false,
 ) : PingConnector {
     var binds = 0
     var unbinds = 0
@@ -51,7 +53,16 @@ internal class FakePingConnector(
         if (refuse) return null
         binds++
         this.listener = listener
-        listener.onConnected { request, reply -> remote(request, reply) }
+        listener.onConnected(
+            object : PingRemote {
+                override fun pid(): Int = if (pidFails) throw deadObject() else pid
+
+                override fun pingBatch(
+                    request: PingBatchParcel,
+                    onResult: (PingBatchResultParcel?) -> Unit,
+                ) = remote(request, onResult)
+            },
+        )
         return PingConnector.Binding { unbinds++ }
     }
 }
@@ -61,6 +72,12 @@ class PingClientTest {
     private val batch = listOf(PingTarget(1, "{a}"), PingTarget(2, "{b}"))
     private val failed = LatencyResult.failed(LatencyOutcome.UNREACHABLE)
     private val bothFailed = mapOf(1L to failed, 2L to failed)
+
+    private fun TestScope.pingClient(
+        connector: PingConnector,
+        killed: MutableList<Int>,
+        ownPid: Int,
+    ) = PingClient(connector, TestScope(testScheduler), killProcess = { killed += it }, ownPid = { ownPid })
 
     @Test
     fun resultsComeBackKeyedByTarget() =
@@ -138,7 +155,7 @@ class PingClientTest {
     @Test
     fun aServiceThatNeverAnswersFailsTheBatchAfterTheWatchdog() =
         runTest {
-            val client = PingClient(FakePingConnector(remote = { _, _ -> }), TestScope(testScheduler))
+            val client = pingClient(FakePingConnector(remote = { _, _ -> }), mutableListOf(), ownPid = 1)
 
             val pending = async { client.measure(batch, 5, "https://x.invalid") }
             advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
@@ -150,7 +167,7 @@ class PingClientTest {
     fun aWatchdogTimeoutDropsTheWedgedSessionSoTheNextBatchBindsAgain() =
         runTest {
             val connector = FakePingConnector(remote = { _, _ -> })
-            val client = PingClient(connector, TestScope(testScheduler))
+            val client = pingClient(connector, mutableListOf(), ownPid = 1)
 
             val first = async { client.measure(batch, 5, "https://x.invalid") }
             advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
@@ -161,6 +178,63 @@ class PingClientTest {
             runCurrent()
             connector.binds shouldBe 2
             second.cancel()
+        }
+
+    @Test
+    fun aWedgedPingProcessIsKilledOnceByItsCapturedPid() =
+        runTest {
+            val killed = mutableListOf<Int>()
+            val connector = FakePingConnector(remote = { _, _ -> }, pid = 777)
+            val client = pingClient(connector, killed, ownPid = 1)
+
+            val first = async { client.measure(batch, 5, "https://x.invalid") }
+            advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
+            first.await() shouldContainExactly bothFailed
+            killed shouldContainExactly listOf(777)
+
+            connector.pid = 888
+            val second = async { client.measure(batch, 5, "https://x.invalid") }
+            runCurrent()
+            connector.binds shouldBe 2
+            killed shouldContainExactly listOf(777)
+            second.cancel()
+        }
+
+    @Test
+    fun aReplyInTimeNeverKills() =
+        runTest {
+            val killed = mutableListOf<Int>()
+            val client = pingClient(FakePingConnector(), killed, ownPid = 1)
+
+            client.measure(batch, 5, "https://x.invalid") shouldContainExactly
+                mapOf(1L to LatencyResult.ok(7), 2L to LatencyResult.ok(7))
+            client.close()
+            killed shouldBe emptyList()
+        }
+
+    @Test
+    fun ourOwnProcessIsNeverKilled() =
+        runTest {
+            val killed = mutableListOf<Int>()
+            val connector = FakePingConnector(remote = { _, _ -> }, pid = 55)
+            val client = pingClient(connector, killed, ownPid = 55)
+
+            val pending = async { client.measure(batch, 5, "https://x.invalid") }
+            advanceTimeBy(PingClient.replyWatchdogMillis(5) + 1)
+            pending.await() shouldContainExactly bothFailed
+            killed shouldBe emptyList()
+        }
+
+    @Test
+    fun aPidThatCannotBeReadFailsTheBatchAndKillsNothing() =
+        runTest {
+            val killed = mutableListOf<Int>()
+            val connector = FakePingConnector(remote = { _, _ -> }, pidFails = true)
+            val client = pingClient(connector, killed, ownPid = 1)
+
+            client.measure(batch, 5, "https://x.invalid") shouldContainExactly bothFailed
+            connector.unbinds shouldBe 1
+            killed shouldBe emptyList()
         }
 
     @Test
@@ -324,7 +398,7 @@ class PingClientTest {
         runTest {
             val replies = mutableListOf<(PingBatchResultParcel?) -> Unit>()
             val connector = FakePingConnector(remote = { _, reply -> replies += reply })
-            val client = PingClient(connector, TestScope(testScheduler))
+            val client = pingClient(connector, mutableListOf(), ownPid = 1)
 
             abandonThree(client)
             val live = async { client.measure(batch, 5, "https://x.invalid") }

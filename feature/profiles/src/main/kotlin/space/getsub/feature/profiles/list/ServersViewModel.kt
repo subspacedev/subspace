@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import space.getsub.core.data.ProfileGroup
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolverTrust
+import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredProfile
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.preresolve.ProviderResolver
@@ -32,8 +33,12 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.pingModeFrom
 import space.getsub.core.parser.directive.UserInfo
 import space.getsub.core.parser.directive.parseUserInfo
+import space.getsub.core.ui.format.protocolDisplayName
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.toUserMessage
+import space.getsub.feature.profiles.answerRouteExclusion
+import space.getsub.feature.profiles.request
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -185,6 +190,8 @@ constructor(
         val redirectRequestHosts: List<String>,
         /** The DoH host to name in the resolver request; null once answered or when there is none. */
         val resolverRequestHost: String?,
+        /** The provider's excluded routes to ask about; null once answered or when nothing can apply. */
+        val routeExclusionRequest: RouteExclusionRequest?,
     )
 
     /** How the rows are presented, as opposed to what the rows are. */
@@ -219,7 +226,8 @@ constructor(
                     directives,
                     profileSource.observeRedirectStatus(sub.id),
                     profileSource.observeResolverStatus(sub.id),
-                ) { raw, (sortType, pingOnOpen, pingType), redirects, resolver ->
+                    profileSource.observeRouteExclusionStatus(sub.id),
+                ) { raw, (sortType, pingOnOpen, pingType), redirects, resolver, routes ->
                     sub.groupId to
                         SubscriptionContext(
                             subscriptionId = sub.id,
@@ -231,6 +239,7 @@ constructor(
                             redirectRequestHosts =
                             if (sub.redirectTrust == RedirectTrust.Unasked) redirects.targetHosts else emptyList(),
                             resolverRequestHost = resolver.requestHost(),
+                            routeExclusionRequest = routes.request(),
                         )
                 }
             }
@@ -337,6 +346,19 @@ constructor(
         host: String,
     ) {
         viewModelScope.launch { profileSource.setResolverTrust(subscriptionId, ResolverTrust.Denied, host) }
+    }
+
+    /**
+     * The user answers [subscriptionId]'s provider's excluded routes — Allow when [allowed], else
+     * Don't allow — for the list whose [fingerprint] the card showed.
+     */
+    fun onRouteExclusionAnswered(
+        subscriptionId: Long,
+        fingerprint: String,
+        allowed: Boolean,
+    ) {
+        val trust = if (allowed) RouteExclusionTrust.Allowed else RouteExclusionTrust.Denied
+        viewModelScope.launch { profileSource.answerRouteExclusion(subscriptionId, trust, fingerprint) }
     }
 
     /** Clears [ServersState.updateResult] once the user has read it. */
@@ -488,6 +510,7 @@ constructor(
                     sortFromProvider = fromProvider,
                     redirectRequestHosts = context?.redirectRequestHosts.orEmpty(),
                     resolverRequestHost = context?.resolverRequestHost,
+                    routeExclusionRequest = context?.routeExclusionRequest,
                 )
             }
         return ServersState(
@@ -535,7 +558,7 @@ private fun StoredProfile.toRow(
         id = id,
         name = name,
         protocol = protocol,
-        protocolDisplay = protocol.toProtocolDisplayName(),
+        protocolDisplay = protocolDisplayName(protocol),
         transport = transport,
         kind = kind,
         compatibilityMode = compatibilityMode,
@@ -549,27 +572,10 @@ private fun StoredProfile.toRow(
 
 private fun List<ProfileGroup>.availableProtocolLabels(): List<String> =
     listOf(ALL_PROTOCOLS_SENTINEL) +
-        flatMap { it.profiles }.map { it.protocol }.distinct().map { it.toProtocolDisplayName() }
+        flatMap { it.profiles }.map { it.protocol }.distinct().map { protocolDisplayName(it) }
 
 /**
- * The canonical protocol names [space.getsub.core.data.ProfileRepository]
- * stores, capitalised for display.
- */
-internal fun String.toProtocolDisplayName(): String =
-    when (this) {
-        "vless" -> "VLESS"
-        "vmess" -> "VMess"
-        "trojan" -> "Trojan"
-        "shadowsocks" -> "Shadowsocks"
-        "socks" -> "SOCKS"
-        "hysteria2" -> "Hysteria2"
-        "wireguard" -> "WireGuard"
-        "http" -> "HTTP"
-        else -> this
-    }
-
-/**
- * The inverse of [toProtocolDisplayName] — every mapping above is a case
+ * The inverse of [protocolDisplayName] — every mapping is a case
  * variant of the stored value with no other characters, so lowercasing a
  * display label always recovers the raw protocol string the DAO stores.
  */
@@ -578,3 +584,32 @@ private fun String.toRawProtocolOrNull(): String? = if (this == ALL_PROTOCOLS_SE
 /** M9-C spec §1.3: ask only while unanswered and the provider names a valid resolver. */
 private fun ResolverStatus.requestHost(): String? =
     (provider as? ProviderResolver.Valid)?.host?.takeIf { trust == ResolverTrust.Unasked }
+
+/** Binds [ServersActions] to this view model plus the three callbacks [ServersScreen]'s host owns. */
+internal fun ServersViewModel.screenActions(
+    onAddProfile: () -> Unit,
+    onEditProfile: (Long) -> Unit,
+    onOpenSubscriptionDetail: (Long) -> Unit,
+) = ServersActions(
+    onQueryChanged = this::onQueryChanged,
+    onProtocolFilterChanged = this::onProtocolFilterChanged,
+    onSortChanged = this::onSortChanged,
+    onProfileSelected = this::onProfileSelected,
+    onRenameGroup = this::onRenameGroup,
+    onDeleteGroup = this::onDeleteGroup,
+    onAddProfile = onAddProfile,
+    onProfileEdit = onEditProfile,
+    onUpdateSubscription = this::onUpdateSubscription,
+    onAllowRedirects = this::onAllowRedirects,
+    onDenyRedirects = this::onDenyRedirects,
+    onAllowResolver = this::onAllowResolver,
+    onDenyResolver = this::onDenyResolver,
+    onRouteExclusionAnswered = this::onRouteExclusionAnswered,
+    onDismissUpdateResult = this::onDismissUpdateResult,
+    onOpenSubscriptionDetail = onOpenSubscriptionDetail,
+    onTestProfile = this::onTestProfile,
+    onTestGroup = this::onTestGroup,
+    onCancelTests = this::onCancelTests,
+    onGroupSortChanged = this::onGroupSortChanged,
+    onServersShown = this::onServersShown,
+)

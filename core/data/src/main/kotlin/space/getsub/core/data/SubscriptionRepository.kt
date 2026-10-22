@@ -343,6 +343,43 @@ internal constructor(
             }
         }.distinctUntilChanged()
 
+    /**
+     * M9-E spec §4: records the answer to the provider's excluded routes, bound to the
+     * [RouteExclusionStatus.fingerprint] of the list the user was shown. A later list with a
+     * different fingerprint reads as [RouteExclusionTrust.Unasked] again.
+     */
+    public suspend fun setRouteExclusionTrust(
+        id: Long,
+        trust: RouteExclusionTrust,
+        fingerprint: String,
+    ): Unit = dao.setRouteExclusionTrust(id, trust.stored, fingerprint)
+
+    /**
+     * M9-E spec §4: the provider's effective excluded routes and the user's answer, recomposing on
+     * any directive, pin or row change so the card never goes stale. The effective list is
+     * `exclude-routes-set` when present, else `exclude-routes`, each resolved like [effective].
+     */
+    public fun routeExclusionStatus(id: Long): Flow<RouteExclusionStatus> =
+        combine(dao.observeDirectives(id), dao.observeOverrides(id), dao.observeSubscriptions()) {
+                directives,
+                overrides,
+                rows,
+            ->
+            val self = rows.firstOrNull { it.id == id } ?: return@combine RouteExclusionStatus.NONE
+            fun valueOf(key: String): String? =
+                resolveEffective(
+                    key,
+                    providerValue = directives.firstOrNull { it.key == key }?.value,
+                    pinned = overrides.firstOrNull { it.key == key }?.value,
+                    default = null,
+                ).value
+            routeExclusionStatusOf(
+                value = valueOf(DIRECTIVE_EXCLUDE_ROUTES_SET) ?: valueOf(DIRECTIVE_EXCLUDE_ROUTES),
+                storedTrust = self.routeExclusionTrust,
+                storedFingerprint = self.routeExclusionFingerprint,
+            )
+        }.distinctUntilChanged()
+
     internal suspend fun subscriptionRow(id: Long): SubscriptionEntity? = dao.subscription(id)
 
     /** M9-B spec §4: the user edits fronting in subscription details. */

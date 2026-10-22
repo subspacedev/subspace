@@ -2,6 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.parser
 
+import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -9,6 +10,22 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.Test
+import space.getsub.core.model.HttpOutbound
+import space.getsub.core.model.Hysteria2Outbound
+import space.getsub.core.model.Hysteria2Tls
+import space.getsub.core.model.KcpObfuscation
+import space.getsub.core.model.ObfuscationApplicability
+import space.getsub.core.model.Outbound
+import space.getsub.core.model.Security
+import space.getsub.core.model.ShadowsocksOutbound
+import space.getsub.core.model.SocksOutbound
+import space.getsub.core.model.StreamSettings
+import space.getsub.core.model.TransportOptions
+import space.getsub.core.model.TrojanOutbound
+import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.VmessOutbound
+import space.getsub.core.model.WireGuardOutbound
+import space.getsub.core.model.isKcpNetwork
 
 class ObfuscationDetectionTest {
     private fun outbounds(json: String): JsonArray = Json.parseToJsonElement(json).jsonArray
@@ -67,6 +84,8 @@ class ObfuscationDetectionTest {
             {"tag":"f","protocol":"freedom",
              "settings":{"fragment":{"packets":"tlshello"},"noises":[{"packet":"1"}]}}]}"""
 
+    private val bothChainKcp = bothChain.replace(""""streamSettings":{""", """"streamSettings":{"network":"kcp",""")
+
     @Test fun `plan of junk or a config without eligible outbounds is empty`() {
         ObfuscationDetection.plan("not json", user, user) shouldBe emptyList()
         ObfuscationDetection.plan("""{"outbounds":[{"tag":"d","protocol":"freedom"}]}""", user, user) shouldBe
@@ -80,11 +99,17 @@ class ObfuscationDetectionTest {
         ) shouldBe emptyList()
     }
 
-    @Test fun `noise On alone cuts a chain carrying both, and the chain's fragmentation is lost`() {
-        ObfuscationDetection.plan(bothChain, fragment = null, noise = user) shouldBe
+    // Noise is offered only to UDP-based servers, which are never offered the fragment (M9-E spec §7.2).
+    @Test fun `noise On alone cuts an mkcp chain carrying both, and the chain's fragmentation is lost`() {
+        ObfuscationDetection.plan(bothChainKcp, fragment = null, noise = user) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Nothing, MaskFate.Ours))
-        ObfuscationDetection.plan(bothChain, fragment = directive, noise = user) shouldBe
-            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Ours, MaskFate.Ours))
+        ObfuscationDetection.plan(bothChainKcp, fragment = directive, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = true, MaskFate.Nothing, MaskFate.Ours))
+    }
+
+    @Test fun `noise On does not cut a tcp chain`() {
+        ObfuscationDetection.plan(bothChain, fragment = null, noise = user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Own, MaskFate.Own))
     }
 
     @Test fun `fragmentation On alone cuts a chain carrying both, and the chain's noise is lost`() {
@@ -104,12 +129,15 @@ class ObfuscationDetectionTest {
         ObfuscationDetection.plan(plain, directive, null) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Ours, MaskFate.Nothing))
         ObfuscationDetection.plan(plain, null, user) shouldBe
+            listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Nothing, MaskFate.Nothing))
+        val kcp = """{"outbounds":[{"tag":"p","protocol":"trojan","streamSettings":{"network":"kcp"}}]}"""
+        ObfuscationDetection.plan(kcp, null, user) shouldBe
             listOf(OutboundPlan(0, editable = true, cutLink = false, MaskFate.Nothing, MaskFate.Ours))
     }
 
     @Test fun `an own finalmask mask survives a cut made for the other type`() {
         val json =
-            """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"sockopt":{"dialerProxy":"f"},
+            """{"outbounds":[{"tag":"p","protocol":"vless","streamSettings":{"network":"kcp","sockopt":{"dialerProxy":"f"},
                 "finalmask":{"tcp":[{"type":"fragment"}]}}},
                 {"tag":"f","protocol":"freedom","settings":{"noises":[{"packet":"1"}]}}]}"""
         ObfuscationDetection.plan(json, null, user) shouldBe
@@ -174,9 +202,49 @@ class ObfuscationDetectionTest {
         planOf(ownFragment).fragment shouldBe MaskFate.Own
     }
 
-    @Test fun `tcp transports keep both, as before`() {
+    @Test fun `tcp transports keep the fragment and are offered no noise`() {
         val plan = planOf("""{"tag":"v","protocol":"vless","streamSettings":{"network":"ws"}}""")
         plan.fragment shouldBe MaskFate.Ours
-        plan.noise shouldBe MaskFate.Ours
+        plan.noise shouldBe MaskFate.Nothing
+    }
+
+    @Test fun `shadowsocks, socks and http are offered no noise even over a kcp network`() {
+        for (protocol in listOf("shadowsocks", "socks", "http")) {
+            val plan = planOf("""{"tag":"x","protocol":"$protocol","streamSettings":{"network":"kcp"}}""")
+            plan.noise shouldBe MaskFate.Nothing
+        }
+    }
+
+    // The raw twin of ObfuscationApplicability.noiseApplies (`carriesNoise`) must agree with it row by row.
+    @Test fun `raw detection offers noise exactly where the typed rule applies it`() {
+        val tls = Security.Tls("sni", "chrome", false)
+        val kcp = TransportOptions.Kcp(null, null, KcpObfuscation(null, null, false))
+
+        fun stream(n: String) = StreamSettings(n, tls, if (isKcpNetwork(n)) kcp else TransportOptions.None)
+        val networks = listOf("tcp", "raw", "ws", "grpc", "httpupgrade", "xhttp", "kcp", "mkcp", "mKCP")
+        val rows = mutableListOf<Pair<Outbound, String>>()
+        for (n in networks) {
+            rows += VlessOutbound("a", 1, "u", null, stream(n)) to "vless"
+            rows += VmessOutbound("a", 1, "u", 0, "auto", stream(n)) to "vmess"
+            rows += TrojanOutbound("a", 1, "p", stream(n)) to "trojan"
+        }
+        rows += Hysteria2Outbound("a", 1, "p", Hysteria2Tls("sni")) to "hysteria"
+        rows += WireGuardOutbound("a", 1, "k", listOf("10.0.0.2/32"), "p", null) to "wireguard"
+        rows += ShadowsocksOutbound("a", 1, "aes-256-gcm", "p") to "shadowsocks"
+        rows += SocksOutbound("a", 1, null, null) to "socks"
+        rows += HttpOutbound("a", 1, null, null, Security.None) to "http"
+        for ((typed, protocol) in rows) {
+            val network =
+                when (typed) {
+                    is VlessOutbound -> typed.stream.network
+                    is VmessOutbound -> typed.stream.network
+                    is TrojanOutbound -> typed.stream.network
+                    else -> null
+                }
+            val streamJson = network?.let { ""","streamSettings":{"network":"$it"}""" }.orEmpty()
+            val raw = """{"tag":"x","protocol":"$protocol"$streamJson}"""
+            val offered = planOf(raw).noise != MaskFate.Nothing
+            withClue("$protocol $network") { offered shouldBe ObfuscationApplicability.noiseApplies(typed) }
+        }
     }
 }

@@ -108,7 +108,13 @@ class TypedProtocolsXrayTest {
             ),
         )
 
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
 
     private fun profile(outbound: Outbound): Profile = Profile(id = "id", name = "n", outbound = outbound)
 

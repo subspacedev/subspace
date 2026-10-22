@@ -41,6 +41,7 @@ class XrayConfigGeneratorDnsTest {
             socksPort = 10808,
             dnsServer = "1.1.1.1",
             enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
             dns = plan,
         )
 
@@ -82,7 +83,6 @@ class XrayConfigGeneratorDnsTest {
                     ProfileDns(domestic = DnsResolver(DnsTransport.DOU, ip = "8.8.8.8")),
                     DnsResolver(DnsTransport.DOU, ip = "1.1.1.1"),
                     whitelist,
-                    sniffingEnabled = true,
                 ),
             )
         val routing =
@@ -142,13 +142,14 @@ class XrayConfigGeneratorDnsTest {
         // before the rule-set lines and catchAllDirect, or device DNS leaves in plaintext.
         val defaultPlan =
             requireNotNull(
-                DnsPlanner.plan(null, DnsPlanner.DEFAULT_SETTING, whitelist, sniffingEnabled = true),
+                DnsPlanner.plan(null, DnsPlanner.DEFAULT_SETTING, whitelist),
             )
         val settings =
             TunnelSettings(
                 socksPort = 10808,
                 dnsServer = "1.1.1.1",
                 enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
                 routing = whitelist,
                 dns = defaultPlan,
             )
@@ -257,6 +258,7 @@ class XrayConfigGeneratorDnsTest {
                 socksPort = 10808,
                 dnsServer = "1.1.1.1",
                 enableSniffing = true,
+                proxyCredentials = TEST_CREDENTIALS,
                 dns = dns,
             )
         val result = XrayConfigGenerator.generate(GOLDEN_PROFILE, settings)

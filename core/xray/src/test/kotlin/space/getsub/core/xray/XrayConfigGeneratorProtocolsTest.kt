@@ -36,7 +36,13 @@ import space.getsub.core.model.refusedWithoutTransportSecurity
  * `infra/conf/{vmess,trojan,shadowsocks,socks}.go` structs, not captured from this generator.
  */
 class XrayConfigGeneratorProtocolsTest {
-    private val settings = TunnelSettings(socksPort = 10808, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 10808,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
     private val pin = ServerAddressPin(domain = "srv.example", ip = "203.0.113.5")
 
     private fun generate(
@@ -187,7 +193,7 @@ class XrayConfigGeneratorProtocolsTest {
         }
     }
 
-    @Test fun `shadowsocks and socks carry finalmask from the tunnel settings`() {
+    @Test fun `shadowsocks and socks carry the fragment but no noise`() {
         val fragment =
             Applied(
                 FragmentSpec(FragmentPackets.TlsHello, XrayRange(50, 100), XrayRange(10, 20), XrayRange(10, 10)),
@@ -206,7 +212,7 @@ class XrayConfigGeneratorProtocolsTest {
             val stream = proxy(json(outbound, masked)).getValue("streamSettings").jsonObject
             stream.keys shouldBe setOf("network", "finalmask", "security")
             stream.getValue("finalmask") shouldBe vlessMask
-            stream.getValue("finalmask").jsonObject.keys shouldBe setOf("tcp", "udp")
+            stream.getValue("finalmask").jsonObject.keys shouldBe setOf("tcp")
         }
     }
 

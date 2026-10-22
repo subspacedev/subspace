@@ -26,7 +26,13 @@ import space.getsub.core.model.XrayRange
  * `KcpRules.masks` writes for the typed path (research §3.3; ruling D2-R3 for header-only).
  */
 class LegacyKcpTest {
-    private val settings = TunnelSettings(socksPort = 41080, dnsServer = "1.1.1.1", enableSniffing = true)
+    private val settings =
+        TunnelSettings(
+            socksPort = 41080,
+            dnsServer = "1.1.1.1",
+            enableSniffing = true,
+            proxyCredentials = TEST_CREDENTIALS,
+        )
 
     private val noise =
         NoiseSpec(listOf(NoiseItem(NoisePayload.Random(XrayRange(10, 20), XrayRange(0, 255)), XrayRange(10, 16))))

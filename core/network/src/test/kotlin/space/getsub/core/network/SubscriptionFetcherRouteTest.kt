@@ -16,6 +16,8 @@ import org.junit.Before
 import org.junit.Test
 import space.getsub.core.model.FragmentPackets
 import space.getsub.core.model.FragmentSpec
+import space.getsub.core.model.LocalProxy
+import space.getsub.core.model.ProxyCredentials
 import space.getsub.core.model.XrayRange
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -68,7 +70,7 @@ class SubscriptionFetcherRouteTest {
     fun frontingOverCleartextFailsEvenThroughTheTunnelProxy() = runTest {
         server.enqueue(MockResponse(code = 200, body = "ok"))
         val proxied = request(FetchRoute(hostHeader = "real.example"), host = "sub.invalid")
-            .copy(proxyPort = server.port)
+            .copy(proxy = LocalProxy(server.port, ProxyCredentials("u", "p")))
 
         fetcher.fetch(proxied).shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldBe FetchFailure.NotFound
         server.requestCount shouldBe 0
@@ -91,7 +93,7 @@ class SubscriptionFetcherRouteTest {
     fun aHostOverrideBecomesTheRequestHostHeader(): Unit = with(fetcher) {
         val http = request(FetchRoute(hostHeader = "real.example"), scheme = "https").toOkHttpRequest()
         val proxied = request(FetchRoute(hostHeader = "real.example"), scheme = "https")
-            .copy(proxyPort = 1).toOkHttpRequest()
+            .copy(proxy = LocalProxy(1, ProxyCredentials("u", "p"))).toOkHttpRequest()
 
         http.header("Host") shouldBe "real.example"
         proxied.header("Host") shouldBe "real.example"
@@ -143,7 +145,8 @@ class SubscriptionFetcherRouteTest {
     fun throughTheTunnelProxyTheRouteDnsAndFactoryAreSkipped() {
         // Plan ruling P1.
         val spec = FragmentSpec(FragmentPackets.TlsHello, XrayRange(5, 5), XrayRange(0, 0), null)
-        val proxied = request(FetchRoute("203.0.113.1", "real.example", spec)).copy(proxyPort = 1)
+        val proxied = request(FetchRoute("203.0.113.1", "real.example", spec))
+            .copy(proxy = LocalProxy(1, ProxyCredentials("u", "p")))
         val client = fetcher.clientFor(proxied)
         (client.socketFactory is FragmentingSocketFactory) shouldBe false
         client.dns shouldBe Dns.SYSTEM
