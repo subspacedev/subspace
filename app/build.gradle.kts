@@ -3,8 +3,11 @@
 import com.android.build.api.variant.FilterConfiguration
 import space.getsub.build.Abi
 import space.getsub.build.AppVersion
+import space.getsub.build.SigningResolution
+import space.getsub.build.message
 import space.getsub.build.parse
 import space.getsub.build.readVersionName
+import space.getsub.build.resolveSigning
 
 plugins {
     alias(libs.plugins.android.application)
@@ -56,8 +59,36 @@ android {
         }
     }
 
+    // Release signing (M10-A spec §6.3). Read through providers so the configuration cache
+    // tracks the inputs. All four set -> signed; none -> an unsigned release APK; some ->
+    // fail. Never fall back to signingConfigs.debug: a release signed with the debug key
+    // would install, then break every upgrade (spec §5).
+    val signing =
+        resolveSigning(
+            gradleProperty = { providers.gradleProperty(it).orNull },
+            env = { providers.environmentVariable(it).orNull },
+        )
+    when (signing) {
+        is SigningResolution.Signed ->
+            signingConfigs.create("release") {
+                storeFile = rootProject.file(signing.storeFile)
+                storePassword = signing.storePassword
+                keyAlias = signing.keyAlias
+                keyPassword = signing.keyPassword
+                // v1 (JAR) signing is only needed below minSdk 24; minSdk here is 26, and
+                // apksigner's docs say v2+ alone is enough there.
+                // https://developer.android.com/tools/apksigner
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        is SigningResolution.Incomplete -> throw GradleException(signing.message())
+        SigningResolution.Unsigned -> Unit
+    }
+
     buildTypes {
         release {
+            if (signing is SigningResolution.Signed) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
