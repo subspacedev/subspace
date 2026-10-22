@@ -110,12 +110,18 @@ internal constructor(
         modes: Map<Long, PingMode>,
     ): Boolean {
         if (profileIds.isEmpty()) return false
+        // Resolved first: it suspends (Room reads), and everything after it must not. Two
+        // overlapping starts that interleaved around a suspension point could both clear, then
+        // both mark and dispatch; the first is then superseded in :bg, its onFinished is fenced
+        // away, and its rows stay on "…" for the session.
+        val resolved = options()
+        // From here to the dispatch there is no suspension point, so a start is atomic with
+        // respect to every other start on this dispatcher.
         // Starting a run supersedes any run in flight, and a superseded run never
         // reaches its own onFinished — that is fenced on the run id in :bg.
         // Without this, the rows it had marked would sit on "…" for the rest of
         // the session. Clearing here is what makes supersession safe.
         cache.finish(cache.testing.value)
-        val resolved = options()
         val id = runId.incrementAndGet()
         cache.markTesting(profileIds)
         return dispatcher.start(
@@ -143,6 +149,9 @@ internal constructor(
 
     /**
      * True once none of [profileIds] is still testing; false if [timeoutMillis] passes first.
+     *
+     * True means "no longer testing", not "measured": a later run may have cleared these ids
+     * without producing results, so callers read [results] for what actually arrived.
      *
      * The timeout is the caller's bound on a run that never reports back (a dead binder),
      * so waiting on a measurement cannot hang auto-connect.

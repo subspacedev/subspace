@@ -4,6 +4,7 @@ package space.getsub.service.latency
 
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -29,6 +30,7 @@ class LatencyRunsTest {
     private class FakeDispatcher : LatencyDispatcher {
         val started = mutableListOf<Started>()
         val cancelled = mutableListOf<Long>()
+        var bound = true
 
         override fun start(
             runId: Long,
@@ -38,7 +40,9 @@ class LatencyRunsTest {
             onFinished: () -> Unit,
         ): Boolean {
             started += Started(runId, targets, onResult, onFinished)
-            return true
+            // TunnelClient.startLatencyRun reports onFinished itself when the run never reaches :bg.
+            if (!bound) onFinished()
+            return bound
         }
 
         override fun cancel(runId: Long) {
@@ -49,7 +53,15 @@ class LatencyRunsTest {
     private val cache = LatencyCache()
     private val dispatcher = FakeDispatcher()
     private val options = LatencyOptions(PingMode.TCP, timeoutSeconds = 1, checkUrl = "https://x.invalid")
-    private val runs = LatencyRuns(dispatcher, cache) { options }
+    private var optionsGate: CompletableDeferred<Unit>? = null
+    private val runs =
+        LatencyRuns(dispatcher, cache) {
+            optionsGate?.also { gate ->
+                optionsGate = null
+                gate.await()
+            }
+            options
+        }
 
     private val ok = LatencyResult(42, LatencyOutcome.OK)
 
@@ -137,5 +149,37 @@ class LatencyRunsTest {
             home.onFinished()
             runs.testing.value.shouldBeEmpty()
             runs.results.value[2] shouldBe ok
+        }
+
+    @Test
+    fun overlappingStartsLeaveOnlyTheLaterRunsRowsTesting() =
+        runTest {
+            // The first start suspends in option resolution while the second runs to completion.
+            optionsGate = CompletableDeferred()
+            val gate = optionsGate!!
+            launch { runs.start(listOf(1, 2), emptyMap()) }
+            runCurrent()
+            runs.start(listOf(3), emptyMap())
+
+            gate.complete(Unit)
+            runCurrent()
+
+            // The first run was dispatched last, so it is the live one; the second was superseded
+            // and its rows must not be left on "…".
+            val live = dispatcher.started.last()
+            runs.testing.value shouldBe live.targets.map { it.profileId }.toSet()
+
+            live.onFinished()
+            runs.testing.value.shouldBeEmpty()
+        }
+
+    @Test
+    fun aStartThatNeverReachedTheServiceLeavesNoRowTesting() =
+        runTest {
+            dispatcher.bound = false
+
+            runs.start(listOf(1, 2), emptyMap()) shouldBe false
+
+            runs.testing.value.shouldBeEmpty()
         }
 }
