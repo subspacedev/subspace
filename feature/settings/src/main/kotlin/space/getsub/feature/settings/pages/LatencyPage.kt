@@ -21,6 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.ui.component.ModeTile
 import space.getsub.core.ui.component.ModeTiles
 import space.getsub.core.ui.component.SectionTitle
@@ -57,6 +59,7 @@ internal fun LatencyPage(
         MethodTiles(state = state, actions = actions)
         CheckUrlField(state = state, actions = actions)
         TimeoutSlider(seconds = state.pingTimeoutSeconds, onChanged = actions.onPingTimeoutChanged)
+        OpenSection(state = state, actions = actions)
         SwitchRow(
             icon = SubspaceIcons.Refresh,
             label = stringResource(R.string.settings_ping_on_launch),
@@ -73,7 +76,75 @@ internal fun LatencyPage(
             enabled = state.pingOnLaunch,
             onCheckedChange = actions.onPingOnLaunchMeteredChanged,
         )
+        LaunchScopeChoice(state = state, actions = actions)
     }
+}
+
+/** "When Subspace opens" (M10-C spec §3.1, §3.3): auto-connect, its server rule, and the marker switch. */
+@Composable
+private fun OpenSection(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SectionTitle(stringResource(R.string.settings_open_section))
+    SwitchRow(
+        icon = SubspaceIcons.Refresh,
+        label = stringResource(R.string.settings_auto_connect),
+        supporting = stringResource(R.string.settings_auto_connect_summary),
+        checked = state.autoConnectOnLaunch,
+        onCheckedChange = actions.onAutoConnectOnLaunchChanged,
+    )
+    if (state.showAutoConnectMode) {
+        Text(
+            text = stringResource(R.string.settings_auto_connect_server),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        RadioList(
+            choices =
+            AutoConnectMode.entries.map { mode ->
+                RadioChoice(
+                    label = stringResource(mode.labelRes()),
+                    selected = state.autoConnectMode == mode,
+                    onSelect = { actions.onAutoConnectModeChanged(mode) },
+                )
+            },
+        )
+    }
+    SwitchRow(
+        icon = SubspaceIcons.Refresh,
+        label = stringResource(R.string.settings_network_markers),
+        supporting = stringResource(R.string.settings_network_markers_summary),
+        checked = state.useNetworkMarkers,
+        onCheckedChange = actions.onUseNetworkMarkersChanged,
+    )
+}
+
+/** Which servers the launch test measures; only meaningful while the launch run is on (M10-C spec §3.3). */
+@Composable
+private fun LaunchScopeChoice(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    val enabled = state.pingOnLaunch
+    Text(
+        text = stringResource(R.string.settings_launch_test_scope),
+        style = MaterialTheme.typography.titleSmall,
+        color =
+        if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    RadioList(
+        choices =
+        LaunchTestScope.entries.map { scope ->
+            RadioChoice(
+                label = stringResource(scope.labelRes()),
+                selected = state.launchTestScope == scope,
+                onSelect = { actions.onLaunchTestScopeChanged(scope) },
+            )
+        },
+        enabled = enabled,
+    )
 }
 
 @Composable

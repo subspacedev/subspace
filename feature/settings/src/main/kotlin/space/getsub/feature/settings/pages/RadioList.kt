@@ -36,6 +36,7 @@ internal data class RadioChoice(
 internal fun RadioList(
     choices: List<RadioChoice>,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Column(modifier = modifier.selectableGroup()) {
         choices.forEach { choice ->
@@ -44,10 +45,15 @@ internal fun RadioList(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp)
-                    .selectable(selected = choice.selected, role = Role.RadioButton, onClick = choice.onSelect),
+                    .selectable(
+                        selected = choice.selected,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = choice.onSelect,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = choice.selected, onClick = null)
+                RadioButton(selected = choice.selected, onClick = null, enabled = enabled)
                 Text(
                     text = choice.label,
                     style = MaterialTheme.typography.bodyLarge,

@@ -27,6 +27,7 @@ import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.Udp443Mode
+import space.getsub.core.model.automation.AutoConnectMode
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.settings.SettingsActions
@@ -78,6 +79,18 @@ class SettingsPagesSnapshotTest {
 
     @Test
     fun latency() = shoot(SettingsPageId.Latency)
+
+    /** M10-C spec §3.1: auto-connect on shows the Server choice; launch testing off disables the scope. */
+    @Test
+    fun latencyAutoConnectOn() =
+        shoot(
+            SettingsPageId.Latency,
+            base.copy(
+                autoConnectOnLaunch = true,
+                autoConnectMode = AutoConnectMode.FastestInSubscription,
+                pingOnLaunch = false,
+            ),
+        )
 
     @Test
     fun dns() = shoot(SettingsPageId.Dns, base.copy(dnsOverriddenByProfile = true))

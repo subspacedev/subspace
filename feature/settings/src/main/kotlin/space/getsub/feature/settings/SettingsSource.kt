@@ -27,6 +27,8 @@ import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.ProfileDns
 import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.model.sniffingRuleWarning
 import space.getsub.core.model.usesFakeDns
 import space.getsub.feature.settings.pages.TunnelDraft
@@ -81,6 +83,26 @@ internal interface SettingsSource {
     suspend fun setPingOnLaunch(enabled: Boolean)
 
     suspend fun setPingOnLaunchMetered(enabled: Boolean)
+
+    /** "Connect automatically" on a fresh open (M10-C spec §3.1). */
+    val autoConnectOnLaunch: Flow<Boolean>
+
+    /** Which server auto-connect picks (M10-C spec §3.2). */
+    val autoConnectMode: Flow<AutoConnectMode>
+
+    /** Whether Wi-Fi / mobile words in server names steer the fastest-server choice (M10-C spec §3.3). */
+    val useNetworkMarkers: Flow<Boolean>
+
+    /** Which servers the launch test measures (M10-C spec §3.3). */
+    val launchTestScope: Flow<LaunchTestScope>
+
+    suspend fun setAutoConnectOnLaunch(enabled: Boolean)
+
+    suspend fun setAutoConnectMode(mode: AutoConnectMode)
+
+    suspend fun setUseNetworkMarkers(enabled: Boolean)
+
+    suspend fun setLaunchTestScope(scope: LaunchTestScope)
 
     /** The resolver used while no active routing profile has an effective DNS block. */
     val dnsResolver: Flow<DnsResolver>
@@ -229,6 +251,20 @@ constructor(
 
     override suspend fun setPingOnLaunchMetered(enabled: Boolean) =
         settingsRepository.setPingOnLaunchMetered(enabled)
+
+    override val autoConnectOnLaunch: Flow<Boolean> = settingsRepository.autoConnectOnLaunch
+    override val autoConnectMode: Flow<AutoConnectMode> = settingsRepository.autoConnectMode
+    override val useNetworkMarkers: Flow<Boolean> = settingsRepository.useNetworkMarkers
+    override val launchTestScope: Flow<LaunchTestScope> = settingsRepository.launchTestScope
+
+    override suspend fun setAutoConnectOnLaunch(enabled: Boolean) =
+        settingsRepository.setAutoConnectOnLaunch(enabled)
+
+    override suspend fun setAutoConnectMode(mode: AutoConnectMode) = settingsRepository.setAutoConnectMode(mode)
+
+    override suspend fun setUseNetworkMarkers(enabled: Boolean) = settingsRepository.setUseNetworkMarkers(enabled)
+
+    override suspend fun setLaunchTestScope(scope: LaunchTestScope) = settingsRepository.setLaunchTestScope(scope)
 
     override val dnsResolver: Flow<DnsResolver> = settingsRepository.dnsResolver
 

@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import space.getsub.core.data.ThemePreference
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 
 internal fun ThemePreference.labelRes(): Int =
     when (this) {
@@ -29,6 +31,19 @@ internal fun PingMode.labelRes(): Int =
     when (this) {
         PingMode.TCP -> R.string.settings_ping_mode_tcp
         PingMode.PROXY_HEAD -> R.string.settings_ping_mode_proxy_head
+    }
+
+internal fun AutoConnectMode.labelRes(): Int =
+    when (this) {
+        AutoConnectMode.LastPicked -> R.string.settings_auto_connect_last_picked
+        AutoConnectMode.FastestInSubscription -> R.string.settings_auto_connect_fastest_subscription
+        AutoConnectMode.FastestOverall -> R.string.settings_auto_connect_fastest_overall
+    }
+
+internal fun LaunchTestScope.labelRes(): Int =
+    when (this) {
+        LaunchTestScope.ActiveSubscription -> R.string.settings_launch_test_scope_active
+        LaunchTestScope.AllServers -> R.string.settings_launch_test_scope_all
     }
 
 internal fun PingMode.summaryRes(): Int =

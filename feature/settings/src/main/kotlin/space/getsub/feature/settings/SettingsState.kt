@@ -16,6 +16,8 @@ import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
 import space.getsub.core.model.SniffingRuleWarning
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
@@ -40,6 +42,10 @@ internal data class SettingsState(
     val pingTimeoutSeconds: Int = 5,
     val pingOnLaunch: Boolean = true,
     val pingOnLaunchMetered: Boolean = false,
+    val autoConnectOnLaunch: Boolean = false,
+    val autoConnectMode: AutoConnectMode = AutoConnectMode.LastPicked,
+    val useNetworkMarkers: Boolean = true,
+    val launchTestScope: LaunchTestScope = LaunchTestScope.AllServers,
     /** The resolver transport currently being edited, which may be ahead of the persisted value. */
     val dnsTransport: DnsTransport = DnsResolver.DEFAULT.transport,
     /** The editable endpoint: a DoH URL or a DoU address, depending on [dnsTransport]. */
@@ -169,6 +175,10 @@ internal data class SettingsState(
      */
     val perTagBreakdownSessionNoticeVisible: Boolean
         get() = sessionConnected
+
+    /** The Server choice means nothing while auto-connect is off, so it is not shown (M10-C spec §3.1). */
+    val showAutoConnectMode: Boolean
+        get() = autoConnectOnLaunch
 
     /** DNS endpoints stay out of diagnostic output (ARCHITECTURE.md §5.6). */
     override fun toString(): String =

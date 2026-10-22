@@ -19,6 +19,8 @@ import space.getsub.core.model.GeoDataKind
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.ui.component.SubspaceDialog
 import space.getsub.core.ui.icon.SubspaceIcons
 import space.getsub.feature.settings.pages.TunnelDraft
@@ -80,6 +82,10 @@ internal data class SettingsActions(
     val onNoiseSettingsChanged: ((NoiseSettings) -> NoiseSettings) -> Unit = {},
     val onPreResolveSettingsChanged: ((PreResolveSettings) -> PreResolveSettings) -> Unit = {},
     val onTunnelSettingsSaved: (TunnelDraft) -> Unit = {},
+    val onAutoConnectOnLaunchChanged: (Boolean) -> Unit = {},
+    val onAutoConnectModeChanged: (AutoConnectMode) -> Unit = {},
+    val onUseNetworkMarkersChanged: (Boolean) -> Unit = {},
+    val onLaunchTestScopeChanged: (LaunchTestScope) -> Unit = {},
 )
 
 /** Every [SettingsActions] callback bound to [viewModel]; shared by the hub and the sub-pages. */
@@ -111,6 +117,10 @@ internal fun settingsActionsOf(viewModel: SettingsViewModel): SettingsActions =
         onNoiseSettingsChanged = viewModel::onNoiseSettingsChanged,
         onPreResolveSettingsChanged = viewModel::onPreResolveSettingsChanged,
         onTunnelSettingsSaved = viewModel::onTunnelSettingsSaved,
+        onAutoConnectOnLaunchChanged = viewModel::onAutoConnectOnLaunchChanged,
+        onAutoConnectModeChanged = viewModel::onAutoConnectModeChanged,
+        onUseNetworkMarkersChanged = viewModel::onUseNetworkMarkersChanged,
+        onLaunchTestScopeChanged = viewModel::onLaunchTestScopeChanged,
     )
 
 /**
