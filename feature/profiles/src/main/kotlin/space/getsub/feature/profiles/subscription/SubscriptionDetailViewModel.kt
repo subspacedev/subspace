@@ -28,6 +28,7 @@ import space.getsub.core.data.RouteExclusionTrust
 import space.getsub.core.data.StoredSubscription
 import space.getsub.core.data.TUNING_DIRECTIVE_KEYS
 import space.getsub.core.data.TuningDirectiveIssues
+import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.model.Checked
 import space.getsub.core.model.identity.DeviceHeader
@@ -56,6 +57,10 @@ private const val KEY_TIMEOUT = "subscription-request-timeout"
 private const val KEY_AUTO_UPDATE = "subscription-auto-update-enable"
 private const val KEY_AUTO_UPDATE_OPEN = "subscription-auto-update-open-enable"
 private const val KEY_USER_AGENT = "change-user-agent"
+private const val KEY_AUTOCONNECT = "subscription-autoconnect"
+private const val KEY_AUTOCONNECT_TYPE = "subscription-autoconnect-type"
+private const val KEY_PING_ON_OPEN = "subscription-ping-onopen-enabled"
+private const val KEY_PIN = "subscription-pin"
 
 // Mirrors RefreshScheduler.DEFAULT_INTERVAL_HOURS and SubscriptionSyncer.DEFAULT_TIMEOUT_SECONDS
 // exactly — duplicated, not shared, for the same reason RefreshScheduler's own copy of
@@ -225,8 +230,10 @@ constructor(
             profileSource.observeEffective(id, KEY_TIMEOUT, DEFAULT_TIMEOUT_SECONDS),
             profileSource.observeEffective(id, KEY_AUTO_UPDATE, DEFAULT_AUTO_UPDATE),
             profileSource.observeEffective(id, KEY_AUTO_UPDATE_OPEN, DEFAULT_AUTO_UPDATE),
-        ) { interval, timeout, autoUpdate, autoUpdateOpen ->
+            observeIgnoredRows(id),
+        ) { interval, timeout, autoUpdate, autoUpdateOpen, ignored ->
             DirectiveRows(
+                ignored = ignored,
                 timeout =
                 DirectiveRow(
                     DirectiveRowKind.Seconds,
@@ -253,6 +260,15 @@ constructor(
                 ),
             )
         }
+
+    /**
+     * The provider's automation directives, for the "Not applied" rows (M10-C spec §3.5). A row exists only
+     * when the provider sent the key; the value is the registry-validated one, never logged.
+     */
+    private fun observeIgnoredRows(id: Long): Flow<List<IgnoredDirectiveRow>> =
+        combine(IGNORED_KEYS.map { profileSource.observeEffective(id, it, default = null) }) { values ->
+            values.mapNotNull { it.providerValue?.let { raw -> ignoredRow(it.key, raw) } }
+        }.distinctUntilChanged()
 
     private fun buildState(inputs: DetailInputs): SubscriptionDetailState {
         val subscription = inputs.subscription
@@ -288,6 +304,7 @@ constructor(
             headers = headerRows(inputs.identity),
             timeoutRow = inputs.rows.timeout,
             rows = inputs.rows.rows,
+            ignoredRows = inputs.rows.ignored,
             isRefreshing = inputs.ephemeral.isRefreshing,
             refreshResult = inputs.ephemeral.refreshResult,
             deleted = inputs.ephemeral.deleted,
@@ -349,6 +366,7 @@ constructor(
     private data class DirectiveRows(
         val rows: List<DirectiveRow>,
         val timeout: DirectiveRow,
+        val ignored: List<IgnoredDirectiveRow>,
     )
 
     /** Everything "Reaching the subscription" shows besides the stored row (M9-B §4, M9-C §4.2, M9-E §4). */
@@ -580,5 +598,28 @@ constructor(
         override fun toString(): String =
             "Ephemeral(hwidDraft=${if (hwidDraft == null) "none" else "<redacted>"}, hwidError=$hwidError, " +
                 "isRefreshing=$isRefreshing, refreshResult=$refreshResult, deleted=$deleted)"
+    }
+}
+
+private val IGNORED_KEYS = listOf(KEY_AUTOCONNECT, KEY_AUTOCONNECT_TYPE, KEY_PING_ON_OPEN, KEY_PIN)
+
+/** `null` for a value outside the registry's vocabulary: nothing validated to show, so no row. */
+private fun ignoredRow(
+    key: String,
+    raw: String,
+): IgnoredDirectiveRow? {
+    val onOff = if (isDirectiveEnabled(raw)) R.string.subscription_row_value_on else R.string.subscription_row_value_off
+    return when (key) {
+        KEY_AUTOCONNECT -> IgnoredDirectiveRow(R.string.subscription_ignored_autoconnect_label, onOff)
+        KEY_PING_ON_OPEN -> IgnoredDirectiveRow(R.string.subscription_ignored_ping_on_open_label, onOff)
+        KEY_PIN -> IgnoredDirectiveRow(R.string.subscription_ignored_pin_label, onOff)
+        KEY_AUTOCONNECT_TYPE ->
+            when (raw.lowercase()) {
+                "lastused" -> R.string.subscription_ignored_value_last_used
+                "lowestdelay" -> R.string.subscription_ignored_value_lowest_delay
+                "random" -> R.string.subscription_ignored_value_random
+                else -> null
+            }?.let { IgnoredDirectiveRow(R.string.subscription_ignored_autoconnect_type_label, it) }
+        else -> null
     }
 }

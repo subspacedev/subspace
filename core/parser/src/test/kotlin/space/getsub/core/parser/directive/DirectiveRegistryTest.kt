@@ -63,6 +63,21 @@ class DirectiveRegistryTest {
     }
 
     @Test
+    fun theFourAutomationDirectivesAreStoredAndActedOnByNobody() {
+        // M10-C spec §3.5: the owner's own settings decide, so these parse and are kept, nothing reads them.
+        mapOf(
+            "subscription-autoconnect" to "true",
+            "subscription-autoconnect-type" to "LowestDelay",
+            "subscription-ping-onopen-enabled" to "1",
+            "subscription-pin" to "true",
+        ).forEach { (key, value) ->
+            val spec = DirectiveRegistry.spec(key).shouldNotBeNull()
+            spec.consumer shouldBe Consumer.None
+            (spec.kind.canonicalise(value) is KindResult.Canonical) shouldBe true
+        }
+    }
+
+    @Test
     fun announceIsConsumedByRelease() {
         DirectiveRegistry.spec("announce")?.consumer shouldBe Consumer.Release
     }

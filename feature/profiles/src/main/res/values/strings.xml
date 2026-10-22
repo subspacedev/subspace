@@ -567,6 +567,15 @@
     <string name="subscription_row_value_seconds">%1$s s</string>
     <string name="subscription_row_value_on">On</string>
     <string name="subscription_row_value_off">Off</string>
+    <!-- M10-C spec §3.5: provider directives that are stored and deliberately not acted on. -->
+    <string name="subscription_ignored_autoconnect_label">Provider asks to connect automatically</string>
+    <string name="subscription_ignored_autoconnect_type_label">Provider\'s choice of server</string>
+    <string name="subscription_ignored_ping_on_open_label">Provider asks to test servers on open</string>
+    <string name="subscription_ignored_pin_label">Provider asks to pin this subscription</string>
+    <string name="subscription_ignored_value_last_used">Last used</string>
+    <string name="subscription_ignored_value_lowest_delay">Lowest delay</string>
+    <string name="subscription_ignored_value_random">Random</string>
+    <string name="subscription_ignored_note">Not applied: Subspace\'s own settings decide</string>
     <!-- %1$s/%2$s are already-formatted values (e.g. "6 h"/"24 h", or "Off"/"On") — spec D3's
          required UI consequence, verbatim: "provider suggests 6 h · you pinned 24 h". -->
     <string name="subscription_row_pinned_declined">Provider suggests %1$s · you pinned %2$s</string>

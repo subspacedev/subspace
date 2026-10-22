@@ -315,7 +315,7 @@ private fun DetailBody(
         }
         SentToProviderSection(state = state, actions = actions)
         ReachSection(state = state, actions = actions)
-        if (state.rows.isNotEmpty()) {
+        if (state.rows.isNotEmpty() || state.ignoredRows.isNotEmpty()) {
             DirectivesSection(state = state, actions = actions)
         }
 
@@ -603,6 +603,26 @@ private fun DirectivesSection(
         state.rows.forEach { row ->
             DirectiveRowView(row = row, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow)
         }
+        state.ignoredRows.forEach { row -> IgnoredRowView(row) }
+    }
+}
+
+/** A provider directive nothing acts on (M10-C spec §3.5): label, the provider's value, and why it did nothing. */
+@Composable
+private fun IgnoredRowView(
+    row: IgnoredDirectiveRow,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = FIELD_GAP)) {
+        Text(
+            text = stringResource(row.labelRes) + ": " + stringResource(row.valueRes),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = stringResource(R.string.subscription_ignored_note),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

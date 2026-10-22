@@ -87,6 +87,17 @@ internal data class SettingRowState(
  */
 internal enum class DirectiveRowKind { Hours, Seconds, Toggle }
 
+/**
+ * A provider directive Subspace stores and deliberately does not act on (M10-C spec §3.5), shown so the
+ * user can see why the provider's instruction did nothing. Read-only: there is nothing to pin.
+ *
+ * @property valueRes the provider's value in plain words, built only from what the registry validated.
+ */
+internal data class IgnoredDirectiveRow(
+    @param:StringRes val labelRes: Int,
+    @param:StringRes val valueRes: Int,
+)
+
 /** One directive row: [row]'s resolved value plus enough to render and edit it. */
 internal data class DirectiveRow(
     val kind: DirectiveRowKind,
@@ -178,6 +189,9 @@ internal fun StoredSubscription.toLastFetchState(): LastFetchState {
  * @property rows one row per user-facing directive this build actually reads — never all ~90
  *   registry keys. A row for a key nothing consumes would let a user pin a value that changes
  *   nothing, which is exactly the plausible-but-unwired UI M3 spec §1.1 forbids.
+ * @property ignoredRows the one named exception to that rule (M10-C spec §3.5): the four automation
+ *   directives a provider may send and Subspace ignores. Present only for a key the provider actually
+ *   sent, and read-only, so it cannot be the unwired control §1.1 forbids.
  * @property notFound `true` once the id this screen was given resolves to no stored
  *   subscription — a stale deep link, or the row this screen itself just [deleted].
  * @property deleted `true` once [id]'s own delete has actually completed, so the screen can
@@ -208,6 +222,7 @@ internal data class SubscriptionDetailState(
     /** What the provider's `change-user-agent` directive currently suggests, if any. */
     val providerUserAgent: String? = null,
     val rows: List<DirectiveRow> = emptyList(),
+    val ignoredRows: List<IgnoredDirectiveRow> = emptyList(),
     val isRefreshing: Boolean = false,
     val refreshResult: UserMessage? = null,
     val deleted: Boolean = false,

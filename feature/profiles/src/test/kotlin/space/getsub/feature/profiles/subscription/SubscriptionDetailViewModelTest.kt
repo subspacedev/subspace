@@ -49,6 +49,7 @@ import space.getsub.core.model.identity.HwidResult
 import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.RouteExclusionRequest
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,7 +60,10 @@ class SubscriptionDetailViewModelTest {
             MutableStateFlow(
                 listOf(ProfileGroup(id = GROUP_ID, name = "Provider", profiles = emptyList())),
             )
-        private val providerValues =
+        var extraProviderValues: Map<String, String> = emptyMap()
+        private val providerValues
+            get() = baseProviderValues + extraProviderValues
+        private val baseProviderValues =
             mapOf(
                 KEY_INTERVAL to "6",
                 KEY_TIMEOUT to "9",
@@ -458,6 +462,31 @@ class SubscriptionDetailViewModelTest {
             state.headers[DeviceHeader.Model] shouldBe HeaderRowState(true, null, "Pixel 8")
             // A device value with nothing sendable left has no value to show.
             state.headers[DeviceHeader.AppVersion] shouldBe HeaderRowState(true, null, null)
+        }
+
+    @Test
+    fun aProviderAutomationDirectiveShowsAsNotApplied() =
+        runTest {
+            source.extraProviderValues =
+                mapOf("subscription-autoconnect" to "true", "subscription-autoconnect-type" to "lowestdelay")
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows.map { it.labelRes to it.valueRes } shouldBe
+                listOf(
+                    R.string.subscription_ignored_autoconnect_label to R.string.subscription_row_value_on,
+                    R.string.subscription_ignored_autoconnect_type_label to
+                        R.string.subscription_ignored_value_lowest_delay,
+                )
+        }
+
+    @Test
+    fun noProviderAutomationDirectiveMeansNoNotAppliedRow() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows shouldBe emptyList()
         }
 
     @Test

@@ -236,9 +236,8 @@ internal constructor(
      * **Ours, and on by default.** Latency results are session-scoped, so a cold
      * start has none and a "Fastest" sort would be empty until the user tapped
      * something. This is what refills it, for every group including a `MANUAL`
-     * one with no provider at all. `subscription-ping-onopen-enabled` can
-     * override this for a single subscription's group; it does not own the
-     * feature.
+     * one with no provider at all. A provider's `subscription-ping-onopen-enabled`
+     * is stored but ignored (M10-C spec §3.5); this setting alone decides.
      */
     public val pingOnLaunch: Flow<Boolean> =
         dao.observe(KEY_PING_ON_LAUNCH).map { stored -> stored?.toBooleanStrictOrNull() ?: true }
