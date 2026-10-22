@@ -65,6 +65,13 @@ class FastestPickTest {
     }
 
     @Test
+    fun anActiveServerExcludedByMarkersDoesNotWinATie() {
+        val cands = listOf(c(1, "Example LTE", 1), c(2, "B", 2))
+        val results = mapOf(1L to ok(30), 2L to ok(30))
+        pickFastest(cands, results, NetworkKind.Wifi, true, 1L) shouldBe 2L
+    }
+
+    @Test
     fun nullWhenNothingQualifies() {
         val cands = listOf(c(1, "X LTE"), c(2, "Plain"))
         val results = mapOf(1L to ok(10), 2L to LatencyResult.failed(LatencyOutcome.UNREACHABLE))

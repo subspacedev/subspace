@@ -5,7 +5,7 @@ package space.getsub.core.model.automation
 import java.util.Locale
 
 /**
- * A server-name hint that a server suits only one kind of network (M10-C spec §3.1).
+ * A server-name hint that a server suits only one kind of network (M10-C spec §3.3).
  * Providers write it into the name, so it is read, never stored.
  */
 public enum class NetworkMarker { WifiOnly, MobileOnly }

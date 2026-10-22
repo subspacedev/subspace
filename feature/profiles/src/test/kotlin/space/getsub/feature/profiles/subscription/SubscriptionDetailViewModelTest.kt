@@ -481,6 +481,21 @@ class SubscriptionDetailViewModelTest {
         }
 
     @Test
+    fun theProvidersPinAndPingOnOpenShowAsNotApplied() =
+        runTest {
+            source.extraProviderValues =
+                mapOf("subscription-ping-onopen-enabled" to "true", "subscription-pin" to "false")
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows.map { it.labelRes to it.valueRes } shouldBe
+                listOf(
+                    R.string.subscription_ignored_ping_on_open_label to R.string.subscription_row_value_on,
+                    R.string.subscription_ignored_pin_label to R.string.subscription_row_value_off,
+                )
+        }
+
+    @Test
     fun noProviderAutomationDirectiveMeansNoNotAppliedRow() =
         runTest {
             viewModel.load(SUBSCRIPTION_ID)

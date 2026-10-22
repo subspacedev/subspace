@@ -23,7 +23,7 @@ public data class PickCandidate(
 }
 
 /**
- * The id of the fastest server, or null when none qualifies (M10-C spec §3.2).
+ * The id of the fastest server, or null when none qualifies (M10-C spec §3.1).
  *
  * Only OK results count. With [useMarkers], servers whose name marks them for another network
  * are skipped. A tie goes to [activeId] (no needless reconnect), then to the lower list index.

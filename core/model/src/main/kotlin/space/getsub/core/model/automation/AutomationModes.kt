@@ -2,7 +2,7 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.core.model.automation
 
-/** Which server "Connect automatically" picks (M10-C spec §3.2). [wire] is the stored value. */
+/** Which server "Connect automatically" picks (M10-C spec §3.1). [wire] is the stored value. */
 public enum class AutoConnectMode(
     public val wire: String,
 ) {
@@ -15,7 +15,7 @@ public enum class AutoConnectMode(
 public fun autoConnectModeFrom(wire: String?): AutoConnectMode =
     AutoConnectMode.entries.firstOrNull { it.wire == wire } ?: AutoConnectMode.LastPicked
 
-/** Which servers the test-on-open run measures (M10-C spec §3.3). [wire] is the stored value. */
+/** Which servers the test-on-open run measures (M10-C spec §3.2). [wire] is the stored value. */
 public enum class LaunchTestScope(
     public val wire: String,
 ) {

@@ -28,6 +28,24 @@ class NetworkMarkerTest {
     }
 
     @Test
+    fun aDigitOrLetterNextToAWordJoinsIt() {
+        networkMarkerOf("Wi-Fi5") shouldBe null
+    }
+
+    @Test
+    fun punctuationBoundsAWord() {
+        networkMarkerOf("LTE-Moscow") shouldBe NetworkMarker.MobileOnly
+        networkMarkerOf("4G/LTE") shouldBe NetworkMarker.MobileOnly
+    }
+
+    @Test
+    fun aWordAtEitherEndOfTheName() {
+        networkMarkerOf("WI-FI Example") shouldBe NetworkMarker.WifiOnly
+        networkMarkerOf("Example WI-FI") shouldBe NetworkMarker.WifiOnly
+        networkMarkerOf("WI-FI") shouldBe NetworkMarker.WifiOnly
+    }
+
+    @Test
     fun wordsFromBothListsCountAsUnmarked() {
         networkMarkerOf("WIFI and LTE") shouldBe null
     }
