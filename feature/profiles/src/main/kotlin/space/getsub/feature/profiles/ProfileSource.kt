@@ -257,6 +257,9 @@ internal interface ProfileSource {
     /** What each device header would carry were it following this device — see [DeviceHeaderValues.sanitised]. */
     fun deviceHeaderValues(): Map<DeviceHeader, String?>
 
+    /** Headers whose device value was cleaned up but is still sent — see [DeviceHeaderValues.adjusted]. */
+    fun adjustedDeviceHeaders(): Set<DeviceHeader> = emptySet()
+
     /** Stores [id]'s own HWID — see [SubscriptionRepository.setHwid]. Throws on an invalid value. */
     suspend fun setHwid(
         id: Long,
@@ -579,6 +582,8 @@ constructor(
     override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = subscriptionRepository.identity(id)
 
     override fun deviceHeaderValues(): Map<DeviceHeader, String?> = deviceHeaderValues.sanitised()
+
+    override fun adjustedDeviceHeaders(): Set<DeviceHeader> = deviceHeaderValues.adjusted()
 
     override suspend fun setHwid(
         id: Long,

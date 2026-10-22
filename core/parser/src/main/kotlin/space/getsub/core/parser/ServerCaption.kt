@@ -20,9 +20,13 @@ internal fun splitCaption(fragment: String): NamedCaption {
     val at = fragment.indexOf(CAPTION_KEY)
     if (at < 0) return NamedCaption(fragment, null)
     val decoded = decodeBase64Tolerant(fragment.substring(at + CAPTION_KEY.length))
-    val caption = decoded?.let(::clampCaption)
+    // A decode that is not clean text (a replacement character or a control character) is not a
+    // caption: the whole string stays the name, like an undecodable suffix.
+    val caption = decoded?.takeIf(::isCleanText)?.let(::clampCaption)
     return if (caption == null) NamedCaption(fragment, null) else NamedCaption(fragment.substring(0, at), caption)
 }
+
+private fun isCleanText(text: String): Boolean = text.none { it == '\uFFFD' || Character.isISOControl(it) }
 
 /** A caption from a plain-text source (the VMess JSON field); trimmed and bounded like the link form. */
 internal fun clampCaption(text: String): String? {

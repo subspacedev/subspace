@@ -103,6 +103,8 @@ class SubscriptionDetailViewModelTest {
                 DeviceHeader.Model to "Pixel 8",
                 DeviceHeader.AppVersion to null,
             )
+        var adjusted: Set<DeviceHeader> = emptySet()
+        override fun adjustedDeviceHeaders(): Set<DeviceHeader> = adjusted
         override suspend fun setHwid(id: Long, hwid: String) {
             storedHwids += hwid
             identity.value = identity.value?.copy(hwid = hwid)
@@ -495,6 +497,42 @@ class SubscriptionDetailViewModelTest {
             viewModel.state.value.hwidError shouldBe true
             viewModel.onHwidDraftChanged("abcDEF1234")
             viewModel.state.value.hwidError shouldBe false
+        }
+
+    @Test
+    fun cancellingAnHwidEditResetsTheDraftToNothingSoTheStoredValueShows() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+            viewModel.onHwidDraftChanged("typed-but-abandoned")
+
+            viewModel.onHwidEditCancelled()
+
+            viewModel.state.value.hwidDraft shouldBe OLD_HWID
+            viewModel.onHwidSave() shouldBe true // no draft left: nothing to store
+            source.storedHwids shouldBe emptyList()
+        }
+
+    @Test
+    fun theHwidDraftIsNeverPrintedByToString() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            viewModel.onHwidDraftChanged("secret-draft-0123")
+
+            val ephemeral = viewModel.javaClass.getDeclaredField("ephemeral").apply { isAccessible = true }
+                .get(viewModel)
+            ephemeral!!.toString().contains("secret-draft-0123") shouldBe false
+        }
+
+    @Test
+    fun aHeaderThatWasCleanedUpIsMarkedAdjusted() =
+        runTest {
+            source.adjusted = setOf(DeviceHeader.Model)
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.headers[DeviceHeader.Model]!!.deviceValueAdjusted shouldBe true
+            viewModel.state.value.headers[DeviceHeader.Os]!!.deviceValueAdjusted shouldBe false
         }
 
     @Test

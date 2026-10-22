@@ -37,7 +37,7 @@ public annotation class AppVersion
 @Module
 @InstallIn(SingletonComponent::class)
 internal abstract class NetworkModule {
-    /** Only the 8 to 9 migration's legacy value and the Settings page still read this (M10-B spec §3.5). */
+    /** Only the Room 8 to 9 migration still reads this, for the legacy value (M10-B spec §3.5). */
     @Binds
     @Singleton
     abstract fun bindHwidProvider(impl: AndroidHwidProvider): HwidProvider

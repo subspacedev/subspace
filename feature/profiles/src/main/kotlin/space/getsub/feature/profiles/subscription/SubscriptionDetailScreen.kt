@@ -149,6 +149,7 @@ fun SubscriptionDetailScreen(
             onHwidEnabledChanged = viewModel::onHwidEnabledChanged,
             onHwidDraftChanged = viewModel::onHwidDraftChanged,
             onHwidSave = viewModel::onHwidSave,
+            onHwidEditCancelled = viewModel::onHwidEditCancelled,
             onHwidRandom = viewModel::onHwidRandom,
             onHeaderEnabledChanged = viewModel::onHeaderEnabledChanged,
             onHeaderLiteralSave = viewModel::onHeaderLiteralSave,
@@ -191,6 +192,7 @@ internal data class SubscriptionDetailActions(
     // M10-B spec §3.5. Defaulted so callers that do not show the section need not wire it.
     val onHwidDraftChanged: (String) -> Unit = {},
     val onHwidSave: () -> Boolean = { true },
+    val onHwidEditCancelled: () -> Unit = {},
     val onHwidRandom: () -> Unit = {},
     val onHeaderEnabledChanged: (DeviceHeader, Boolean) -> Unit = { _, _ -> },
     val onHeaderLiteralSave: (DeviceHeader, String) -> Boolean = { _, _ -> true },
@@ -828,6 +830,28 @@ private fun SentToProviderSection(
     }
 }
 
+/** A new HWID makes the provider see a new device, so it is never one tap away. */
+@Composable
+private fun NewHwidButton(onConfirmed: () -> Unit) {
+    var confirming by remember { mutableStateOf(false) }
+    TextButton(onClick = { confirming = true }) {
+        Text(stringResource(R.string.subscription_detail_hwid_random))
+    }
+    if (confirming) {
+        SubspaceDialog(
+            title = stringResource(R.string.subscription_detail_hwid_random_confirm_title),
+            body = stringResource(R.string.subscription_detail_hwid_random_confirm_text),
+            confirmLabel = stringResource(R.string.subscription_detail_hwid_random_confirm),
+            onConfirm = {
+                confirming = false
+                onConfirmed()
+            },
+            dismissLabel = stringResource(R.string.subscription_row_edit_dialog_cancel),
+            onDismiss = { confirming = false },
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HwidBlock(
@@ -866,7 +890,7 @@ private fun HwidBlock(
             }
             TextButton(
                 onClick = {
-                    actions.onHwidDraftChanged(state.hwid)
+                    actions.onHwidEditCancelled()
                     editing = false
                 },
             ) { Text(stringResource(R.string.subscription_row_edit_dialog_cancel)) }
@@ -882,9 +906,7 @@ private fun HwidBlock(
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
             TextButton(onClick = { editing = true }) { Text(stringResource(R.string.subscription_detail_hwid_edit)) }
-            TextButton(onClick = actions.onHwidRandom) {
-                Text(stringResource(R.string.subscription_detail_hwid_random))
-            }
+            NewHwidButton(onConfirmed = actions.onHwidRandom)
             TextButton(
                 onClick = {
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, state.hwid))) }
@@ -921,6 +943,9 @@ private fun HeaderBlock(
     )
     if (row.enabled && followed && row.deviceValue == null) {
         ReachFact(stringResource(R.string.subscription_detail_header_not_sent))
+    }
+    if (followed && row.deviceValue != null && row.deviceValueAdjusted) {
+        ReachFact(stringResource(R.string.subscription_detail_header_adjusted))
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
         TextButton(onClick = { dialogOpen = true }) { Text(stringResource(R.string.subscription_detail_header_edit)) }

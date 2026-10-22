@@ -83,4 +83,17 @@ internal constructor(
     /** Read on every call: the values are live, and an OS or app update changes them. */
     public fun sanitised(): Map<DeviceHeader, String?> =
         DeviceHeader.entries.associateWith { HeaderValue.sanitiseDevice(device.valueOf(it, appVersion)) }
+
+    /**
+     * The headers whose device value had characters removed to become sendable but still has
+     * something left to send. The screen says so (M10-B spec §3.5), as the sanitised value alone
+     * would read as the device's own.
+     */
+    public fun adjusted(): Set<DeviceHeader> =
+        DeviceHeader.entries
+            .filterTo(mutableSetOf()) {
+                val raw = device.valueOf(it, appVersion)
+                val sent = HeaderValue.sanitiseDevice(raw)
+                sent != null && sent != raw
+            }
 }

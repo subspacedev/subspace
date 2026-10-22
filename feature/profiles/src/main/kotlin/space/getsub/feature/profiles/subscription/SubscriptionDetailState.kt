@@ -98,6 +98,8 @@ internal data class DirectiveRow(
  * One device header as the "Sent to the provider" section shows it (M10-B spec §3.5).
  *
  * @property literal the user's own value, or `null` while the header follows this device.
+ * @property deviceValueAdjusted `true` when sanitising removed characters from [deviceValue] and it is
+ *   still sent, which the row says (M10-B spec §3.5).
  * @property deviceValue this device's value after sanitising, for "follows this device: ..."; `null`
  *   when nothing sendable is left, in which case the header is not sent.
  */
@@ -105,11 +107,12 @@ internal data class HeaderRowState(
     val enabled: Boolean,
     val literal: String?,
     val deviceValue: String?,
+    val deviceValueAdjusted: Boolean = false,
 ) {
     // ARCHITECTURE.md §5.6: header values are identifying, so neither one reaches a log.
     override fun toString(): String =
         "HeaderRowState(enabled=$enabled, literal=${redactedOrNone(literal)}, " +
-            "deviceValue=${redactedOrNone(deviceValue)})"
+            "deviceValue=${redactedOrNone(deviceValue)}, deviceValueAdjusted=$deviceValueAdjusted)"
 }
 
 /**

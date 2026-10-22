@@ -266,6 +266,13 @@ internal fun AddServerSheetContent(
         )
 
         if (state.showsSubscriptionHwid) SubscriptionHwidField(state, actions)
+        if (state.showsAlreadyAddedHint) {
+            Text(
+                text = stringResource(R.string.import_hwid_already_added),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         Button(
             onClick = actions.onImportClick,

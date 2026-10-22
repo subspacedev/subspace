@@ -2520,7 +2520,8 @@ Requirements:
       first fetch do not each use up a slot.
 - [x] **Migration keeps what is sent today.** Existing subscriptions get the
       HWID they already send (the former derived hash) copied into their own
-      row, and a subscription whose global HWID switch was off starts with its
+      row, and the former single global HWID switch is folded into every
+      subscription: if it was off, every subscription starts with its own
       switch off. Nobody's device slot changes on upgrade (Room 8 to 9).
 - [x] **Switches are per subscription**, replacing the global default-on
       toggle. Switching the HWID off is allowed and the UI says it will break

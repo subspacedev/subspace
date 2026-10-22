@@ -97,6 +97,7 @@
     <string name="import_paste_placeholder">Link, subscription URL or Xray JSON</string>
     <string name="import_button">Add</string>
     <string name="import_hwid_label">Device ID (HWID)</string>
+    <string name="import_hwid_already_added">This subscription is already added; its device ID is in its details.</string>
     <string name="import_hwid_hint">Paste the ID from a previous install to keep your device slot.</string>
     <string name="import_from_file_button">Import from file</string>
     <!-- Task 20 fix round 1: opens the shared QrScanner. A scanned payload feeds the
@@ -521,12 +522,16 @@
     <string name="subscription_detail_hwid_format">10 to 64 letters, digits, = or -</string>
     <string name="subscription_detail_hwid_edit">Edit</string>
     <string name="subscription_detail_hwid_random">New random ID</string>
+    <string name="subscription_detail_hwid_random_confirm_title">Make a new device ID?</string>
+    <string name="subscription_detail_hwid_random_confirm_text">The provider will see this device as new. It may count against your device limit.</string>
+    <string name="subscription_detail_hwid_random_confirm">Make new</string>
+    <string name="subscription_detail_header_adjusted">Adjusted: some characters can\'t be sent.</string>
     <string name="subscription_detail_hwid_copy">Copy</string>
     <string name="subscription_detail_hwid_save">Save</string>
 
     <!-- %1$s = this device's value for the header, e.g. a phone model. -->
     <string name="subscription_detail_header_follows">Follows this device: %1$s</string>
-    <string name="subscription_detail_header_not_sent">Not sent: this device\'s value has characters providers can\'t receive.</string>
+    <string name="subscription_detail_header_not_sent">Not sent: this device has no value providers can receive.</string>
     <string name="subscription_detail_header_format">1 to 128 printable ASCII characters</string>
     <string name="subscription_detail_header_edit">Edit</string>
     <string name="subscription_detail_header_reset">Reset to this device</string>

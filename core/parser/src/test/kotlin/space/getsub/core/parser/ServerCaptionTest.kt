@@ -33,6 +33,25 @@ class ServerCaptionTest {
     }
 
     @Test
+    fun `a caption decoding to a replacement character is not a caption`() {
+        // 0xFF is not valid UTF-8 on its own; a lenient decoder turns it into U+FFFD.
+        val garbled = Base64.getEncoder().encodeToString(byteArrayOf(0x68, 0xFF.toByte(), 0x69))
+        val profile = trojan("Berlin?serverDescription=$garbled")
+
+        profile.name shouldBe "Berlin?serverDescription=$garbled"
+        profile.caption shouldBe null
+    }
+
+    @Test
+    fun `a caption containing a control character is not a caption`() {
+        val fragment = "Berlin?serverDescription=" + b64("line one\nline two")
+        val profile = trojan(fragment)
+
+        profile.name shouldBe fragment
+        profile.caption shouldBe null
+    }
+
+    @Test
     fun `a caption over 30 characters is truncated to 30`() {
         val profile = trojan("Berlin?serverDescription=" + b64("x".repeat(45)))
 

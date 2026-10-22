@@ -287,6 +287,22 @@ class SubscriptionRepositoryTest {
     }
 
     @Test
+    fun addRejectsAnInvalidHwidAndStoresNothing() = runTest {
+        shouldThrow<IllegalArgumentException> {
+            repository.add("https://example.com/sub", name = "Provider", hwid = "short")
+        }
+
+        repository.observeSubscriptions().first().size shouldBe 0
+    }
+
+    @Test
+    fun addStoresTheHwidTrimmed() = runTest {
+        val id = repository.add("https://example.com/sub", name = "Provider", hwid = "  abcDEF1234  ").id
+
+        repository.identity(id).first()!!.hwid shouldBe "abcDEF1234"
+    }
+
+    @Test
     fun eachHeaderSettingIsStoredOnItsOwn() = runTest {
         val id = repository.add("https://example.com/sub", name = "Provider", hwid = Hwid.random()).id
 

@@ -108,6 +108,18 @@ class ImportViewModelTest {
             """"port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]}}]}"""
     private val validRawJsonArray = "[$validRawJsonArrayElement]"
 
+    private fun storedSubscription(url: String) =
+        StoredSubscription(
+            id = 42L,
+            groupId = 1L,
+            url = url,
+            userAgentOverride = null,
+            hwidEnabled = true,
+            lastFetchedAt = null,
+            lastFetchStatus = null,
+            lastFetchDetail = null,
+        )
+
     private class FakeProfileSource : ProfileSource {
         private val stored = mutableMapOf<Long, StoredProfile>()
         private var nextId = 1L
@@ -251,7 +263,9 @@ class ImportViewModelTest {
 
         // Not exercised — ImportViewModel never reads either. Task 14's
         // real coverage lives in ServersViewModelTest.
-        override fun observeSubscriptions(): Flow<List<StoredSubscription>> = MutableStateFlow(emptyList())
+        val storedSubscriptions = MutableStateFlow<List<StoredSubscription>>(emptyList())
+
+        override fun observeSubscriptions(): Flow<List<StoredSubscription>> = storedSubscriptions
 
         override fun observeUserInfo(id: Long): Flow<String?> = MutableStateFlow(null)
 
@@ -658,6 +672,52 @@ class ImportViewModelTest {
             viewModel.onSubscriptionHwidChanged("fixed-hwid-0123")
             viewModel.state.value.subscriptionHwidError shouldBe false
         }
+
+    @Test
+    fun aHwidTheUserTypedSurvivesTheUrlBrieflyBecomingInvalid() =
+        runTest {
+            val viewModel = ImportViewModel(FakeProfileSource())
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.onSubscriptionHwidChanged("EDITED-hwid-0123")
+            viewModel.onInputChanged("https://example.com/su") // still a URL
+            viewModel.onInputChanged("") // not one
+            viewModel.state.value.subscriptionHwid shouldBe ""
+            viewModel.onInputChanged("https://example.com/sub")
+
+            viewModel.state.value.subscriptionHwid shouldBe "EDITED-hwid-0123"
+        }
+
+    @Test
+    fun anAlreadyStoredUrlHidesTheFieldAndANonsenseValueCannotBlockTheAdd() =
+        runTest {
+            val repository = FakeProfileSource()
+            repository.existingSubscriptionId = 42L
+            repository.storedSubscriptions.value = listOf(storedSubscription("https://example.com/sub"))
+            val viewModel = ImportViewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.onInputChanged("https://example.com/sub")
+            viewModel.state.value.showsSubscriptionHwid shouldBe false
+            viewModel.state.value.showsAlreadyAddedHint shouldBe true
+
+            viewModel.onSubscriptionHwidChanged("short")
+            viewModel.submit(viewModel.state.value.input)
+            advanceUntilIdle()
+
+            viewModel.state.value.subscriptionHwidError shouldBe false
+            repository.addSubscriptionCallCount shouldBe 1
+        }
+
+    @Test
+    fun importStateNeverPrintsThePastedTextOrTheHwid() {
+        val state = ImportState(input = "vless://secret-pasted-config", subscriptionHwid = "secret-hwid-0123")
+
+        val text = state.toString()
+
+        text.contains("secret-pasted-config") shouldBe false
+        text.contains("secret-hwid-0123") shouldBe false
+    }
 
     @Test
     fun aSuccessfulAddClearsTheFieldAndForgetsTheGeneratedValue() =

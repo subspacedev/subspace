@@ -224,14 +224,20 @@ internal constructor(
      * [hwid] is stored as this subscription's own identity and never derived again (M10-B spec
      * §3.5). The add flow passes the value it generated once per URL, so every retry of a failed
      * first fetch sends the same one. It has no default on purpose: a caller that could omit it could
-     * mint a fresh one per attempt. It is ignored when [url] is already stored (`created = false`).
+     * mint a fresh one per attempt. It is ignored when [url] is already stored (`created = false`),
+     * but it is validated first either way, as [setHwid] does, and stored trimmed.
+     *
+     * @throws IllegalArgumentException when [hwid] does not match the panel's format.
      */
     public suspend fun add(
         url: String,
         name: String,
         hwid: String,
-    ): AddedSubscription =
-        addMutex.withLock {
+    ): AddedSubscription {
+        val validHwid = Hwid.validate(hwid) as? HwidResult.Valid
+        // ARCHITECTURE.md §5.6: the message names the rule, never the value.
+        requireNotNull(validHwid) { "HWID does not match the panel's format" }
+        return addMutex.withLock {
             // One transaction, not two committed writes. The group insert and the subscription
             // insert used to commit independently, so a failure or a cancellation between them
             // left a `source = "SUBSCRIPTION"` group with no subscription behind it — a group the
@@ -267,11 +273,12 @@ internal constructor(
                         hostHeader = link.hostHeader,
                         linkFragment = link.fragment,
                         insecureIgnored = link.insecure,
-                        hwid = hwid,
+                        hwid = validHwid.value,
                     ),
                 ).let { AddedSubscription(it, created = true) }
             }
         }
+    }
 
     /**
      * Deletes a subscription and everything it owns, including routing profiles and generations.

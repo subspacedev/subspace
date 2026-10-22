@@ -97,6 +97,24 @@ class SubscriptionDetailSnapshotTest {
                 (DeviceHeader.Model to HeaderRowState(enabled = true, literal = null, deviceValue = null)),
         )
 
+    // M10-B spec §3.5: a device value that had to be cleaned up says so.
+    private val adjusted =
+        fetched.copy(
+            refreshResult = null,
+            rows = emptyList(),
+            headers =
+            fetched.headers +
+                (
+                    DeviceHeader.Model to
+                        HeaderRowState(
+                            enabled = true,
+                            literal = null,
+                            deviceValue = "Pixel 8",
+                            deviceValueAdjusted = true,
+                        )
+                    ),
+        )
+
     private val neverFetched =
         SubscriptionDetailState(
             subscriptionId = 2L,
@@ -150,6 +168,9 @@ class SubscriptionDetailSnapshotTest {
 
     @Test
     fun aDeviceValueThatCannotBeSentSaysSo() = shoot("subscription-device-value-not-sent", notSent)
+
+    @Test
+    fun aDeviceValueThatWasAdjustedSaysSo() = shoot("subscription-device-value-adjusted", adjusted)
 
     @Test
     fun neverFetched() = shoot("subscription-never-fetched", neverFetched)

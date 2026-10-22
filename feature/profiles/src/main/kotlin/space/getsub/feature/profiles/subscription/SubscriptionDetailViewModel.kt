@@ -317,9 +317,10 @@ constructor(
     /** One row per device header; a header with no stored setting follows the device, like a new subscription. */
     private fun headerRows(identity: SubscriptionIdentity?): Map<DeviceHeader, HeaderRowState> {
         val deviceValues = profileSource.deviceHeaderValues()
+        val adjusted = profileSource.adjustedDeviceHeaders()
         return DeviceHeader.entries.associateWith { header ->
             val setting = identity?.headers?.get(header) ?: HeaderSetting(enabled = true, literal = null)
-            HeaderRowState(setting.enabled, setting.literal, deviceValues[header])
+            HeaderRowState(setting.enabled, setting.literal, deviceValues[header], header in adjusted)
         }
     }
 
@@ -432,6 +433,11 @@ constructor(
                 true
             }
         }
+    }
+
+    /** Abandons the HWID edit: the stored value shows again. */
+    fun onHwidEditCancelled() {
+        ephemeral.value = ephemeral.value.copy(hwidDraft = null, hwidError = false)
     }
 
     /** Replaces the HWID with a fresh random one. */
@@ -569,5 +575,10 @@ constructor(
         val isRefreshing: Boolean = false,
         val refreshResult: UserMessage? = null,
         val deleted: Boolean = false,
-    )
+    ) {
+        // ARCHITECTURE.md §5.6: the draft is an identifier being typed; keep it out of any log.
+        override fun toString(): String =
+            "Ephemeral(hwidDraft=${if (hwidDraft == null) "none" else "<redacted>"}, hwidError=$hwidError, " +
+                "isRefreshing=$isRefreshing, refreshResult=$refreshResult, deleted=$deleted)"
+    }
 }

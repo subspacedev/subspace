@@ -76,4 +76,20 @@ class SubscriptionIdentityResolveTest {
 
         resolved.containsKey(DeviceHeader.Model) shouldBe false
     }
+
+    @Test
+    fun `a device value that lost characters but still has some is reported as adjusted`() {
+        val values = DeviceHeaderValues(device(model = "Pixel \u00e9 8", osVersion = "15"), "1.0")
+
+        values.adjusted() shouldBe setOf(DeviceHeader.Model)
+        values.sanitised()[DeviceHeader.Model] shouldBe "Pixel  8"
+    }
+
+    @Test
+    fun `a value with nothing left is not adjusted, it is not sent`() {
+        val values = DeviceHeaderValues(device(model = "\u00e9\u00e9", osVersion = "15"), "1.0")
+
+        values.adjusted() shouldBe emptySet()
+        values.sanitised()[DeviceHeader.Model] shouldBe null
+    }
 }
