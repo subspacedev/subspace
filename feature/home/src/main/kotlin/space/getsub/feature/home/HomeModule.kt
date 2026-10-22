@@ -6,6 +6,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import space.getsub.core.data.SettingsRepository
@@ -13,6 +16,15 @@ import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Profile
 import space.getsub.core.model.TrafficSample
+import space.getsub.feature.home.launch.AndroidNetworkKindReader
+import space.getsub.feature.home.launch.BoundLaunchLatency
+import space.getsub.feature.home.launch.BoundLaunchServers
+import space.getsub.feature.home.launch.BoundLaunchSettings
+import space.getsub.feature.home.launch.LaunchAutomationScope
+import space.getsub.feature.home.launch.LaunchLatency
+import space.getsub.feature.home.launch.LaunchServers
+import space.getsub.feature.home.launch.LaunchSettings
+import space.getsub.feature.home.launch.NetworkKindReader
 import space.getsub.service.TunnelClient
 import space.getsub.service.latency.LatencyRuns
 import javax.inject.Inject
@@ -76,4 +88,31 @@ internal object HomeModule {
     @Provides
     @Singleton
     fun trafficPolicySource(impl: BoundTrafficPolicySource): TrafficPolicySource = impl
+
+    @Provides
+    @Singleton
+    fun launchSettings(impl: BoundLaunchSettings): LaunchSettings = impl
+
+    @Provides
+    @Singleton
+    fun launchServers(impl: BoundLaunchServers): LaunchServers = impl
+
+    @Provides
+    @Singleton
+    fun launchLatency(impl: BoundLaunchLatency): LaunchLatency = impl
+
+    @Provides
+    @Singleton
+    fun networkKindReader(impl: AndroidNetworkKindReader): NetworkKindReader = impl
+
+    /**
+     * The fresh-open sequence outlives any screen, so it needs a scope of its own; the app has
+     * no injectable application scope to reuse. Main, because LatencyRuns.start is atomic only
+     * against other starts on the same thread (LaunchAutomation's KDoc). Supervised, so one
+     * failed sequence does not stop the next fresh open from running.
+     */
+    @Provides
+    @Singleton
+    @LaunchAutomationScope
+    fun launchAutomationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 }
