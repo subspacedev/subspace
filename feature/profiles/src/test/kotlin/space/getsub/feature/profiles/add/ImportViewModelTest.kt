@@ -147,6 +147,8 @@ class ImportViewModelTest {
 
         override suspend fun deleteGroup(id: Long) = Unit
 
+        override suspend fun setGroupPinned(id: Long, pinned: Boolean) = Unit
+
         // Mirrors ProfileRepository.defaultGroupId()'s "Local configs" group
         // (spec D3) — a single fixed id is enough here, nothing in this test
         // exercises group creation itself.

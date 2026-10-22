@@ -130,6 +130,15 @@ internal interface ProfileSource {
     suspend fun deleteGroup(id: Long)
 
     /**
+     * Pins [id] to the top of the Servers list, or unpins it (M10-C spec §3.4). The store
+     * orders pinned groups first; callers do not re-sort.
+     */
+    suspend fun setGroupPinned(
+        id: Long,
+        pinned: Boolean,
+    )
+
+    /**
      * The id of the *Local configs* group (spec D3), creating it on first call.
      * Where [ImportViewModel][space.getsub.feature.profiles.add.ImportViewModel]
      * lands newly imported profiles — this screen has no group picker yet.
@@ -452,6 +461,11 @@ constructor(
     // and the plain group cascade removes neither the active-routing setting
     // nor those files. It forwards to ProfileRepository for an ordinary group.
     override suspend fun deleteGroup(id: Long) = subscriptionRepository.deleteGroup(id)
+
+    override suspend fun setGroupPinned(
+        id: Long,
+        pinned: Boolean,
+    ) = profileRepository.setGroupPinned(id, pinned)
 
     override suspend fun defaultGroupId(): Long = profileRepository.defaultGroupId()
 

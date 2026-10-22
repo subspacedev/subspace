@@ -65,6 +65,8 @@ internal data class ServersGroupListActions(
     val onToggleExpand: (Long) -> Unit,
     val onRename: (ServersGroup) -> Unit,
     val onDelete: (ServersGroup) -> Unit,
+    /** "Pin to top" / "Unpin": the group id and whether it should now be pinned. */
+    val onPinChanged: (Long, Boolean) -> Unit = { _, _ -> },
     val onAddProfile: () -> Unit,
     val onProfileSelected: (Long) -> Unit,
     /** Task 21: the row's edit icon — opens `Editor(profileId)`, distinct from [onProfileSelected]. */
@@ -146,6 +148,7 @@ internal fun ServersGroupList(
                 expanded = group.id in expandedGroups,
                 onToggle = { actions.onToggleExpand(group.id) },
                 menuItems = menuItems,
+                pinned = group.pinned,
                 header = { GroupCardHeader(group, actions) },
             ) {
                 // Nothing to test or sort when the filter leaves this group without rows.
@@ -181,6 +184,20 @@ private fun groupMenuItems(
             },
         )
         add(MenuItem(SubspaceIcons.Add, stringResource(CoreR.string.group_card_add_profile)) { actions.onAddProfile() })
+        // M10-C spec §3.4: any group can be pinned, a manual one included.
+        if (group.pinned) {
+            add(
+                MenuItem(SubspaceIcons.KeepOff, stringResource(CoreR.string.group_card_unpin)) {
+                    actions.onPinChanged(group.id, false)
+                },
+            )
+        } else {
+            add(
+                MenuItem(SubspaceIcons.Keep, stringResource(CoreR.string.group_card_pin)) {
+                    actions.onPinChanged(group.id, true)
+                },
+            )
+        }
         group.subscriptionId?.let { id ->
             add(
                 MenuItem(SubspaceIcons.OpenInNew, stringResource(CoreR.string.group_card_open_detail)) {

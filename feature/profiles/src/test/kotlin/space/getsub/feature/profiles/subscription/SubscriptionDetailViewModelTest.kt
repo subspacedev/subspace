@@ -116,6 +116,7 @@ class SubscriptionDetailViewModelTest {
         override suspend fun setActiveProfile(id: Long?) = Unit
         override suspend fun renameGroup(id: Long, name: String) = Unit
         override suspend fun deleteGroup(id: Long) = Unit
+        override suspend fun setGroupPinned(id: Long, pinned: Boolean) = Unit
         override suspend fun defaultGroupId(): Long = GROUP_ID
         override suspend fun import(profiles: List<Profile>, groupId: Long): Int = 0
         override suspend fun profile(id: Long): StoredProfile? = null

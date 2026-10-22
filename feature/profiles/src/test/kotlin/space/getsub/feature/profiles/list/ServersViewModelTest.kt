@@ -190,7 +190,7 @@ class ServersViewModelTest {
      * `FakeActiveProfileSource` plays for `:feature:home`.
      */
     private class FakeProfileSource(
-        private val allGroups: List<ProfileGroup>,
+        allGroups: List<ProfileGroup>,
         private val subscriptions: List<StoredSubscription> = emptyList(),
         private val userInfoBySubscriptionId: Map<Long, String?> = emptyMap(),
     ) : ProfileSource {
@@ -209,6 +209,10 @@ class ServersViewModelTest {
             private set
         var lastDeletedGroup: Long? = null
             private set
+        val pinWrites = mutableListOf<Pair<Long, Boolean>>()
+
+        /** What the DAO's `ORDER BY pinned DESC, position, id` yields: a stable pinned-first order. */
+        private val groupsState = MutableStateFlow(allGroups)
 
         // Fix round, Important 1: what onUpdateSubscription's wiring is
         // verified against below.
@@ -227,11 +231,11 @@ class ServersViewModelTest {
             query: String,
             protocol: String?,
         ): Flow<List<ProfileGroup>> =
-            MutableStateFlow(
-                allGroups.map { g ->
+            groupsState.map { groups ->
+                groups.map { g ->
                     g.copy(profiles = g.profiles.filter { matchesQuery(it, query) && matchesProtocol(it, protocol) })
-                },
-            )
+                }
+            }
 
         private fun matchesQuery(
             profile: StoredProfile,
@@ -261,6 +265,15 @@ class ServersViewModelTest {
 
         override suspend fun deleteGroup(id: Long) {
             lastDeletedGroup = id
+        }
+
+        override suspend fun setGroupPinned(
+            id: Long,
+            pinned: Boolean,
+        ) {
+            pinWrites += id to pinned
+            groupsState.value = groupsState.value.map { if (it.id == id) it.copy(pinned = pinned) else it }
+                .sortedByDescending { it.pinned }
         }
 
         // Not exercised by this ViewModel — ServersViewModel never imports or
@@ -744,6 +757,75 @@ class ServersViewModelTest {
             val visibleGroup = subscribedViewModel.state.value.groups.single()
             visibleGroup.subscriptionId shouldBe 9L
             visibleGroup.lastFetchedAtEpochMillis shouldBe 1_700_000_000_000L
+        }
+
+    // M10-C spec §3.4: the order comes from the store (pinned first, then position); the view
+    // model passes it through and must not sort groups itself.
+    private val secondGroup = ProfileGroup(id = 2L, name = "Other", profiles = listOf(frankfurt))
+
+    @Test
+    fun `pinning a group persists it through the source`() =
+        runTest {
+            viewModel.onPinChanged(group.id, true)
+            advanceUntilIdle()
+
+            source.pinWrites shouldBe listOf(group.id to true)
+        }
+
+    @Test
+    fun `unpinning a group persists it through the source`() =
+        runTest {
+            viewModel.onPinChanged(group.id, false)
+            advanceUntilIdle()
+
+            source.pinWrites shouldBe listOf(group.id to false)
+        }
+
+    @Test
+    fun `pinned groups are listed first and carry their pinned flag`() =
+        runTest {
+            val twoGroups = FakeProfileSource(listOf(group, secondGroup))
+            val vm = ServersViewModel(twoGroups, tester)
+            advanceUntilIdle()
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
+
+            vm.onPinChanged(secondGroup.id, true)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(2L, 1L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(true, false)
+        }
+
+    @Test
+    fun `the view model keeps the order the store gives it`() =
+        runTest {
+            // The store hands a pinned group over second: a view model that sorted would flip this.
+            val unsorted = FakeProfileSource(listOf(group, secondGroup.copy(pinned = true)))
+            val vm = ServersViewModel(unsorted, tester)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, true)
+        }
+
+    @Test
+    fun `a provider's subscription-pin changes neither the order nor the pinned flag`() =
+        runTest {
+            val subscriptions = listOf(subscriptionOf(9L), subscriptionOf(10L).copy(groupId = secondGroup.id))
+            val pinSource = FakeProfileSource(listOf(group, secondGroup), subscriptions)
+            pinSource.directives[10L] = mutableMapOf("subscription-pin" to "true")
+            val vm = ServersViewModel(pinSource, tester)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
+
+            pinSource.changeDirective(9L, "subscription-pin", "1")
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
         }
 
     @Test

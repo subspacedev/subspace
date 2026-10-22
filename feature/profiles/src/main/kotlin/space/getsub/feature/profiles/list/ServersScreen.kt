@@ -175,6 +175,8 @@ internal data class ServersActions(
     val onProfileSelected: (Long) -> Unit,
     val onRenameGroup: (Long, String) -> Unit,
     val onDeleteGroup: (Long) -> Unit,
+    /** M10-C spec §3.4: "Pin to top" / "Unpin" in a group's menu. */
+    val onGroupPinChanged: (Long, Boolean) -> Unit = { _, _ -> },
     val onAddProfile: () -> Unit,
     val onProfileEdit: (Long) -> Unit,
     /** Fix round, Important 1: forwarded to [ServersGroupListActions.onUpdateSubscription]. */
@@ -240,6 +242,7 @@ internal fun ServersScreenContent(
                 },
                 onRename = { renameTarget = it },
                 onDelete = { deleteTarget = it },
+                onPinChanged = actions.onGroupPinChanged,
                 onAddProfile = actions.onAddProfile,
                 onProfileSelected = actions.onProfileSelected,
                 onProfileEdit = actions.onProfileEdit,

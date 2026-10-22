@@ -153,6 +153,8 @@ internal data class ServersGroup(
      * still has one, with no usage and no expiry in it.
      */
     val info: SubscriptionInfo? = null,
+    /** M10-C spec §3.4: the user pinned this group to the top. The order itself comes from the store. */
+    val pinned: Boolean = false,
 )
 
 /**

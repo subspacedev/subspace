@@ -317,6 +317,14 @@ constructor(
         viewModelScope.launch { profileSource.renameGroup(id, name) }
     }
 
+    /** M10-C spec §3.4: the store reorders; [observeGroups][ProfileSource.observeGroups] re-emits. */
+    fun onPinChanged(
+        id: Long,
+        pinned: Boolean,
+    ) {
+        viewModelScope.launch { profileSource.setGroupPinned(id, pinned) }
+    }
+
     /** The FK cascades: every profile in [id] is removed with it. Callers confirm first. */
     fun onDeleteGroup(id: Long) {
         viewModelScope.launch { profileSource.deleteGroup(id) }
@@ -470,6 +478,7 @@ constructor(
                 ServersGroup(
                     id = group.id,
                     name = group.name,
+                    pinned = group.pinned,
                     totalProfileCount = totalCountById[group.id] ?: group.profiles.size,
                     profiles = rows,
                     // UserInfo.usedBytes defaults an absent upload/download to
@@ -590,6 +599,7 @@ internal fun ServersViewModel.screenActions(
     onProfileSelected = this::onProfileSelected,
     onRenameGroup = this::onRenameGroup,
     onDeleteGroup = this::onDeleteGroup,
+    onGroupPinChanged = this::onPinChanged,
     onAddProfile = onAddProfile,
     onProfileEdit = onEditProfile,
     onUpdateSubscription = this::onUpdateSubscription,

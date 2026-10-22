@@ -45,6 +45,9 @@
     <string name="group_card_rename">Rename</string>
     <string name="group_card_delete">Delete</string>
     <string name="group_card_add_profile">Add profile</string>
+    <string name="group_card_pin">Pin to top</string>
+    <string name="group_card_unpin">Unpin</string>
+    <string name="group_card_pinned_description">Pinned</string>
     <plurals name="group_card_profile_count">
         <item quantity="one">%1$d server</item>
         <item quantity="other">%1$d servers</item>

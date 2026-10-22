@@ -286,6 +286,13 @@ class ServersSnapshotTest {
         )
 
     @Test
+    fun pinnedGroupShowsAPinBesideItsName() =
+        shoot(
+            "servers-card-pinned",
+            populated().let { s -> s.copy(groups = listOf(s.groups[0].copy(pinned = true), s.groups[1])) },
+        )
+
+    @Test
     fun cardWithoutUserinfoIsTodaysCard() = shoot("servers-card-no-userinfo", cardWith(info()))
 
     private companion object {
