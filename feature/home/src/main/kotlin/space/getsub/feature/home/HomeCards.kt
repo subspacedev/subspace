@@ -251,7 +251,7 @@ internal fun ActiveServerCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ServerFlagTile(activeProfile)
-            ServerText(headline, activeProfile, Modifier.weight(1f))
+            ServerText(headline, activeProfile, state.activeSubscription, Modifier.weight(1f))
             Icon(painterResource(SubspaceIcons.ChevronRight), contentDescription = null)
         }
     }
@@ -261,6 +261,7 @@ internal fun ActiveServerCard(
 private fun ServerText(
     headline: String,
     profile: StoredProfile?,
+    subscription: HomeSubscriptionLine?,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -287,6 +288,7 @@ private fun ServerText(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (subscription != null) SubscriptionLine(subscription)
     }
 }
 

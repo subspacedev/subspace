@@ -81,6 +81,17 @@
     <string name="quota_bar_limited_label">%1$s / %2$s</string>
     <string name="quota_bar_unlimited_label">%1$s used · unlimited</string>
 
+    <!-- Provider expiry notice, shared by the Servers card and Home (M10-B spec §3.1, §3.3). -->
+    <string name="subscription_expiry_on">expires %1$s</string>
+    <plurals name="subscription_expiry_in_days">
+        <item quantity="one">expires in %1$d day</item>
+        <item quantity="other">expires in %1$d days</item>
+    </plurals>
+    <string name="subscription_expiry_today">expires today</string>
+    <string name="subscription_expired">expired</string>
+    <string name="subscription_no_expiry">no expiry</string>
+    <string name="subscription_renew">Renew</string>
+
     <!-- QuotaBar (Task 14 fix round, Important 3). Binary (1024-based) byte
          units, indexed 0..5 by toHumanReadableBytes()'s magnitude — was a
          hardcoded Kotlin list, moved here so M9 localisation has somewhere

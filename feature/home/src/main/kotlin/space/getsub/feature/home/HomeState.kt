@@ -9,6 +9,10 @@ import space.getsub.core.model.Hysteria2Outbound
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TrafficSample
+import space.getsub.core.model.subscription.Expiry
+import space.getsub.core.model.subscription.SubscriptionInfo
+import space.getsub.core.model.subscription.Usage
+import space.getsub.core.model.subscription.isSoon
 
 /**
  * What [HomeScreen] renders.
@@ -72,6 +76,8 @@ internal data class HomeState(
     val activeRuleSetName: String? = null,
     /** The effective per-app selection for the Apps chip. */
     val perApp: PerAppSelection = PerAppSelection.OFF,
+    /** The active server's limit and expiry for the one slim line on its card, or `null` when none applies. */
+    val activeSubscription: HomeSubscriptionLine? = null,
 ) {
     /**
      * Whether tapping the connect control should attempt a connection.
@@ -167,4 +173,35 @@ internal data class HomeState(
             val tls = (activeProfile?.outbound as? Hysteria2Outbound)?.tls ?: return false
             return tls.skipChecksRequested && tls.pins.isEmpty()
         }
+}
+
+/**
+ * The one line Home draws under the active server's name (M10-B spec §3.3).
+ *
+ * @property usage set only for a limited plan; an unlimited one draws nothing here.
+ * @property expiry set only when the provider gave an expiry date.
+ * @property renewLink set only while [expiry] is soon, since Renew belongs to the red notice.
+ *   Already scheme-checked; never logged (ARCHITECTURE.md §5.6).
+ */
+internal data class HomeSubscriptionLine(
+    val usage: Usage.Limited?,
+    val expiry: Expiry?,
+    val renewLink: String?,
+) {
+    override fun toString(): String = "HomeSubscriptionLine(<redacted>)"
+}
+
+/** `null` when there is nothing to say: no subscription, or an unlimited plan with no expiry. */
+internal fun homeSubscriptionLine(info: SubscriptionInfo?): HomeSubscriptionLine? {
+    val usage = info?.usage as? Usage.Limited
+    val expiry = info?.expiry?.takeUnless { it == Expiry.None }
+    return if (info == null || (usage == null && expiry == null)) {
+        null
+    } else {
+        HomeSubscriptionLine(
+            usage = usage,
+            expiry = expiry,
+            renewLink = info.renewLink?.takeIf { expiry?.isSoon == true },
+        )
+    }
 }

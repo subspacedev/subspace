@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,10 +26,10 @@ import space.getsub.core.model.subscription.SubscriptionInfo
 import space.getsub.core.model.subscription.isSoon
 import space.getsub.core.model.subscription.showInfoBanner
 import space.getsub.core.ui.component.QuotaBar
+import space.getsub.core.ui.expiryText
 import space.getsub.core.ui.openProviderLink
 import space.getsub.core.ui.theme.SubspaceShapeTokens
 import space.getsub.feature.profiles.R
-import java.time.format.DateTimeFormatter
 import space.getsub.core.ui.R as CoreR
 
 /**
@@ -65,24 +64,7 @@ private fun ExpiryLine(
     renewLink: String?,
     onOpen: (String) -> Unit,
 ) {
-    val text =
-        when (expiry) {
-            Expiry.None -> stringResource(R.string.subscription_no_expiry)
-            is Expiry.On ->
-                if (expiry.isSoon) {
-                    pluralStringResource(
-                        R.plurals.subscription_expiry_in_days,
-                        expiry.daysLeft.toInt(),
-                        expiry.daysLeft.toInt(),
-                    )
-                } else {
-                    val locale = LocalLocale.current.platformLocale
-                    val date = DateTimeFormatter.ofPattern("d MMM", locale).format(expiry.date)
-                    stringResource(R.string.subscription_expiry_on, date)
-                }
-            Expiry.Today -> stringResource(R.string.subscription_expiry_today)
-            Expiry.Expired -> stringResource(R.string.subscription_expired)
-        }
+    val text = expiryText(expiry)
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = GROUP_HEADER_GAP),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -95,7 +77,7 @@ private fun ExpiryLine(
             modifier = Modifier.weight(1f),
         )
         if (expiry.isSoon && renewLink != null) {
-            TextButton(onClick = { onOpen(renewLink) }) { Text(stringResource(R.string.subscription_renew)) }
+            TextButton(onClick = { onOpen(renewLink) }) { Text(stringResource(CoreR.string.subscription_renew)) }
         }
     }
 }

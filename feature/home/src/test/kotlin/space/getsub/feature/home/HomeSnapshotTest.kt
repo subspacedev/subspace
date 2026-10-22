@@ -18,8 +18,11 @@ import space.getsub.core.model.PerAppSelection
 import space.getsub.core.model.TagTraffic
 import space.getsub.core.model.ThroughputWindow
 import space.getsub.core.model.TrafficSample
+import space.getsub.core.model.subscription.Expiry
+import space.getsub.core.model.subscription.Usage
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
+import java.time.LocalDate
 
 /** M8.6 spec §7.1: Home in representative states, in all four themes. Fixed clock: goldens never tick. */
 class HomeSnapshotTest {
@@ -64,6 +67,23 @@ class HomeSnapshotTest {
                 perTagBreakdownEnabled = true,
                 activeRuleSetName = "Smart route",
                 perApp = PerAppSelection(PerAppMode.AllowList, setOf("a", "b", "c")),
+            ),
+        )
+
+    /** M10-B spec §3.3: a limited plan expiring soon, with a renew link, under the server name. */
+    @Test
+    fun activeSubscriptionLine() =
+        shoot(
+            "home-active-subscription",
+            HomeState(
+                activeProfile = snapshotProfile("Example server"),
+                hasAnyProfile = true,
+                activeSubscription =
+                HomeSubscriptionLine(
+                    usage = Usage.Limited(usedBytes = 38L shl 30, totalBytes = 100L shl 30),
+                    expiry = Expiry.On(LocalDate.of(2026, 11, 6), daysLeft = 2),
+                    renewLink = "https://example.com/renew",
+                ),
             ),
         )
 

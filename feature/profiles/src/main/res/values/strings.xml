@@ -588,15 +588,6 @@
 
     <!-- M10-B spec §3.1: what the provider says about a subscription, on its Servers card. -->
     <string name="servers_group_subtitle_refresh">%1$s · refreshes every %2$d h</string>
-    <string name="subscription_expiry_on">expires %1$s</string>
-    <plurals name="subscription_expiry_in_days">
-        <item quantity="one">expires in %1$d day</item>
-        <item quantity="other">expires in %1$d days</item>
-    </plurals>
-    <string name="subscription_expiry_today">expires today</string>
-    <string name="subscription_expired">expired</string>
-    <string name="subscription_no_expiry">no expiry</string>
-    <string name="subscription_renew">Renew</string>
     <string name="subscription_support_link">Support</string>
     <string name="subscription_account_link">Account</string>
 
