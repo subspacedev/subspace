@@ -96,7 +96,7 @@ release is an upgrade and works.
 
 ## Which APK to download
 
-Each release attaches `subspace-<version>-<abi>.apk` for four files (one per ABI name above) plus `SHA256SUMS`.
+Each release attaches `subspace-<version>-<abi>.apk`: four APKs (one per ABI) plus `SHA256SUMS`.
 Check the download with `sha256sum -c SHA256SUMS` (`shasum -a 256 -c SHA256SUMS` on macOS).
 
 | File | Size (0.1.0-alpha01) | Use it for |

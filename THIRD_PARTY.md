@@ -43,7 +43,7 @@ license.
 | Component | Version pin | License | Obligation |
 |---|---|---|---|
 | [diffoscope](https://diffoscope.org) | Debian/Ubuntu package from the CI runner's apt, unpinned | GPL-3.0-or-later | **CI only; not shipped, not linked, not part of the app.** **Used for:** `reproducible.yml` installs it only when the double-build comparison fails, to render an HTML diff of the two APKs. **Justification (§10.7):** a readable explanation of *why* two builds differ is the point of the failure path, and hand-writing a zip, dex and ELF differ is the small-problem-sized custom code §10.7 warns against. No obligation beyond not redistributing it. |
-| [actions/upload-artifact](https://github.com/actions/upload-artifact) | `v4` | MIT | **CI only.** **Used for:** `reproducible.yml` uploads the diffoscope report on failure. **Justification (§10.7):** `gh` and the runner have no other way to attach files to a workflow run. Attribution only. |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact) | `v4` | MIT | **CI only.** **Used for:** `reproducible.yml` uploads the diffoscope report on failure. **Justification (§10.7):** uploading is the standard way to attach files to a workflow run. Attribution only. |
 
 ## Downloadable geo databases
 
