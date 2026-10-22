@@ -32,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -143,12 +142,7 @@ internal fun ServersGroupList(
             val menuItems = groupMenuItems(group, actions)
             GroupCard(
                 title = group.name,
-                subtitle =
-                pluralStringResource(
-                    CoreR.plurals.group_card_profile_count,
-                    group.totalProfileCount,
-                    group.totalProfileCount,
-                ),
+                subtitle = groupSubtitle(group),
                 expanded = group.id in expandedGroups,
                 onToggle = { actions.onToggleExpand(group.id) },
                 menuItems = menuItems,

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import io.kotest.matchers.shouldBe
 import org.junit.Rule
 import org.junit.Test
+import space.getsub.core.model.subscription.Usage
 import space.getsub.core.ui.theme.SubspaceTheme
 
 // camelCase throughout — same DEX-040 constraint GroupCardTest.kt documents
@@ -52,6 +53,37 @@ class QuotaBarTest {
             }
         }
         composeRule.onNodeWithText("used", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun aLimitedUsageRendersUsedOverTotal() {
+        composeRule.setContent {
+            SubspaceTheme {
+                QuotaBar(usage = Usage.Limited(usedBytes = GIB * 38, totalBytes = GIB * 100))
+            }
+        }
+        composeRule.onNodeWithText("38.0 GB / 100.0 GB").assertExists()
+    }
+
+    @Test
+    fun anUnlimitedUsageSaysUsedAndUnlimited() {
+        composeRule.setContent {
+            SubspaceTheme {
+                QuotaBar(usage = Usage.Unlimited(usedBytes = 2_934_000_000_000L))
+            }
+        }
+        composeRule.onNodeWithText("2.7 TB used \u00B7 unlimited").assertExists()
+    }
+
+    @Test
+    fun aNullUsageRendersNothing() {
+        composeRule.setContent {
+            SubspaceTheme {
+                QuotaBar(usage = null)
+            }
+        }
+        composeRule.onNodeWithText("used", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("/", substring = true).assertDoesNotExist()
     }
 
     /**
@@ -151,5 +183,9 @@ class QuotaBarTest {
             }
         }
         composeRule.onNodeWithText("Updated", substring = true).assertExists()
+    }
+
+    private companion object {
+        const val GIB = 1_073_741_824L
     }
 }

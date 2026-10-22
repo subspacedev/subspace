@@ -20,7 +20,7 @@ import space.getsub.core.ui.component.QuotaBar
 import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.RouteExclusionRequestContent
 
-private val GROUP_HEADER_GAP = 8.dp
+internal val GROUP_HEADER_GAP = 8.dp
 
 /**
  * What a group's card shows above its rows: quota, last update, and the provider's pending
@@ -31,11 +31,18 @@ internal fun ColumnScope.GroupCardHeader(
     group: ServersGroup,
     actions: ServersGroupListActions,
 ) {
-    QuotaBar(
-        usedBytes = group.quotaUsedBytes,
-        totalBytes = group.quotaTotalBytes,
-        modifier = Modifier.padding(top = GROUP_HEADER_GAP),
-    )
+    val info = group.info
+    if (info != null) {
+        // M10-B spec §3.1, in order: usage, expiry, announcement, info banner, links. The
+        // title and subline are the card's own title row.
+        GroupCardInfo(info)
+    } else {
+        QuotaBar(
+            usedBytes = group.quotaUsedBytes,
+            totalBytes = group.quotaTotalBytes,
+            modifier = Modifier.padding(top = GROUP_HEADER_GAP),
+        )
+    }
     // onUpdate is null for a MANUAL group (subscriptionId is null there) —
     // no Update affordance without an id to sync.
     GroupCardUpdateRow(

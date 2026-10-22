@@ -77,6 +77,9 @@
          (e.g. "1.2 GB"), not raw numbers — see QuotaBar.kt's own
          toHumanReadableBytes(). -->
     <string name="quota_bar_label">%1$s of %2$s used</string>
+    <!-- The provider-usage form (M10-B spec §3.1). The unlimited one is drawn faint, whole. -->
+    <string name="quota_bar_limited_label">%1$s / %2$s</string>
+    <string name="quota_bar_unlimited_label">%1$s used · unlimited</string>
 
     <!-- QuotaBar (Task 14 fix round, Important 3). Binary (1024-based) byte
          units, indexed 0..5 by toHumanReadableBytes()'s magnitude — was a

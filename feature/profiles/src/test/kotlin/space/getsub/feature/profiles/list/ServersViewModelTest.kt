@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -54,6 +55,8 @@ import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.core.model.identity.HeaderSetting
 import space.getsub.core.model.identity.SubscriptionIdentity
+import space.getsub.core.model.subscription.Usage
+import space.getsub.core.model.subscription.isSoon
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
@@ -332,9 +335,22 @@ class ServersViewModelTest {
             id: Long,
             key: String,
             default: String?,
-        ): Flow<EffectiveValue> {
-            val provider = directives[id]?.get(key)
-            return MutableStateFlow(EffectiveValue(key, provider ?: default, provider, isPinned = false))
+        ): Flow<EffectiveValue> =
+            directiveChanges.map {
+                val provider = directives[id]?.get(key)
+                EffectiveValue(key, provider ?: default, provider, isPinned = false)
+            }
+
+        /** Bumped by [changeDirective] so [observeEffective] re-emits, as the real flow does on a write. */
+        private val directiveChanges = MutableStateFlow(0)
+
+        fun changeDirective(
+            id: Long,
+            key: String,
+            value: String,
+        ) {
+            directives.getOrPut(id) { mutableMapOf() }[key] = value
+            directiveChanges.value += 1
         }
 
         override suspend fun pin(
@@ -852,6 +868,82 @@ class ServersViewModelTest {
             val visibleGroup = subscribedViewModel.state.value.groups.single()
             visibleGroup.quotaUsedBytes shouldBe 10L
             visibleGroup.quotaTotalBytes shouldBe 100L
+        }
+
+    private fun subscriptionOf(id: Long) =
+        StoredSubscription(
+            id = id,
+            groupId = group.id,
+            url = "https://example.com/sub",
+            userAgentOverride = null,
+            hwidEnabled = true,
+            lastFetchedAt = null,
+            lastFetchStatus = null,
+            lastFetchDetail = null,
+        )
+
+    @Test
+    fun `a group's info is built from its directives and userinfo, and recomputed when they change`() =
+        runTest {
+            val infoSource =
+                FakeProfileSource(
+                    allGroups = listOf(group),
+                    subscriptions = listOf(subscriptionOf(9L)),
+                    userInfoBySubscriptionId = mapOf(9L to "upload=3; download=7; total=100"),
+                )
+            infoSource.directives[9L] = mutableMapOf("announce" to "Maintenance tonight")
+            val infoViewModel = ServersViewModel(infoSource, tester)
+            advanceUntilIdle()
+
+            val before = infoViewModel.state.value.groups.single().info
+            before?.announce shouldBe "Maintenance tonight"
+            before?.usage shouldBe Usage.Limited(usedBytes = 10L, totalBytes = 100L)
+
+            infoSource.changeDirective(9L, "announce", "Back to normal")
+            infoSource.changeDirective(9L, "support-url", "https://example.com/help")
+            advanceUntilIdle()
+
+            val after = infoViewModel.state.value.groups.single().info
+            after?.announce shouldBe "Back to normal"
+            after?.supportLink shouldBe "https://example.com/help"
+        }
+
+    @Test
+    fun `a subscription whose provider sent no userinfo has no usage and no expiry in its info`() =
+        runTest {
+            val infoSource =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscriptionOf(9L)))
+            val infoViewModel = ServersViewModel(infoSource, tester)
+            advanceUntilIdle()
+
+            val info = infoViewModel.state.value.groups.single().info
+            info?.usage shouldBe null
+            info?.expiry shouldBe null
+        }
+
+    @Test
+    fun `an expiry two days out is soon in the group's info`() =
+        runTest {
+            val inTwoDays = System.currentTimeMillis() / 1000 + 2 * 86_400
+            val infoSource =
+                FakeProfileSource(
+                    allGroups = listOf(group),
+                    subscriptions = listOf(subscriptionOf(9L)),
+                    userInfoBySubscriptionId = mapOf(9L to "upload=1; download=1; total=0; expire=$inTwoDays"),
+                )
+            val infoViewModel = ServersViewModel(infoSource, tester)
+            advanceUntilIdle()
+
+            val info = infoViewModel.state.value.groups.single().info
+            info?.usage shouldBe Usage.Unlimited(usedBytes = 2L)
+            info?.expiry?.isSoon shouldBe true
+        }
+
+    @Test
+    fun `a manual group has no info`() =
+        runTest {
+            advanceUntilIdle()
+            viewModel.state.value.groups.single().info shouldBe null
         }
 
     @Test
