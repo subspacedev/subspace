@@ -2458,8 +2458,8 @@ honoured: the user's settings decide (M10-C spec §1). `subscription-autoconnect
 subscription's details list them as "Not applied".
 
 - [x] Auto-connect when the app opens, to the last picked server or the fastest one
-      (`lastused` / `lowestdelay` map to the "Last picked" / "Fastest" choices;
-      `random` is not built). Off by default.
+      (the provider's `lastused` / `lowestdelay` types resemble the "Last picked" /
+      "Fastest" choices but are not read; there is no `random` choice). Off by default.
 - [x] Connect to the fastest server, in the active subscription or overall: test the
       candidates, connect to the quickest and make it the active server. It falls back
       to the last picked server when nothing answers, and skips the test when another
