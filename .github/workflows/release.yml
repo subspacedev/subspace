@@ -1,0 +1,137 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Additional permission: see Stores Exception in LICENSE.
+
+name: Release
+
+# Publishes signed APKs to a GitHub Release when a version tag is pushed
+# (M10-A spec §6.4).
+#
+# The job runs in the `release` environment, which holds these secrets. Restrict the
+# environment to tags matching v* and require a reviewer if wanted:
+#   SUBSPACE_SIGNING_KEYSTORE_BASE64  the release keystore, base64-encoded
+#   SUBSPACE_SIGNING_STORE_PASSWORD   keystore password
+#   SUBSPACE_SIGNING_KEY_ALIAS        key alias
+#   SUBSPACE_SIGNING_KEY_PASSWORD     key password
+# The signing certificate's SHA-256 is not a secret; it is committed in
+# .github/release-cert.sha256 and every APK must match it before anything is published.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      APK_DIR: app/build/outputs/apk/release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      # The cheap checks come first so a bad tag, a missing changelog entry or a
+      # missing certificate pin fails in seconds rather than after a full build.
+      - name: Check the tag against version.properties
+        id: tag
+        run: scripts/release-tag-check.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Extract the changelog section
+        run: scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
+
+      - name: Check the certificate pin is present and well-formed
+        run: |
+          pin=.github/release-cert.sha256
+          if [ ! -f "$pin" ]; then
+            echo "::error::$pin is missing; commit the SHA-256 of the release signing certificate" >&2
+            exit 1
+          fi
+          if ! grep -Eqx '[0-9a-f]{64}' "$pin"; then
+            echo "::error::$pin must be one line of 64 lowercase hex characters" >&2
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup-android-build
+
+      # Same gates as ci.yml: the release and reproducibility script tests.
+      - name: Test the release scripts
+        run: |
+          scripts/test-compare-apks.sh
+          scripts/test-release-scripts.sh
+
+      - name: Check and test
+        run: ./gradlew checkAll build test
+
+      - name: Decode the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SUBSPACE_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      # checkAll build test above leaves unsigned release APKs in $APK_DIR.
+      # collect-release-apks.sh refuses any directory holding anything but the four
+      # signed APKs, so clear it first or every release would be refused.
+      - name: Remove unsigned APKs left by the checks
+        run: rm -rf "$APK_DIR"
+
+      - name: Build signed release APKs
+        env:
+          SUBSPACE_SIGNING_STORE_FILE: ${{ runner.temp }}/release.jks
+          SUBSPACE_SIGNING_STORE_PASSWORD: ${{ secrets.SUBSPACE_SIGNING_STORE_PASSWORD }}
+          SUBSPACE_SIGNING_KEY_ALIAS: ${{ secrets.SUBSPACE_SIGNING_KEY_ALIAS }}
+          SUBSPACE_SIGNING_KEY_PASSWORD: ${{ secrets.SUBSPACE_SIGNING_KEY_PASSWORD }}
+        # --no-build-cache and --no-configuration-cache match reproducible.yml and keep
+        # the signing values out of the configuration-cache store (M10-A spec §5).
+        run: ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
+
+      # apksigner is not on PATH; setup-android exports ANDROID_HOME.
+      - name: Verify every APK is signed by the pinned certificate
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          expected="$(cat .github/release-cert.sha256)"
+          status=0
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            apk="$APK_DIR/app-$abi-release.apk"
+            if [ ! -f "$apk" ]; then
+              echo "::error::missing $apk" >&2
+              status=1
+              continue
+            fi
+            if ! out="$("$apksigner" verify --print-certs "$apk")"; then
+              echo "::error::apksigner verify failed for $apk" >&2
+              status=1
+              continue
+            fi
+            actual="$(printf '%s\n' "$out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$apk certificate is '$actual', expected '$expected'" >&2
+              status=1
+            else
+              echo "ok: $apk"
+            fi
+          done
+          exit "$status"
+
+      - name: Collect the release assets
+        run: scripts/collect-release-apks.sh "$APK_DIR" "${GITHUB_REF_NAME#v}" "$RUNNER_TEMP/release-assets"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Subspace ${GITHUB_REF_NAME#v}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "${flags[@]}" \
+            "$RUNNER_TEMP"/release-assets/*
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"

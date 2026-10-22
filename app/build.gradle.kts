@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Additional permission: see Stores Exception in LICENSE.
+import com.android.build.api.variant.FilterConfiguration
+import space.getsub.build.Abi
+import space.getsub.build.AppVersion
+import space.getsub.build.SigningResolution
+import space.getsub.build.message
+import space.getsub.build.parse
+import space.getsub.build.readVersionName
+import space.getsub.build.resolveSigning
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -12,6 +21,10 @@ plugins {
 
 android {
     namespace = "space.getsub"
+    // stripReleaseDebugSymbols runs this NDK's llvm-strip over every packaged .so
+    // (libgojni.so included), so its version shapes the APK bytes. Same pin as :service
+    // (see `ndk` in gradle/libs.versions.toml; M10-A spec §6.5).
+    ndkVersion = libs.versions.ndk.get()
     // See the note in subspace.android.library: compileSdk leads targetSdk on purpose.
     compileSdk {
         version = release(37) { minorApiLevel = 1 }
@@ -21,8 +34,11 @@ android {
         applicationId = "space.getsub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-alpha01"
+        // One committed name, one derived code (M10-A spec §6.2): version.properties
+        // is the only place a release bump is written.
+        val appVersionName = readVersionName(rootProject.file("version.properties"))
+        versionName = appVersionName
+        versionCode = AppVersion.parse(appVersionName).versionCode(Abi.Universal)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Mirrors :service's abiFilters (service/build.gradle.kts, Application.mk).
@@ -34,8 +50,49 @@ android {
         }
     }
 
+    // One APK per ABI plus a universal one (M10-A spec §6.1). AGP applies splits to
+    // every build type, so debug builds split too; accepted (M10-A spec §10 leaves it open).
+    // reset() clears the default ABI list so exactly these three remain: 32-bit x86
+    // stays excluded, matching ndk.abiFilters above.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
+    // Release signing (M10-A spec §6.3). Read through providers so the configuration cache
+    // tracks the inputs. All four set -> signed; none -> an unsigned release APK; some ->
+    // fail. Never fall back to signingConfigs.debug: a release signed with the debug key
+    // would install, then break every upgrade (M10-A spec §5).
+    val signing =
+        resolveSigning(
+            gradleProperty = { providers.gradleProperty(it).orNull },
+            env = { providers.environmentVariable(it).orNull },
+        )
+    when (signing) {
+        is SigningResolution.Signed ->
+            signingConfigs.create("release") {
+                storeFile = rootProject.file(signing.storeFile)
+                storePassword = signing.storePassword
+                keyAlias = signing.keyAlias
+                keyPassword = signing.keyPassword
+                // v1 (JAR) signing is only needed below minSdk 24; minSdk here is 26, and
+                // apksigner's docs say v2+ alone is enough there.
+                // https://developer.android.com/tools/apksigner
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        is SigningResolution.Incomplete -> throw GradleException(signing.message())
+        SigningResolution.Unsigned -> Unit
+    }
+
     buildTypes {
         release {
+            if (signing is SigningResolution.Signed) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -53,6 +110,27 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // Compressed native libraries (M10-A spec §6.1a): download size over install
+        // footprint. Measured with gzip -9, libgojni.so shrinks 37.9 -> 12.8 MB
+        // (arm64-v8a), and the release downloads drop from ~42/121 MB to ~17/46 MB
+        // (per-ABI/universal). Sets extractNativeLibs="true" in the merged manifest.
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+// Per-output version codes (M10-A spec §6.2): the split APKs outrank the universal one
+// of the same release, and every code rises with the version, so an upgrade between
+// universal and split installs works in either direction.
+androidComponents {
+    onVariants { variant ->
+        val version = AppVersion.parse(readVersionName(rootProject.file("version.properties")))
+        variant.outputs.forEach { output ->
+            val abiFilter =
+                output.filters
+                    .firstOrNull { it.filterType == FilterConfiguration.FilterType.ABI }
+                    ?.identifier
+            output.versionCode.set(version.versionCode(Abi.fromFilter(abiFilter)))
+        }
     }
 }
 

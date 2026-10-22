@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Additional permission: see Stores Exception in LICENSE.
+
+name: Reproducible build
+
+# Not on every pull request: two release builds roughly double CI time. It runs on
+# main instead, where a regression is caught before a tag is cut (M10-A spec §6.5).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Release tag to verify. Builds it unsigned and compares each APK attached to
+          that GitHub Release with the local build, ignoring signatures and zip metadata (see scripts/compare-apks.py).
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  APK_DIR: app/build/outputs/apk/release
+
+jobs:
+  double-build:
+    runs-on: ubuntu-latest
+    steps:
+      # persist-credentials: false keeps the token out of .git/config, which the
+      # copies below inherit. Both trees must stay git checkouts of the same commit:
+      # AGP embeds the commit in META-INF/version-control-info.textproto
+      # (docs/agent/research/2026-10-22-m10a-reproducibility.md), so a tree without
+      # .git would differ for a reason unrelated to the build.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-android-build
+
+      # Two different paths at different depths and with different names, so a build
+      # that leaks its location into the output cannot match itself. The copies are
+      # made before any build so both start from the same clean state, libXray AAR
+      # included.
+      - name: Make two copies at different paths
+        run: |
+          mkdir -p "$RUNNER_TEMP/a" "$RUNNER_TEMP/b/other"
+          cp -a "$GITHUB_WORKSPACE" "$RUNNER_TEMP/a/subspace"
+          cp -a "$GITHUB_WORKSPACE" "$RUNNER_TEMP/b/other/path"
+
+      # No signing inputs are set, so this produces the unsigned APKs. The build cache
+      # and configuration cache are off so neither build can reuse the other's work.
+      - name: Build release in the first copy
+        working-directory: ${{ runner.temp }}/a/subspace
+        run: ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
+
+      - name: Build release in the second copy
+        working-directory: ${{ runner.temp }}/b/other/path
+        run: ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
+
+      - name: Compare the unsigned APKs
+        run: |
+          status=0
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            name="app-$abi-release-unsigned.apk"
+            a="$RUNNER_TEMP/a/subspace/$APK_DIR/$name"
+            b="$RUNNER_TEMP/b/other/path/$APK_DIR/$name"
+            echo "== $name"
+            if ! python3 scripts/compare-apks.py "$a" "$b"; then status=1; fi
+            if ! cmp "$a" "$b"; then status=1; fi
+          done
+          exit "$status"
+
+      - name: Install diffoscope
+        if: failure()
+        run: sudo apt-get update && sudo apt-get install -y diffoscope
+
+      # diffoscope exits non-zero when it finds differences, which is the case here.
+      - name: Explain the differences
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/diffoscope"
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            name="app-$abi-release-unsigned.apk"
+            a="$RUNNER_TEMP/a/subspace/$APK_DIR/$name"
+            b="$RUNNER_TEMP/b/other/path/$APK_DIR/$name"
+            if [ -f "$a" ] && [ -f "$b" ] && ! cmp -s "$a" "$b"; then
+              diffoscope --html "$RUNNER_TEMP/diffoscope/$abi.html" "$a" "$b" || true
+            fi
+          done
+
+      - name: Upload the diffoscope report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffoscope
+          path: ${{ runner.temp }}/diffoscope
+          if-no-files-found: ignore
+
+  # M10-A spec §6.5, user-facing verification: build a released tag unsigned and compare
+  # it with the APKs attached to its GitHub Release.
+  verify-tag:
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-android-build
+
+      - name: Build release unsigned
+        run: ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
+
+      # Assets are named subspace-<version>-<abi>.apk (Task 7); <abi> is universal,
+      # arm64-v8a, armeabi-v7a or x86_64, and maps to the local
+      # app-<abi>-release-unsigned.apk. An asset that matches none of those, or a
+      # release missing one, fails the job rather than being skipped.
+      - name: Compare with the released APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" -p '*.apk' -D "$RUNNER_TEMP/release"
+          status=0
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            set -- "$RUNNER_TEMP"/release/subspace-*-"$abi".apk
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "expected exactly one release asset for $abi, found: $*" >&2
+              status=1
+              continue
+            fi
+            echo "== $abi: $(basename "$1")"
+            if ! python3 scripts/compare-apks.py "$APK_DIR/app-$abi-release-unsigned.apk" "$1"; then
+              status=1
+            fi
+          done
+          count=$(find "$RUNNER_TEMP/release" -name '*.apk' | wc -l)
+          if [ "$count" -ne 4 ]; then
+            echo "expected 4 release APKs, downloaded $count" >&2
+            status=1
+          fi
+          exit "$status"

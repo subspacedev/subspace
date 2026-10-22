@@ -44,6 +44,17 @@ include $(HEV_DIR)/third-part/yaml/Android.mk
 include $(HEV_DIR)/third-part/lwip/Android.mk
 include $(HEV_DIR)/third-part/hev-task-system/Android.mk
 
+# REV_ID becomes COMMIT_ID in the library. service/build.gradle.kts passes it on
+# the ndk-build command line, from the pinned hev commit. Without it, build.mk
+# falls back to `git -C $(SRCDIR) rev-parse`, and SRCDIR is the generated copy
+# under service/build/, so git answers with the parent repo's HEAD, or "unknown"
+# without .git (M10-A spec §6.5). Only show_help reads COMMIT_ID today, and
+# ENABLE_LIBRARY compiles it out, but nothing guards against a hev bump changing
+# that. A command-line variable outranks build.mk's assignments.
+ifeq ($(strip $(REV_ID)),)
+$(error REV_ID is not set - service/build.gradle.kts passes it as an ndk-build argument)
+endif
+
 # build.mk populates SRCFILES by globbing SRCDIR. Reusing it rather than listing
 # sources by hand means a file added upstream is picked up on the next bump.
 SRCDIR := $(HEV_DIR)/src

@@ -122,6 +122,9 @@ tasks.register("checkAll") {
     description = "Runs every verification task across all modules."
     dependsOn(checkSpdx)
     dependsOn(checkForbidden)
+    // build-logic is an included build, so its tests are not part of any
+    // subproject's check (M10-A spec §6.2: the version-code formula is tested there).
+    dependsOn(gradle.includedBuild("build-logic").task(":test"))
     // Same phantom-project guard as above: only real, buildable modules have
     // a "check" task to depend on.
     dependsOn(subprojects.filter { it.buildFile.exists() }.map { "${it.path}:check" })

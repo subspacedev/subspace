@@ -218,6 +218,15 @@ This is the one thing that is expensive to retrofit — it shapes the settings, 
 
 ---
 
+## Download
+
+Signed APKs are attached to each [GitHub Release](https://github.com/subspacedev/subspace/releases), with a `SHA256SUMS`
+file. Pick the one for your phone: **`arm64-v8a`** for nearly every modern phone,
+`armeabi-v7a` for old 32-bit ARM phones, `x86_64` for emulators, or `universal` (about
+two and a half times the size) if unsure. Do not install the universal APK over a split APK of
+the same release; Android treats it as a downgrade. How releases are built and
+verified: [`RELEASING.md`](RELEASING.md).
+
 ## Planned features
 
 Core capabilities on the way:
@@ -225,7 +234,7 @@ Core capabilities on the way:
 - **Platform hardening** — always-on VPN, boot autostart, `NetworkCallback` for Wi-Fi ↔ cellular, kill switch, `onRevoke` handling, traffic stats
 - **Censorship resistance** — fragmentation, noises, subscription fronting, fallback URL, DoH pre-resolution
 - **More protocols** — beyond Xray-core: **AmneziaWG** and **OlcRtc** support is planned alongside the existing VLESS/VMess/Trojan/Shadowsocks/SOCKS/Hysteria2 lineup
-- **Polish & release** — RU, CN, FA + EN localization, subscription metadata surface (`profile-title`, `subscription-userinfo`, `announce`…), signing, [IzzyOnDroid](https://apt.izzysoft.de) and Google Play distribution
+- **Polish & release** — subscription metadata surface (`profile-title`, `subscription-userinfo`, `announce`…), UI polish, RU + EN localization, and a signed, reproducible GitHub release. IzzyOnDroid and Google Play are not part of M10
 
 Also:
 - **KMP rewrite** — Bringing Linux and Windows targets, and maybe macOS (likely) + iOS (if I suddenly decide to make Apple $100 richer each year) in the far future
@@ -237,7 +246,7 @@ Also:
 - **No analytics, no crash reporting, no background network calls** you didn't initiate.
 - **No config logging** — server addresses, UUIDs, REALITY keys, and subscription URLs are redacted everywhere, including the in-app log viewer (`ARCHITECTURE.md §5.6`).
 - **Directives are hostile input** — every key is allow-listed, every value schema-validated, URLs validated before any fetch. Dangerous directives (URL replacement, per-app list mutation) require explicit user confirmation.
-- **Distribution:** GitHub Releases + [IzzyOnDroid](https://apt.izzysoft.de). No proprietary dependencies (hence ZXing over ML Kit).
+- **Distribution:** GitHub Releases (see [Download](#download)); IzzyOnDroid is a later goal. No proprietary dependencies (hence ZXing over ML Kit).
 
 ---
 

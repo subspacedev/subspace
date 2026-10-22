@@ -92,6 +92,9 @@ tasks.named("check").configure {
 
 android {
     namespace = "space.getsub.service"
+    // Pinned for reproducibility (M10-A spec §6.5): see the note on `ndk` in
+    // gradle/libs.versions.toml. :app pins the same version for its strip task.
+    ndkVersion = libs.versions.ndk.get()
 
     buildFeatures {
         aidl = true
@@ -103,6 +106,21 @@ android {
             // deliberately — effectively dead on real devices, and it doubles
             // native build time.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        externalNativeBuild {
+            ndkBuild {
+                // hev's build.mk turns REV_ID into -DCOMMIT_ID. Left unset it falls back to
+                // `git -C $(SRCDIR) rev-parse --short HEAD`, and SRCDIR is the patched copy
+                // under service/build/generated/, which is not a repository: git walks up
+                // and answers with the PARENT repo's HEAD, or nothing ("unknown") in a
+                // checkout without .git. Today COMMIT_ID is read only by hev-main.c's
+                // show_help, compiled out under ENABLE_LIBRARY, so the bytes do not move
+                // yet; the pin keeps a hev bump that reads it from making the library
+                // depend on Subspace's HEAD (M10-A spec §6.5). Derived from the pin
+                // preparePatchedHev verifies, so a submodule bump moves both. Android.mk
+                // refuses to build without it.
+                arguments += "REV_ID=${hevBaseCommit.take(7)}"
+            }
         }
     }
 

@@ -1867,6 +1867,17 @@ accepts APKs from GitHub releases and is where the closest comparable project
 The practical consequence today: **no proprietary dependencies**, which is why
 §2 specifies ZXing rather than ML Kit.
 
+**Release artifacts (M10-A).** The release build produces four APKs: `universal` and
+per-ABI splits for `arm64-v8a`, `armeabi-v7a` and `x86_64`. Native libraries are stored
+compressed (`useLegacyPackaging`, so `extractNativeLibs="true"`), which resolved the APK
+size problem: 45.65 MB universal against 17.85 MB (arm64-v8a), 18.40 MB (armeabi-v7a) and
+18.95 MB (x86_64), measured on 0.1.0-alpha01 (M10-A spec §6.1a). 32-bit x86 is excluded
+from every artifact, so the M8.5 finding that `lib/x86/` ships without
+`libtun2socks.so` is moot. `versionCode` is derived from `version.properties` with a
+per-ABI offset (M10-A spec §6.2), signing comes from Gradle properties or environment
+variables, and the unsigned APKs are byte-reproducible on the CI Linux toolchain
+(M10-A spec §6.5). Procedure and caveats: `RELEASING.md`.
+
 ### 14.8 Dynamic colour — RESOLVED (2026-10-03), reversing the earlier ban
 
 The app uses Material You colour on Android 12+ by default, including for the
