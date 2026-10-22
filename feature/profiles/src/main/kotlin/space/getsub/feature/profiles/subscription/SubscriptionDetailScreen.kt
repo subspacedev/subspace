@@ -12,12 +12,15 @@
 
 package space.getsub.feature.profiles.subscription
 
+import android.content.ClipData
 import android.text.format.DateUtils
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,9 +48,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -58,6 +64,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectIssue
 import space.getsub.core.data.RedirectTrust
@@ -65,6 +72,7 @@ import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.TuningDirectiveIssues
 import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.core.parser.RedirectRejection
 import space.getsub.core.ui.TuningIgnoreKind
 import space.getsub.core.ui.component.BannerTone
@@ -89,6 +97,14 @@ import space.getsub.feature.profiles.add.userMessageText
 private val CONTENT_PADDING = 16.dp
 private val FIELD_GAP = 12.dp
 private val ROW_GAP = 4.dp
+private val HWID_INDENT = 40.dp
+
+/** Identifiers for instrumented tests of the "Sent to the provider" section. */
+internal const val SUBSCRIPTION_HWID_FIELD_TEST_TAG = "subscription-hwid-field"
+internal const val SUBSCRIPTION_HWID_VALUE_TEST_TAG = "subscription-hwid-value"
+internal const val SUBSCRIPTION_HEADER_FIELD_TEST_TAG = "subscription-header-field"
+
+internal fun headerTestTag(header: DeviceHeader): String = "subscription-header-${header.wireName}"
 
 /**
  * Identifies the loading spinner to instrumented tests — same pattern as
@@ -131,6 +147,12 @@ fun SubscriptionDetailScreen(
             onPinRow = viewModel::onPinRow,
             onUnpinRow = viewModel::onUnpinRow,
             onHwidEnabledChanged = viewModel::onHwidEnabledChanged,
+            onHwidDraftChanged = viewModel::onHwidDraftChanged,
+            onHwidSave = viewModel::onHwidSave,
+            onHwidRandom = viewModel::onHwidRandom,
+            onHeaderEnabledChanged = viewModel::onHeaderEnabledChanged,
+            onHeaderLiteralSave = viewModel::onHeaderLiteralSave,
+            onHeaderReset = viewModel::onHeaderReset,
             onUserAgentOverrideChanged = viewModel::onUserAgentOverrideChanged,
             onDeleteConfirmed = viewModel::onDelete,
             onAllowRedirects = viewModel::onAllowRedirects,
@@ -166,6 +188,13 @@ internal data class SubscriptionDetailActions(
     val onRedirectsAllowedChanged: (Boolean) -> Unit,
     val onFrontingSaved: (resolveAddress: String?, hostHeader: String?) -> Unit,
     val onLinkFragmentSaved: (String?) -> Unit,
+    // M10-B spec §3.5. Defaulted so callers that do not show the section need not wire it.
+    val onHwidDraftChanged: (String) -> Unit = {},
+    val onHwidSave: () -> Boolean = { true },
+    val onHwidRandom: () -> Unit = {},
+    val onHeaderEnabledChanged: (DeviceHeader, Boolean) -> Unit = { _, _ -> },
+    val onHeaderLiteralSave: (DeviceHeader, String) -> Boolean = { _, _ -> true },
+    val onHeaderReset: (DeviceHeader) -> Unit = {},
     // M9-C spec §4.2. Defaulted so callers that do not show the resolver need not wire it.
     val onAllowResolver: () -> Unit = {},
     val onDenyResolver: () -> Unit = {},
@@ -282,18 +311,7 @@ private fun DetailBody(
                 )
             }
         }
-        SectionCard(title = stringResource(R.string.subscription_detail_section_requests)) {
-            HwidRow(
-                checked = state.hwidEnabled,
-                globallyEnabled = state.globalHwidEnabled,
-                onCheckedChange = actions.onHwidEnabledChanged,
-            )
-            UserAgentRow(
-                value = state.userAgentOverride,
-                providerValue = state.providerUserAgent,
-                onSave = actions.onUserAgentOverrideChanged,
-            )
-        }
+        SentToProviderSection(state = state, actions = actions)
         ReachSection(state = state, actions = actions)
         if (state.rows.isNotEmpty()) {
             DirectivesSection(state = state, actions = actions)
@@ -786,30 +804,172 @@ private fun RefreshResultBanner(
     )
 }
 
+/**
+ * Everything this subscription tells its provider about the user and the device (M10-B spec §3.5):
+ * the HWID, the four device headers, the User-Agent and how long to wait for a reply.
+ */
 @Composable
-private fun HwidRow(
-    checked: Boolean,
-    globallyEnabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
+private fun SentToProviderSection(
+    state: SubscriptionDetailState,
+    actions: SubscriptionDetailActions,
 ) {
-    val description =
-        stringResource(
-            if (globallyEnabled) {
-                R.string.subscription_detail_hwid_description
-            } else {
-                R.string.subscription_detail_hwid_disabled_globally
-            },
+    SectionCard(title = stringResource(R.string.subscription_detail_section_sent)) {
+        HwidBlock(state = state, actions = actions)
+        DeviceHeader.entries.forEach { header ->
+            val row = state.headers[header] ?: return@forEach
+            HeaderBlock(header = header, row = row, actions = actions)
+        }
+        UserAgentRow(
+            value = state.userAgentOverride,
+            providerValue = state.providerUserAgent,
+            onSave = actions.onUserAgentOverrideChanged,
         )
+        state.timeoutRow?.let { DirectiveRowView(row = it, onPin = actions.onPinRow, onUnpin = actions.onUnpinRow) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HwidBlock(
+    state: SubscriptionDetailState,
+    actions: SubscriptionDetailActions,
+) {
+    var editing by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val label = stringResource(R.string.subscription_detail_hwid_label)
     SwitchRow(
         icon = SubspaceIcons.Lock,
-        label = stringResource(R.string.subscription_detail_hwid_label),
-        supporting = description,
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        enabled = globallyEnabled,
-        modifier = modifier,
+        label = label,
+        supporting = stringResource(R.string.subscription_detail_hwid_description),
+        checked = state.hwidEnabled,
+        onCheckedChange = actions.onHwidEnabledChanged,
     )
+    if (editing) {
+        // A machine string: displayed, never logged (ARCHITECTURE.md §5.6).
+        OutlinedTextField(
+            value = state.hwidDraft,
+            onValueChange = actions.onHwidDraftChanged,
+            label = { Text(label) },
+            supportingText = {
+                Text(stringResource(R.string.subscription_detail_hwid_format))
+            },
+            isError = state.hwidError,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.mono(),
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth().testTag(SUBSCRIPTION_HWID_FIELD_TEST_TAG),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+            TextButton(onClick = { if (actions.onHwidSave()) editing = false }) {
+                Text(stringResource(R.string.subscription_detail_hwid_save))
+            }
+            TextButton(
+                onClick = {
+                    actions.onHwidDraftChanged(state.hwid)
+                    editing = false
+                },
+            ) { Text(stringResource(R.string.subscription_row_edit_dialog_cancel)) }
+        }
+    } else {
+        SelectionContainer {
+            Text(
+                text = state.hwid,
+                style = MaterialTheme.typography.bodyMedium.mono(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = HWID_INDENT).testTag(SUBSCRIPTION_HWID_VALUE_TEST_TAG),
+            )
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+            TextButton(onClick = { editing = true }) { Text(stringResource(R.string.subscription_detail_hwid_edit)) }
+            TextButton(onClick = actions.onHwidRandom) {
+                Text(stringResource(R.string.subscription_detail_hwid_random))
+            }
+            TextButton(
+                onClick = {
+                    scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, state.hwid))) }
+                },
+            ) { Text(stringResource(R.string.subscription_detail_hwid_copy)) }
+        }
+    }
+}
+
+/** One device header: its switch, its value or "follows this device", and Edit and Reset. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HeaderBlock(
+    header: DeviceHeader,
+    row: HeaderRowState,
+    actions: SubscriptionDetailActions,
+) {
+    var dialogOpen by remember { mutableStateOf(false) }
+    val followed = row.literal == null
+    // Header values are identifying: displayed, never logged (ARCHITECTURE.md §5.6).
+    val supporting =
+        when {
+            !followed -> row.literal
+            row.deviceValue != null -> stringResource(R.string.subscription_detail_header_follows, row.deviceValue)
+            else -> null
+        }
+    SwitchRow(
+        icon = SubspaceIcons.Tune,
+        label = header.wireName,
+        supporting = supporting,
+        checked = row.enabled,
+        onCheckedChange = { actions.onHeaderEnabledChanged(header, it) },
+        modifier = Modifier.testTag(headerTestTag(header)),
+    )
+    if (row.enabled && followed && row.deviceValue == null) {
+        ReachFact(stringResource(R.string.subscription_detail_header_not_sent))
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+        TextButton(onClick = { dialogOpen = true }) { Text(stringResource(R.string.subscription_detail_header_edit)) }
+        if (!followed) {
+            TextButton(onClick = { actions.onHeaderReset(header) }) {
+                Text(stringResource(R.string.subscription_detail_header_reset))
+            }
+        }
+    }
+    if (dialogOpen) {
+        HeaderValueDialog(
+            header = header,
+            initialValue = row.literal ?: row.deviceValue.orEmpty(),
+            onSave = actions.onHeaderLiteralSave,
+            onDismiss = { dialogOpen = false },
+        )
+    }
+}
+
+@Composable
+private fun HeaderValueDialog(
+    header: DeviceHeader,
+    initialValue: String,
+    onSave: (DeviceHeader, String) -> Boolean,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initialValue) }
+    var refused by remember { mutableStateOf(false) }
+    SubspaceDialog(
+        title = header.wireName,
+        confirmLabel = stringResource(R.string.subscription_detail_hwid_save),
+        onConfirm = { if (onSave(header, text)) onDismiss() else refused = true },
+        dismissLabel = stringResource(R.string.subscription_row_edit_dialog_cancel),
+        onDismiss = onDismiss,
+        confirmEnabled = text.isNotBlank(),
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                refused = false
+            },
+            supportingText = { Text(stringResource(R.string.subscription_detail_header_format)) },
+            isError = refused,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.mono(),
+            modifier = Modifier.testTag(SUBSCRIPTION_HEADER_FIELD_TEST_TAG),
+        )
+    }
 }
 
 @Composable

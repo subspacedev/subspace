@@ -14,6 +14,7 @@ import space.getsub.core.data.isDirectiveEnabled
 import space.getsub.core.data.preresolve.ProviderResolver
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.model.ObfuscationProblem
+import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.feature.profiles.RouteExclusionRequest
 import space.getsub.feature.profiles.add.UserMessage
 import java.net.URI
@@ -92,6 +93,24 @@ internal data class DirectiveRow(
     @param:StringRes val labelRes: Int,
     val row: SettingRowState,
 )
+
+/**
+ * One device header as the "Sent to the provider" section shows it (M10-B spec §3.5).
+ *
+ * @property literal the user's own value, or `null` while the header follows this device.
+ * @property deviceValue this device's value after sanitising, for "follows this device: ..."; `null`
+ *   when nothing sendable is left, in which case the header is not sent.
+ */
+internal data class HeaderRowState(
+    val enabled: Boolean,
+    val literal: String?,
+    val deviceValue: String?,
+) {
+    // ARCHITECTURE.md §5.6: header values are identifying, so neither one reaches a log.
+    override fun toString(): String =
+        "HeaderRowState(enabled=$enabled, literal=${redactedOrNone(literal)}, " +
+            "deviceValue=${redactedOrNone(deviceValue)})"
+}
 
 /**
  * M4 spec §7's failure taxonomy, resolved from [StoredSubscription]'s own two-column encoding
@@ -174,8 +193,14 @@ internal data class SubscriptionDetailState(
     val quotaUsedBytes: Long? = null,
     val quotaTotalBytes: Long? = null,
     val hwidEnabled: Boolean = true,
-    /** The global Settings gate, separate from [hwidEnabled]'s per-subscription preference. */
-    val globalHwidEnabled: Boolean = true,
+    /** This subscription's own HWID (M10-B spec §3.5). Never logged: see [toString]. */
+    val hwid: String = "",
+    /** What the HWID field shows while editing; equals [hwid] until the user types. */
+    val hwidDraft: String = "",
+    val hwidError: Boolean = false,
+    val headers: Map<DeviceHeader, HeaderRowState> = emptyMap(),
+    /** The `subscription-request-timeout` row, shown in "Sent to the provider" rather than the generic list. */
+    val timeoutRow: DirectiveRow? = null,
     val userAgentOverride: String? = null,
     /** What the provider's `change-user-agent` directive currently suggests, if any. */
     val providerUserAgent: String? = null,

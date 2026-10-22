@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -42,6 +43,9 @@ import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.Udp443Mode
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.OverrideBlocker
 import space.getsub.core.parser.PassthroughAdvisory
 import space.getsub.core.parser.PassthroughRejection
@@ -231,7 +235,10 @@ class EditorViewModelTest {
         ): Flow<List<ProfileGroup>> = MutableStateFlow(groups)
 
         override val activeProfileId: StateFlow<Long?> = MutableStateFlow<Long?>(null).asStateFlow()
-        override val globalHwidEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = flowOf(null)
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> = emptyMap()
+        override suspend fun setHwid(id: Long, hwid: String) = Unit
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) = Unit
         override val routingOverridesPassthrough: Flow<Boolean> =
             MutableStateFlow(routingOverridesPassthroughValue).asStateFlow()
 

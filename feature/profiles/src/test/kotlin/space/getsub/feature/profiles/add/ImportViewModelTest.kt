@@ -12,6 +12,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -34,8 +35,11 @@ import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
 import space.getsub.core.model.identity.Hwid
 import space.getsub.core.model.identity.HwidResult
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
@@ -117,7 +121,10 @@ class ImportViewModelTest {
         ): Flow<List<ProfileGroup>> = MutableStateFlow(emptyList())
 
         override val activeProfileId: Flow<Long?> = MutableStateFlow(null)
-        override val globalHwidEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = flowOf(null)
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> = emptyMap()
+        override suspend fun setHwid(id: Long, hwid: String) = Unit
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) = Unit
 
         override suspend fun setActiveProfile(id: Long?) = Unit
 

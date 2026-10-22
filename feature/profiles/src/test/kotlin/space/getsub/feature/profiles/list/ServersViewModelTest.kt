@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -50,6 +51,9 @@ import space.getsub.core.model.Security
 import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
 import space.getsub.feature.profiles.R
@@ -191,7 +195,10 @@ class ServersViewModelTest {
     ) : ProfileSource {
         private val _activeProfileId = MutableStateFlow<Long?>(null)
         override val activeProfileId: StateFlow<Long?> = _activeProfileId.asStateFlow()
-        override val globalHwidEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+        override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = flowOf(null)
+        override fun deviceHeaderValues(): Map<DeviceHeader, String?> = emptyMap()
+        override suspend fun setHwid(id: Long, hwid: String) = Unit
+        override suspend fun setHeader(id: Long, header: DeviceHeader, setting: HeaderSetting) = Unit
         val tunnelActiveState = MutableStateFlow(false)
         override val tunnelActive: Flow<Boolean> = tunnelActiveState
 

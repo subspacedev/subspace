@@ -8,6 +8,9 @@ import space.getsub.core.model.identity.HeaderSetting
 import space.getsub.core.model.identity.HeaderValue
 import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.network.DeviceInfo
+import space.getsub.core.network.di.AppVersion
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /** The `x-device-os` value the app has always sent; a subscription following the device keeps it. */
 private const val DEVICE_OS = "Android"
@@ -53,7 +56,7 @@ internal fun SubscriptionIdentity.resolve(
     return (hwid.takeIf { hwidEnabled }) to sent.toMap()
 }
 
-private fun DeviceInfo.valueOf(
+internal fun DeviceInfo.valueOf(
     header: DeviceHeader,
     appVersion: String,
 ): String =
@@ -63,3 +66,21 @@ private fun DeviceInfo.valueOf(
         DeviceHeader.Model -> model
         DeviceHeader.AppVersion -> appVersion
     }
+
+/**
+ * What each device header would carry if it followed this device, after the same sanitising a fetch
+ * applies (M10-B spec §3.5). The subscription screen shows it as "follows this device: ..." without
+ * `:feature:profiles` depending on `:core:network`. A null entry is a value with nothing sendable
+ * left, so that header is not sent.
+ */
+@Singleton
+public class DeviceHeaderValues
+@Inject
+internal constructor(
+    private val device: DeviceInfo,
+    @param:AppVersion private val appVersion: String,
+) {
+    /** Read on every call: the values are live, and an OS or app update changes them. */
+    public fun sanitised(): Map<DeviceHeader, String?> =
+        DeviceHeader.entries.associateWith { HeaderValue.sanitiseDevice(device.valueOf(it, appVersion)) }
+}

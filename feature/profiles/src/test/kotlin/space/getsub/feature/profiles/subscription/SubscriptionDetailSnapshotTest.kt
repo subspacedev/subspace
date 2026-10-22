@@ -10,6 +10,7 @@ import space.getsub.core.data.FetchVia
 import space.getsub.core.data.RedirectTrust
 import space.getsub.core.data.ResolverTrust
 import space.getsub.core.data.preresolve.ProviderResolver
+import space.getsub.core.model.identity.DeviceHeader
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.profiles.R
@@ -52,6 +53,22 @@ class SubscriptionDetailSnapshotTest {
             quotaUsedBytes = 37_580_963_840L,
             quotaTotalBytes = 107_374_182_400L,
             hwidEnabled = true,
+            hwid = "k3Fq9ZxT0mWb7LdVa2NcRe8UyHs5JgPo",
+            hwidDraft = "k3Fq9ZxT0mWb7LdVa2NcRe8UyHs5JgPo",
+            headers =
+            mapOf(
+                DeviceHeader.Os to HeaderRowState(enabled = true, literal = null, deviceValue = "Android"),
+                DeviceHeader.OsVersion to HeaderRowState(enabled = true, literal = null, deviceValue = "14"),
+                DeviceHeader.Model to
+                    HeaderRowState(enabled = true, literal = "Example Phone 1", deviceValue = "Pixel 8"),
+                DeviceHeader.AppVersion to HeaderRowState(enabled = false, literal = null, deviceValue = "0.1.0"),
+            ),
+            timeoutRow =
+            DirectiveRow(
+                DirectiveRowKind.Seconds,
+                R.string.subscription_row_timeout_label,
+                SettingRowState("subscription-request-timeout", "9", declinedProviderValue = null, isPinned = false),
+            ),
             userAgentOverride = "Subspace/1.0 (Android)",
             providerUserAgent = "v2rayNG/1.8",
             refreshResult = UserMessage(R.plurals.subscription_refreshed, 3),
@@ -68,6 +85,16 @@ class SubscriptionDetailSnapshotTest {
                     SettingRowState("update-always", "true", declinedProviderValue = null, isPinned = false),
                 ),
             ),
+        )
+
+    // M10-B spec §3.5: a device value with nothing sendable left says so.
+    private val notSent =
+        fetched.copy(
+            refreshResult = null,
+            rows = emptyList(),
+            headers =
+            fetched.headers +
+                (DeviceHeader.Model to HeaderRowState(enabled = true, literal = null, deviceValue = null)),
         )
 
     private val neverFetched =
@@ -120,6 +147,9 @@ class SubscriptionDetailSnapshotTest {
 
     @Test
     fun fetchedWithQuotaAndDirectives() = shoot("subscription-fetched", fetched)
+
+    @Test
+    fun aDeviceValueThatCannotBeSentSaysSo() = shoot("subscription-device-value-not-sent", notSent)
 
     @Test
     fun neverFetched() = shoot("subscription-never-fetched", neverFetched)

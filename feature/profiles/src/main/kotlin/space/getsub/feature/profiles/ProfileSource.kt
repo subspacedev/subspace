@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import space.getsub.core.data.AddedSubscription
+import space.getsub.core.data.DeviceHeaderValues
 import space.getsub.core.data.EffectiveValue
 import space.getsub.core.data.ObfuscationReport
 import space.getsub.core.data.ObfuscationResolver
@@ -35,6 +36,9 @@ import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.Profile
 import space.getsub.core.model.TuningOrigin
+import space.getsub.core.model.identity.DeviceHeader
+import space.getsub.core.model.identity.HeaderSetting
+import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.PassthroughRejection
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.service.PassthroughValidator
@@ -77,9 +81,6 @@ internal interface ProfileSource {
     /** The profile [SettingsRepository.activeProfileId] currently names, or `null`. */
     val activeProfileId: Flow<Long?>
 
-    /** Whether the Settings-level Device ID gate permits any subscription to send its ID. */
-    val globalHwidEnabled: Flow<Boolean>
-
     /**
      * Whether the app's own routing rule set or DNS resolver is active right now — the
      * signal Task 10's editor warning needs (spec §9): an active rule set, or a
@@ -97,7 +98,7 @@ internal interface ProfileSource {
      * subsumes it would silently stop the warning firing for a routing-off session
      * running a non-default resolver.
      *
-     * Defaulted to `flowOf(false)` — unlike [activeProfileId]/[globalHwidEnabled]
+     * Defaulted to `flowOf(false)` — unlike [activeProfileId]
      * above, only [space.getsub.feature.profiles.editor.EditorViewModel]
      * reads this today, so the other three fakes of this interface
      * (`ServersViewModelTest`, `ImportViewModelTest`, `SubscriptionDetailViewModelTest`)
@@ -250,6 +251,25 @@ internal interface ProfileSource {
         key: String,
     )
 
+    /** What [id] tells its provider about this device — see [SubscriptionRepository.identity]. */
+    fun observeIdentity(id: Long): Flow<SubscriptionIdentity?>
+
+    /** What each device header would carry were it following this device — see [DeviceHeaderValues.sanitised]. */
+    fun deviceHeaderValues(): Map<DeviceHeader, String?>
+
+    /** Stores [id]'s own HWID — see [SubscriptionRepository.setHwid]. Throws on an invalid value. */
+    suspend fun setHwid(
+        id: Long,
+        hwid: String,
+    )
+
+    /** Stores one of [id]'s device headers — see [SubscriptionRepository.setHeader]. Throws on an invalid literal. */
+    suspend fun setHeader(
+        id: Long,
+        header: DeviceHeader,
+        setting: HeaderSetting,
+    )
+
     /** Toggles the HWID header for [id] — see [SubscriptionRepository.setHwidEnabled]. */
     suspend fun setHwidEnabled(
         id: Long,
@@ -381,7 +401,7 @@ internal fun routingOverridesPassthroughFor(
     resolver: DnsResolver,
 ): Boolean = activeRuleSetId != null || resolver != DnsResolver.DEFAULT
 
-// Implements ProfileSource — see that interface's own identical call. Seven constructor
+// Implements ProfileSource — see that interface's own identical call. Eight constructor
 // dependencies: the seam folds repositories and resolvers on purpose.
 @Suppress("TooManyFunctions", "LongParameterList")
 @Singleton
@@ -396,6 +416,7 @@ constructor(
     private val tunnel: TunnelClient,
     private val obfuscationResolver: ObfuscationResolver,
     private val tuningResolver: TuningResolver,
+    private val deviceHeaderValues: DeviceHeaderValues,
 ) : ProfileSource {
     override fun observeGroups(
         query: String,
@@ -403,8 +424,6 @@ constructor(
     ): Flow<List<ProfileGroup>> = profileRepository.observeGroups(query, protocol)
 
     override val activeProfileId: Flow<Long?> = settingsRepository.activeProfileId
-
-    override val globalHwidEnabled: Flow<Boolean> = settingsRepository.hwidEnabled
 
     override val routingOverridesPassthrough: Flow<Boolean> =
         combine(
@@ -556,6 +575,21 @@ constructor(
         id: Long,
         enabled: Boolean,
     ) = subscriptionRepository.setHwidEnabled(id, enabled)
+
+    override fun observeIdentity(id: Long): Flow<SubscriptionIdentity?> = subscriptionRepository.identity(id)
+
+    override fun deviceHeaderValues(): Map<DeviceHeader, String?> = deviceHeaderValues.sanitised()
+
+    override suspend fun setHwid(
+        id: Long,
+        hwid: String,
+    ) = subscriptionRepository.setHwid(id, hwid)
+
+    override suspend fun setHeader(
+        id: Long,
+        header: DeviceHeader,
+        setting: HeaderSetting,
+    ) = subscriptionRepository.setHeader(id, header, setting)
 
     override suspend fun setUserAgentOverride(
         id: Long,
