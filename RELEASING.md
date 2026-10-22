@@ -69,7 +69,7 @@ apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
   --ks-key-alias androiddebugkey --key-pass pass:android app-arm64-v8a-release.apk
 ```
 
-Check the certificate matches the installed app before `adb install -r`.
+`apksigner` is at `$ANDROID_HOME/build-tools/<ver>/apksigner`. Check the certificate matches the installed app before `adb install -r`.
 
 ## Version codes
 
@@ -96,8 +96,8 @@ release is an upgrade and works.
 
 ## Which APK to download
 
-Each release attaches `subspace-<version>-<abi>.apk` for four ABIs plus `SHA256SUMS`.
-Check the download with `sha256sum -c SHA256SUMS`.
+Each release attaches `subspace-<version>-<abi>.apk` for four files (one per ABI name above) plus `SHA256SUMS`.
+Check the download with `sha256sum -c SHA256SUMS` (`shasum -a 256 -c SHA256SUMS` on macOS).
 
 | File | Size (0.1.0-alpha01) | Use it for |
 |---|---|---|
@@ -134,14 +134,19 @@ tags created after M10-A can be verified this way.
 **Option 2, locally on the Linux toolchain:**
 
 ```
-git clone --recurse-submodules https://github.com/<owner>/subspace && cd subspace
+git clone --recurse-submodules https://github.com/subspacedev/subspace && cd subspace
 git checkout v1.0.0
 scripts/fetch-native.sh
 ./gradlew --no-build-cache --no-configuration-cache :app:assembleRelease
+# (run with the signing properties and SUBSPACE_SIGNING_* variables unset)
 python3 scripts/compare-apks.py \
   app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk \
   subspace-1.0.0-arm64-v8a.apk
 ```
+
+If you build with signing configured, the file is the signed `app-<abi>-release.apk`
+instead; `compare-apks.py` ignores signatures either way, but unsetting the inputs keeps
+the `-unsigned` name used above.
 
 Exit 0 means equal apart from signatures; each differing entry is printed otherwise.
 To confirm who signed the download, compare `apksigner verify --print-certs` with
