@@ -941,11 +941,13 @@ private fun HeaderBlock(
         onCheckedChange = { actions.onHeaderEnabledChanged(header, it) },
         modifier = Modifier.testTag(headerTestTag(header)),
     )
-    if (row.enabled && followed && row.deviceValue == null) {
-        ReachFact(stringResource(R.string.subscription_detail_header_not_sent))
-    }
-    if (followed && row.deviceValue != null && row.deviceValueAdjusted) {
-        ReachFact(stringResource(R.string.subscription_detail_header_adjusted))
+    // Both notes describe what the provider receives, so neither applies to a switched-off header.
+    if (row.enabled && followed) {
+        if (row.deviceValue == null) {
+            ReachFact(stringResource(R.string.subscription_detail_header_not_sent))
+        } else if (row.deviceValueAdjusted) {
+            ReachFact(stringResource(R.string.subscription_detail_header_adjusted))
+        }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
         TextButton(onClick = { dialogOpen = true }) { Text(stringResource(R.string.subscription_detail_header_edit)) }
