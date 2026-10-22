@@ -6,7 +6,7 @@ All notable changes to Subspace are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0-alpha02]
+## [0.1.0-alpha03]
 
 The first public build. This is an early alpha: expect rough edges and breaking changes
 between versions, and keep another way to reach your server handy.
@@ -39,6 +39,11 @@ between versions, and keep another way to reach your server handy.
 - Only tested on arm64 hardware; the `armeabi-v7a` and `x86_64` builds are untested.
 - This build is signed with the release key. It cannot be installed over a development
   build signed with another key: uninstall that first (its servers and settings are lost).
+
+## [0.1.0-alpha02]
+
+Tagged but never published: the release workflow stopped at its signing-certificate check,
+which could not read the newer `apksigner` output. Fixed in 0.1.0-alpha03.
 
 ## [0.1.0-alpha01]
 
