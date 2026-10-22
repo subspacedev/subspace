@@ -92,6 +92,9 @@ tasks.named("check").configure {
 
 android {
     namespace = "space.getsub.service"
+    // Pinned for reproducibility (M10-A spec §6.5): see the note on `ndk` in
+    // gradle/libs.versions.toml. :app pins the same version for its strip task.
+    ndkVersion = libs.versions.ndk.get()
 
     buildFeatures {
         aidl = true

@@ -1,5 +1,11 @@
 [versions]
 agp = "9.3.1"
+# The NDK that compiles :service's libtun2socks.so and that :app's strip task uses on
+# every packaged .so. Unpinned, AGP picks its own default, which a toolchain-pinned
+# reproducible build cannot name (M10-A spec §6.5, §8). This is that default for AGP
+# 9.3.1, the one every build so far has used (build_model.json, ndkVersion). CI's
+# sdkmanager line in .github/workflows/ci.yml installs the same version.
+ndk = "28.2.13676358"
 kotlin = "2.4.10"
 ksp = "2.3.10"
 hilt = "2.60.1"

@@ -67,9 +67,11 @@ jobs:
       - name: Install Android SDK platform 37
         uses: android-actions/setup-android@v4
         with:
-          # Pinned NDK: r29 was chosen for the libXray build and is kept for continuity
-          # (the AAR is now prebuilt; this NDK builds hev-socks5-tunnel's JNI).
-          packages: 'platform-tools platforms;android-37.1 build-tools;37.0.0 ndk;29.0.14206865'
+          # The NDK pinned as `ndk` in gradle/libs.versions.toml (ndkVersion in :service and
+          # :app): it builds hev-socks5-tunnel's JNI and strips every packaged .so. Keep the
+          # two in step. The r29 this line used to install was never used: with no
+          # ndkVersion set, AGP 9.3.1 picked its default, 28.2.13676358.
+          packages: 'platform-tools platforms;android-37.1 build-tools;37.0.0 ndk;28.2.13676358'
 
       - uses: gradle/actions/setup-gradle@v4
 

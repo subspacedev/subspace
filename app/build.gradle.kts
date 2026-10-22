@@ -21,6 +21,10 @@ plugins {
 
 android {
     namespace = "space.getsub"
+    // stripReleaseDebugSymbols runs this NDK's llvm-strip over every packaged .so
+    // (libgojni.so included), so its version shapes the APK bytes. Same pin as :service
+    // (see `ndk` in gradle/libs.versions.toml; M10-A spec §6.5).
+    ndkVersion = libs.versions.ndk.get()
     // See the note in subspace.android.library: compileSdk leads targetSdk on purpose.
     compileSdk {
         version = release(37) { minorApiLevel = 1 }
