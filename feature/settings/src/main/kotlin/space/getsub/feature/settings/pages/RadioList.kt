@@ -57,6 +57,14 @@ internal fun RadioList(
                 Text(
                     text = choice.label,
                     style = MaterialTheme.typography.bodyLarge,
+                    // Dimmed with the button when disabled, at Material's disabled-content alpha, as
+                    // the headings above these lists are; otherwise a greyed-out choice reads as live.
+                    color =
+                    if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    },
                     modifier = Modifier.padding(start = 16.dp),
                 )
             }
