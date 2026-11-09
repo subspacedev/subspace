@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.addCallback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -75,6 +76,13 @@ class MainActivity : ComponentActivity() {
         // never SubspaceApplication, so a tile, receiver or boot start with no UI never
         // auto-connects.
         if (savedInstanceState == null) launchAutomation.onFreshOpen()
+        // Backing out has to end this screen, or the next launcher tap is not a fresh open.
+        // Since Android 12 the platform's own root Back only moves a launcher-started task to
+        // the back and the icon then resumes this same instance, with no onCreate (seen on the
+        // Pixel 8, M10-C device row 3a). Registered before setContent so it is the last callback
+        // asked: navigation and every BackHandler in the content are added later and win while
+        // they have something to go back to.
+        onBackPressedDispatcher.addCallback(this) { finish() }
 
         // Task 22 persisted the Appearance choice correctly, but nothing
         // ever read it back: SubspaceTheme was called with no darkTheme
