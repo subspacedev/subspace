@@ -6,18 +6,29 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
-import space.getsub.core.data.LatencyCache
 import space.getsub.core.data.SettingsRepository
 import space.getsub.core.model.ConnectionState
-import space.getsub.core.model.LatencyOptions
 import space.getsub.core.model.LatencyResult
-import space.getsub.core.model.LatencyTarget
 import space.getsub.core.model.Profile
 import space.getsub.core.model.TrafficSample
+import space.getsub.feature.home.launch.AndroidNetworkKindReader
+import space.getsub.feature.home.launch.BoundLaunchLatency
+import space.getsub.feature.home.launch.BoundLaunchProgress
+import space.getsub.feature.home.launch.BoundLaunchServers
+import space.getsub.feature.home.launch.BoundLaunchSettings
+import space.getsub.feature.home.launch.LaunchAutomationScope
+import space.getsub.feature.home.launch.LaunchLatency
+import space.getsub.feature.home.launch.LaunchProgress
+import space.getsub.feature.home.launch.LaunchServers
+import space.getsub.feature.home.launch.LaunchSettings
+import space.getsub.feature.home.launch.NetworkKindReader
 import space.getsub.service.TunnelClient
+import space.getsub.service.latency.LatencyRuns
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,14 +41,16 @@ import javax.inject.Singleton
 @Singleton
 internal class BoundTunnelConnection @Inject constructor(
     private val client: TunnelClient,
-    private val cache: LatencyCache,
+    private val runs: LatencyRuns,
     private val settings: SettingsRepository,
 ) : TunnelConnection {
     override val state: StateFlow<ConnectionState> get() = client.state
 
-    override val latencies: StateFlow<Map<Long, LatencyResult>> get() = cache.results
+    override val bound: StateFlow<Boolean> get() = client.bound
 
-    override val measuring: StateFlow<Set<Long>> get() = cache.testing
+    override val latencies: StateFlow<Map<Long, LatencyResult>> get() = runs.results
+
+    override val measuring: StateFlow<Set<Long>> get() = runs.testing
 
     override val traffic: StateFlow<TrafficSample?> get() = client.traffic
 
@@ -55,38 +68,13 @@ internal class BoundTunnelConnection @Inject constructor(
     override fun disconnect() = client.disconnect()
 
     /**
-     * The run id is derived from the profile, not from a shared counter.
-     *
-     * `:feature:profiles` runs its own counter, and the two screens never
-     * measure at once from a user's point of view — but a negative id keeps
-     * Home's runs out of that sequence entirely, so neither side can fence away
-     * the other's results by coincidence.
+     * Home follows the global setting: it measures the active profile, and has no group
+     * context to resolve a provider's ping-type from. It shares [LatencyRuns] with Servers,
+     * so starting here supersedes a Servers run and releases its rows (M10-C spec §3.1).
      */
     override suspend fun measure(profileId: Long) {
-        val options =
-            LatencyOptions(
-                mode = settings.pingMode.first(),
-                timeoutSeconds = settings.pingTimeoutSeconds.first(),
-                checkUrl = settings.pingCheckUrl.first(),
-            )
-        // Both this and BoundLatencyTester drive the same single-run-at-a-time
-        // LatencyRunner and write to the same LatencyCache, so starting here
-        // supersedes a Servers run — whose onFinished is then fenced away, leaving
-        // its rows on "…" for the session. LatencyTester's KDoc states this as a
-        // requirement for implementations; the fix had been applied to only one of
-        // the two paths that can supersede.
-        cache.finish(cache.testing.value)
-        cache.markTesting(listOf(profileId))
         @Suppress("IgnoredReturnValue")
-        client.startLatencyRun(
-            runId = -profileId,
-            // Home follows the global setting: it measures the active profile,
-            // and has no group context to resolve a provider's ping-type from.
-            targets = listOf(LatencyTarget(profileId, options.mode)),
-            options = options,
-            onResult = { id, result -> cache.put(id, result) },
-            onFinished = { cache.finish(listOf(profileId)) },
-        )
+        runs.start(listOf(profileId), emptyMap())
     }
 }
 
@@ -104,4 +92,35 @@ internal object HomeModule {
     @Provides
     @Singleton
     fun trafficPolicySource(impl: BoundTrafficPolicySource): TrafficPolicySource = impl
+
+    @Provides
+    @Singleton
+    fun launchSettings(impl: BoundLaunchSettings): LaunchSettings = impl
+
+    @Provides
+    @Singleton
+    fun launchServers(impl: BoundLaunchServers): LaunchServers = impl
+
+    @Provides
+    @Singleton
+    fun launchLatency(impl: BoundLaunchLatency): LaunchLatency = impl
+
+    @Provides
+    @Singleton
+    fun launchProgress(impl: BoundLaunchProgress): LaunchProgress = impl
+
+    @Provides
+    @Singleton
+    fun networkKindReader(impl: AndroidNetworkKindReader): NetworkKindReader = impl
+
+    /**
+     * The fresh-open sequence outlives any screen, so it needs a scope of its own; the app has
+     * no injectable application scope to reuse. Main, because LatencyRuns.start is atomic only
+     * against other starts on the same thread (LaunchAutomation's KDoc). Supervised, so one
+     * failed sequence does not stop the next fresh open from running.
+     */
+    @Provides
+    @Singleton
+    @LaunchAutomationScope
+    fun launchAutomationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 }

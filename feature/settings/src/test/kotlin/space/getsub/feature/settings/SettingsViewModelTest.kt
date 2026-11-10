@@ -41,6 +41,8 @@ import space.getsub.core.model.SniffingRuleWarning
 import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.TuningProblem
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.feature.settings.pages.TunnelDraft
 
 /**
@@ -155,6 +157,32 @@ class SettingsViewModelTest {
 
         override suspend fun setPingOnLaunchMetered(enabled: Boolean) {
             _pingOnLaunchMetered.value = enabled
+        }
+
+        private val _autoConnectOnLaunch = MutableStateFlow(false)
+        private val _autoConnectMode = MutableStateFlow(AutoConnectMode.LastPicked)
+        private val _useNetworkMarkers = MutableStateFlow(true)
+        private val _launchTestScope = MutableStateFlow(LaunchTestScope.AllServers)
+
+        override val autoConnectOnLaunch: Flow<Boolean> = _autoConnectOnLaunch.asStateFlow()
+        override val autoConnectMode: Flow<AutoConnectMode> = _autoConnectMode.asStateFlow()
+        override val useNetworkMarkers: Flow<Boolean> = _useNetworkMarkers.asStateFlow()
+        override val launchTestScope: Flow<LaunchTestScope> = _launchTestScope.asStateFlow()
+
+        override suspend fun setAutoConnectOnLaunch(enabled: Boolean) {
+            _autoConnectOnLaunch.value = enabled
+        }
+
+        override suspend fun setAutoConnectMode(mode: AutoConnectMode) {
+            _autoConnectMode.value = mode
+        }
+
+        override suspend fun setUseNetworkMarkers(enabled: Boolean) {
+            _useNetworkMarkers.value = enabled
+        }
+
+        override suspend fun setLaunchTestScope(scope: LaunchTestScope) {
+            _launchTestScope.value = scope
         }
 
         private val _geoRefreshOnMetered = MutableStateFlow(false)
@@ -475,6 +503,66 @@ class SettingsViewModelTest {
 
             model.state.value.pingOnLaunch shouldBe false
             model.state.value.pingOnLaunchMetered shouldBe true
+        }
+
+    @Test
+    fun `launch automation defaults match the spec`() =
+        runTest {
+            val state = viewModel(FakeSettingsSource()).state.value
+
+            state.autoConnectOnLaunch shouldBe false
+            state.autoConnectMode shouldBe AutoConnectMode.LastPicked
+            state.useNetworkMarkers shouldBe true
+            state.launchTestScope shouldBe LaunchTestScope.AllServers
+        }
+
+    @Test
+    fun `each launch automation change persists through the source`() =
+        runTest {
+            val source = FakeSettingsSource()
+            val model = viewModel(source)
+
+            model.onAutoConnectOnLaunchChanged(true)
+            model.onAutoConnectModeChanged(AutoConnectMode.FastestOverall)
+            model.onUseNetworkMarkersChanged(false)
+            model.onLaunchTestScopeChanged(LaunchTestScope.ActiveSubscription)
+            advanceUntilIdle()
+
+            source.autoConnectOnLaunch.first() shouldBe true
+            source.autoConnectMode.first() shouldBe AutoConnectMode.FastestOverall
+            source.useNetworkMarkers.first() shouldBe false
+            source.launchTestScope.first() shouldBe LaunchTestScope.ActiveSubscription
+            val state = viewModel(source).state.value
+            state.autoConnectMode shouldBe AutoConnectMode.FastestOverall
+            state.launchTestScope shouldBe LaunchTestScope.ActiveSubscription
+        }
+
+    @Test
+    fun `the server choice is shown only while auto-connect is on`() =
+        runTest {
+            val model = viewModel(FakeSettingsSource())
+            model.state.value.showAutoConnectMode shouldBe false
+
+            model.onAutoConnectOnLaunchChanged(true)
+            advanceUntilIdle()
+            model.state.value.showAutoConnectMode shouldBe true
+
+            model.onAutoConnectOnLaunchChanged(false)
+            advanceUntilIdle()
+            model.state.value.showAutoConnectMode shouldBe false
+        }
+
+    @Test
+    fun `the launch test scope is enabled only while the launch test is on`() =
+        runTest {
+            val model = viewModel(FakeSettingsSource())
+            model.onPingOnLaunchChanged(false)
+            advanceUntilIdle()
+            model.state.value.launchTestScopeEnabled shouldBe false
+
+            model.onPingOnLaunchChanged(true)
+            advanceUntilIdle()
+            model.state.value.launchTestScopeEnabled shouldBe true
         }
 
     // ── M6.5: DNS setting ──────────────────────────────────────────────────

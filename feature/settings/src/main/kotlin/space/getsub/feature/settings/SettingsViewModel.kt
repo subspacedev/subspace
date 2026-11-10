@@ -31,6 +31,8 @@ import space.getsub.core.model.GeoSourceCatalogue
 import space.getsub.core.model.NoiseSettings
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.PreResolveSettings
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 import space.getsub.core.model.isGeoFileName
 import space.getsub.feature.settings.pages.TunnelDraft
 import space.getsub.feature.settings.pages.canSave
@@ -103,6 +105,22 @@ constructor(
 
         settingsSource.pingOnLaunchMetered
             .onEach { enabled -> _state.update { it.copy(pingOnLaunchMetered = enabled) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.autoConnectOnLaunch
+            .onEach { enabled -> _state.update { it.copy(autoConnectOnLaunch = enabled) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.autoConnectMode
+            .onEach { mode -> _state.update { it.copy(autoConnectMode = mode) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.useNetworkMarkers
+            .onEach { enabled -> _state.update { it.copy(useNetworkMarkers = enabled) } }
+            .launchIn(viewModelScope)
+
+        settingsSource.launchTestScope
+            .onEach { scope -> _state.update { it.copy(launchTestScope = scope) } }
             .launchIn(viewModelScope)
 
         settingsSource.dnsResolver
@@ -428,6 +446,22 @@ constructor(
 
     fun onPingOnLaunchMeteredChanged(enabled: Boolean) {
         viewModelScope.launch { settingsSource.setPingOnLaunchMetered(enabled) }
+    }
+
+    fun onAutoConnectOnLaunchChanged(enabled: Boolean) {
+        viewModelScope.launch { settingsSource.setAutoConnectOnLaunch(enabled) }
+    }
+
+    fun onAutoConnectModeChanged(mode: AutoConnectMode) {
+        viewModelScope.launch { settingsSource.setAutoConnectMode(mode) }
+    }
+
+    fun onUseNetworkMarkersChanged(enabled: Boolean) {
+        viewModelScope.launch { settingsSource.setUseNetworkMarkers(enabled) }
+    }
+
+    fun onLaunchTestScopeChanged(scope: LaunchTestScope) {
+        viewModelScope.launch { settingsSource.setLaunchTestScope(scope) }
     }
 
     /** Starts a new local resolver draft; persistence waits for a complete valid resolver. */

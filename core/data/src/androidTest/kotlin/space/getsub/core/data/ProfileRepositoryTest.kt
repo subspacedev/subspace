@@ -56,6 +56,57 @@ class ProfileRepositoryTest {
     fun tearDown() = db.close()
 
     @Test
+    fun pinningAGroupMovesItFirstAndUnpinningRestoresTheOrder() =
+        runTest {
+            val a = repository.createGroup("A")
+            val b = repository.createGroup("B")
+            val c = repository.createGroup("C")
+
+            repository.setGroupPinned(c, true)
+            repository.observeGroups().first().map { it.id } shouldBe listOf(c, a, b)
+            repository.observeGroups().first().map { it.pinned } shouldBe listOf(true, false, false)
+
+            // Position order holds inside each part.
+            repository.setGroupPinned(a, true)
+            repository.observeGroups().first().map { it.id } shouldBe listOf(a, c, b)
+
+            repository.setGroupPinned(a, false)
+            repository.setGroupPinned(c, false)
+            repository.observeGroups().first().map { it.id } shouldBe listOf(a, b, c)
+        }
+
+    @Test
+    fun renamingAPinnedGroupKeepsItPinned() =
+        runTest {
+            val id = repository.createGroup("A")
+            repository.setGroupPinned(id, true)
+
+            repository.renameGroup(id, "B")
+
+            repository.observeGroups().first().single().pinned shouldBe true
+        }
+
+    @Test
+    fun aNewGroupIsNotPinned() =
+        runTest {
+            repository.createGroup("A")
+
+            repository.observeGroups().first().single().pinned shouldBe false
+        }
+
+    @Test
+    fun importingIntoAPinnedGroupKeepsItPinned() =
+        runTest {
+            val id = repository.createGroup("A")
+            repository.setGroupPinned(id, true)
+
+            repository.import(listOf(sampleProfile()), id)
+            repository.import(listOf(sampleProfile()), id)
+
+            repository.observeGroups().first().single().pinned shouldBe true
+        }
+
+    @Test
     fun importingTwoProfilesIntoTheDefaultGroupYieldsTwoRows() =
         runTest {
             val groupId = repository.defaultGroupId()

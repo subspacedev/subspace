@@ -365,6 +365,22 @@ class SubscriptionSyncerTest {
     }
 
     @Test
+    fun aSyncKeepsPinned() = runTest {
+        val id = addSubscription()
+        val groupId = subscriptions.observeSubscriptions().first().single().groupId
+        profiles.setGroupPinned(groupId, true)
+        // A title makes the sync take the group-rename path, the only group write a sync does.
+        response = FetchOutcome.Success(link("Tokyo"), mapOf("profile-title" to "Name VPN"))
+
+        syncer().sync(id)
+        syncer().sync(id)
+
+        val group = profiles.observeGroups().first().single { it.id == groupId }
+        group.name shouldBe "Name VPN"
+        group.pinned shouldBe true
+    }
+
+    @Test
     fun anUnchangedServerIsUpdatedInPlaceAndKeepsLastConnectedAt() = runTest {
         // The whole reason sync keys on subscriptionKey rather than
         // identityHash (spec D8): a rotation must not reset "Last used".

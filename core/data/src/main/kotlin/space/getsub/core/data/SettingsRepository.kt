@@ -22,6 +22,10 @@ import space.getsub.core.model.ProxyAuthMode
 import space.getsub.core.model.ProxyAuthSettings
 import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.model.TunMtuUserSetting
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
+import space.getsub.core.model.automation.autoConnectModeFrom
+import space.getsub.core.model.automation.launchTestScopeFrom
 import space.getsub.core.model.perAppModeFrom
 import space.getsub.core.model.perAppModeWire
 import space.getsub.core.model.pingModeFrom
@@ -39,6 +43,10 @@ private const val KEY_PING_CHECK_URL = "ping_check_url"
 private const val KEY_PING_TIMEOUT_SECONDS = "ping_timeout_seconds"
 private const val KEY_PING_ON_LAUNCH = "ping_on_launch"
 private const val KEY_PING_ON_LAUNCH_METERED = "ping_on_launch_metered"
+private const val KEY_AUTO_CONNECT_ON_LAUNCH = "auto_connect_on_launch"
+private const val KEY_AUTO_CONNECT_MODE = "auto_connect_mode"
+private const val KEY_USE_NETWORK_MARKERS = "use_network_markers"
+private const val KEY_LAUNCH_TEST_SCOPE = "launch_test_scope"
 private const val KEY_GEO_REFRESH_ON_METERED = "geo_refresh_on_metered"
 private const val KEY_SELECTED_GEO_SOURCE_IDS = "selected_geo_source_ids"
 private const val SELECTED_GEO_SOURCE_ID_DELIMITER = ","
@@ -228,9 +236,8 @@ internal constructor(
      * **Ours, and on by default.** Latency results are session-scoped, so a cold
      * start has none and a "Fastest" sort would be empty until the user tapped
      * something. This is what refills it, for every group including a `MANUAL`
-     * one with no provider at all. `subscription-ping-onopen-enabled` can
-     * override this for a single subscription's group; it does not own the
-     * feature.
+     * one with no provider at all. A provider's `subscription-ping-onopen-enabled`
+     * is stored but ignored (M10-C spec §3.5); this setting alone decides.
      */
     public val pingOnLaunch: Flow<Boolean> =
         dao.observe(KEY_PING_ON_LAUNCH).map { stored -> stored?.toBooleanStrictOrNull() ?: true }
@@ -251,6 +258,38 @@ internal constructor(
 
     public suspend fun setPingOnLaunchMetered(enabled: Boolean) {
         dao.put(SettingEntity(key = KEY_PING_ON_LAUNCH_METERED, value = enabled.toString()))
+    }
+
+    /** Whether a fresh app open connects by itself. Off by default (M10-C spec §3.1). */
+    public val autoConnectOnLaunch: Flow<Boolean> =
+        dao.observe(KEY_AUTO_CONNECT_ON_LAUNCH).map { stored -> stored?.toBooleanStrictOrNull() ?: false }
+
+    public suspend fun setAutoConnectOnLaunch(enabled: Boolean) {
+        dao.put(SettingEntity(key = KEY_AUTO_CONNECT_ON_LAUNCH, value = enabled.toString()))
+    }
+
+    /** Which server an automatic connect picks. An unknown stored value reads as last picked. */
+    public val autoConnectMode: Flow<AutoConnectMode> =
+        dao.observe(KEY_AUTO_CONNECT_MODE).map { stored -> autoConnectModeFrom(stored) }
+
+    public suspend fun setAutoConnectMode(mode: AutoConnectMode) {
+        dao.put(SettingEntity(key = KEY_AUTO_CONNECT_MODE, value = mode.wire))
+    }
+
+    /** Whether Wi-Fi / mobile words in server names steer the automatic pick. On by default. */
+    public val useNetworkMarkers: Flow<Boolean> =
+        dao.observe(KEY_USE_NETWORK_MARKERS).map { stored -> stored?.toBooleanStrictOrNull() ?: true }
+
+    public suspend fun setUseNetworkMarkers(enabled: Boolean) {
+        dao.put(SettingEntity(key = KEY_USE_NETWORK_MARKERS, value = enabled.toString()))
+    }
+
+    /** Which servers the test on open covers. An unknown stored value reads as all servers. */
+    public val launchTestScope: Flow<LaunchTestScope> =
+        dao.observe(KEY_LAUNCH_TEST_SCOPE).map { stored -> launchTestScopeFrom(stored) }
+
+    public suspend fun setLaunchTestScope(scope: LaunchTestScope) {
+        dao.put(SettingEntity(key = KEY_LAUNCH_TEST_SCOPE, value = scope.wire))
     }
 
     /**

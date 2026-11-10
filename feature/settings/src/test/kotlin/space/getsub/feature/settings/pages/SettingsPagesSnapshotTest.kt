@@ -27,6 +27,7 @@ import space.getsub.core.model.SniffingUserSetting
 import space.getsub.core.model.TunMtuUserSetting
 import space.getsub.core.model.TuningOrigin
 import space.getsub.core.model.Udp443Mode
+import space.getsub.core.model.automation.AutoConnectMode
 import space.getsub.core.ui.preview.SubspacePreviewTheme
 import space.getsub.core.ui.preview.ThemeVariant
 import space.getsub.feature.settings.SettingsActions
@@ -78,6 +79,28 @@ class SettingsPagesSnapshotTest {
 
     @Test
     fun latency() = shoot(SettingsPageId.Latency)
+
+    /** M10-C spec §3.1: auto-connect on shows the Server choice; launch testing off disables the scope. */
+    @Test
+    fun latencyAutoConnectOn() =
+        shoot(
+            SettingsPageId.Latency,
+            base.copy(
+                autoConnectOnLaunch = true,
+                autoConnectMode = AutoConnectMode.FastestInSubscription,
+                pingOnLaunch = false,
+            ),
+        )
+
+    /**
+     * M10-C spec §3.2: the launch test off greys out its scope choice. The page is taller than
+     * the screen and the scope choice sits at its foot, so this one renders the page whole.
+     */
+    @Test
+    fun latencyLaunchScopeDisabled() {
+        paparazzi.unsafeUpdateConfig(DeviceConfig.PIXEL_5.copy(screenWidth = 990, screenHeight = 3600))
+        shoot(SettingsPageId.Latency, base.copy(pingOnLaunch = false))
+    }
 
     @Test
     fun dns() = shoot(SettingsPageId.Dns, base.copy(dnsOverriddenByProfile = true))

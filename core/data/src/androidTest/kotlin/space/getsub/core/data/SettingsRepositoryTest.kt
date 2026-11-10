@@ -25,6 +25,8 @@ import space.getsub.core.model.DnsResolver
 import space.getsub.core.model.DnsTransport
 import space.getsub.core.model.PerAppMode
 import space.getsub.core.model.PingMode
+import space.getsub.core.model.automation.AutoConnectMode
+import space.getsub.core.model.automation.LaunchTestScope
 
 // Backtick names with spaces are avoided for the same reason ProfileRepositoryTest
 // avoids them: runTest {}'s lambda inherits the enclosing method's JVM name, and
@@ -57,6 +59,46 @@ class SettingsRepositoryTest {
             repository.pingOnLaunch.first() shouldBe true
             // Off by default: a large list measured on cellular is real data.
             repository.pingOnLaunchMetered.first() shouldBe false
+        }
+
+    @Test
+    fun launchAutomationDefaults() =
+        runTest {
+            // M10-C spec §3: nothing connects or re-tests by surprise on an upgrade.
+            repository.autoConnectOnLaunch.first() shouldBe false
+            repository.autoConnectMode.first() shouldBe AutoConnectMode.LastPicked
+            repository.useNetworkMarkers.first() shouldBe true
+            repository.launchTestScope.first() shouldBe LaunchTestScope.AllServers
+        }
+
+    @Test
+    fun launchAutomationSettingsRoundTrip() =
+        runTest {
+            repository.setAutoConnectOnLaunch(true)
+            repository.autoConnectOnLaunch.first() shouldBe true
+
+            AutoConnectMode.entries.forEach {
+                repository.setAutoConnectMode(it)
+                repository.autoConnectMode.first() shouldBe it
+            }
+
+            repository.setUseNetworkMarkers(false)
+            repository.useNetworkMarkers.first() shouldBe false
+
+            LaunchTestScope.entries.forEach {
+                repository.setLaunchTestScope(it)
+                repository.launchTestScope.first() shouldBe it
+            }
+        }
+
+    @Test
+    fun anUnknownStoredLaunchEnumReadsAsItsDefault() =
+        runTest {
+            db.settingDao().put(SettingEntity(key = "auto_connect_mode", value = "from_the_future"))
+            db.settingDao().put(SettingEntity(key = "launch_test_scope", value = "from_the_future"))
+
+            repository.autoConnectMode.first() shouldBe AutoConnectMode.LastPicked
+            repository.launchTestScope.first() shouldBe LaunchTestScope.AllServers
         }
 
     @Test

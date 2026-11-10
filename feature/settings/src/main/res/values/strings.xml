@@ -39,8 +39,20 @@
     <string name="settings_ping_timeout">Timeout</string>
     <string name="settings_ping_timeout_value">%1$d s</string>
     <string name="settings_ping_on_launch">Test servers at launch</string>
-    <string name="settings_ping_on_launch_summary">Measures each group once when you open the server list.</string>
+    <string name="settings_ping_on_launch_summary">Tests servers each time you open the app.</string>
     <string name="settings_ping_on_launch_metered">Also on mobile data</string>
+    <string name="settings_open_section">When Subspace opens</string>
+    <string name="settings_auto_connect">Connect automatically</string>
+    <string name="settings_auto_connect_summary">Connects when you open the app, unless Subspace is already connected.</string>
+    <string name="settings_auto_connect_server">Server</string>
+    <string name="settings_auto_connect_last_picked">Last picked</string>
+    <string name="settings_auto_connect_fastest_subscription">Fastest in this subscription</string>
+    <string name="settings_auto_connect_fastest_overall">Fastest overall</string>
+    <string name="settings_network_markers">Use Wi-Fi / mobile markers in server names</string>
+    <string name="settings_network_markers_summary">Prefers servers marked for the network you are on when picking the fastest.</string>
+    <string name="settings_launch_test_scope">Servers to test at launch</string>
+    <string name="settings_launch_test_scope_active">Active subscription</string>
+    <string name="settings_launch_test_scope_all">All servers</string>
     <string name="settings_ping_on_launch_metered_summary">Off by default — testing a large list uses real data. Manual tests always work.</string>
 
     <string name="settings_dns_title">DNS</string>

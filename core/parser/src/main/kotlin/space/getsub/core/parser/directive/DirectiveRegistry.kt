@@ -142,14 +142,16 @@ public object DirectiveRegistry {
             ),
             accept("server-address-resolve-dns-ip", textNoBase64(45), Danger.Dangerous, Consumer.CensorshipResistance),
             // ---- App settings group: Provider ID required upstream (does not bind Subspace) ----
-            accept("subscription-autoconnect", DirectiveKind.Bool, Danger.Sensitive, Consumer.Release),
+            // The next four are stored and shown as "Not applied", never read: the owner's own settings
+            // decide what Subspace does on open (M10-C spec §3.5).
+            accept("subscription-autoconnect", DirectiveKind.Bool, Danger.Sensitive, Consumer.None),
             accept(
                 "subscription-autoconnect-type",
                 DirectiveKind.Enumerated(setOf("lastused", "lowestdelay", "random")),
                 Danger.Sensitive,
-                Consumer.Release,
+                Consumer.None,
             ),
-            accept("subscription-ping-onopen-enabled", DirectiveKind.Bool, Danger.Sensitive, Consumer.LatencySorting),
+            accept("subscription-ping-onopen-enabled", DirectiveKind.Bool, Danger.Sensitive, Consumer.None),
             accept("subscription-auto-update-enable", DirectiveKind.Bool, Danger.Sensitive, Consumer.Subscriptions),
             accept(
                 "subscription-auto-update-open-enable",
@@ -167,7 +169,8 @@ public object DirectiveRegistry {
             reject("subscription-alternative-hwid-enabled", CUT_DESKTOP),
             accept("subscriptions-collapse", DirectiveKind.Bool, Danger.Benign, Consumer.Release),
             accept("subscriptions-expand-now", DirectiveKind.Bool, Danger.Benign, Consumer.Release),
-            accept("subscription-pin", DirectiveKind.Bool, Danger.Benign, Consumer.Release),
+            // Ignored: pinning is the user's own state, kept with the group (M10-C spec §3.4, §3.5).
+            accept("subscription-pin", DirectiveKind.Bool, Danger.Benign, Consumer.None),
             accept(
                 "subscriptions-sort-type",
                 DirectiveKind.Enumerated(setOf("without", "ping", "alphabet")),

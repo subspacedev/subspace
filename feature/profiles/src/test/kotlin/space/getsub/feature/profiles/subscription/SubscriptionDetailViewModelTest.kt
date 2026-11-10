@@ -49,6 +49,7 @@ import space.getsub.core.model.identity.HwidResult
 import space.getsub.core.model.identity.SubscriptionIdentity
 import space.getsub.core.parser.SniffingDecision
 import space.getsub.feature.profiles.ProfileSource
+import space.getsub.feature.profiles.R
 import space.getsub.feature.profiles.RouteExclusionRequest
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,7 +60,10 @@ class SubscriptionDetailViewModelTest {
             MutableStateFlow(
                 listOf(ProfileGroup(id = GROUP_ID, name = "Provider", profiles = emptyList())),
             )
-        private val providerValues =
+        var extraProviderValues: Map<String, String> = emptyMap()
+        private val providerValues
+            get() = baseProviderValues + extraProviderValues
+        private val baseProviderValues =
             mapOf(
                 KEY_INTERVAL to "6",
                 KEY_TIMEOUT to "9",
@@ -116,6 +120,7 @@ class SubscriptionDetailViewModelTest {
         override suspend fun setActiveProfile(id: Long?) = Unit
         override suspend fun renameGroup(id: Long, name: String) = Unit
         override suspend fun deleteGroup(id: Long) = Unit
+        override suspend fun setGroupPinned(id: Long, pinned: Boolean) = Unit
         override suspend fun defaultGroupId(): Long = GROUP_ID
         override suspend fun import(profiles: List<Profile>, groupId: Long): Int = 0
         override suspend fun profile(id: Long): StoredProfile? = null
@@ -457,6 +462,46 @@ class SubscriptionDetailViewModelTest {
             state.headers[DeviceHeader.Model] shouldBe HeaderRowState(true, null, "Pixel 8")
             // A device value with nothing sendable left has no value to show.
             state.headers[DeviceHeader.AppVersion] shouldBe HeaderRowState(true, null, null)
+        }
+
+    @Test
+    fun aProviderAutomationDirectiveShowsAsNotApplied() =
+        runTest {
+            source.extraProviderValues =
+                mapOf("subscription-autoconnect" to "true", "subscription-autoconnect-type" to "lowestdelay")
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows.map { it.labelRes to it.valueRes } shouldBe
+                listOf(
+                    R.string.subscription_ignored_autoconnect_label to R.string.subscription_row_value_on,
+                    R.string.subscription_ignored_autoconnect_type_label to
+                        R.string.subscription_ignored_value_lowest_delay,
+                )
+        }
+
+    @Test
+    fun theProvidersPinAndPingOnOpenShowAsNotApplied() =
+        runTest {
+            source.extraProviderValues =
+                mapOf("subscription-ping-onopen-enabled" to "true", "subscription-pin" to "false")
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows.map { it.labelRes to it.valueRes } shouldBe
+                listOf(
+                    R.string.subscription_ignored_ping_on_open_label to R.string.subscription_row_value_on,
+                    R.string.subscription_ignored_pin_label to R.string.subscription_row_value_off,
+                )
+        }
+
+    @Test
+    fun noProviderAutomationDirectiveMeansNoNotAppliedRow() =
+        runTest {
+            viewModel.load(SUBSCRIPTION_ID)
+            advanceUntilIdle()
+
+            viewModel.state.value.ignoredRows shouldBe emptyList()
         }
 
     @Test

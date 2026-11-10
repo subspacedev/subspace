@@ -123,6 +123,8 @@ class Hysteria2EditorTest {
 
         override suspend fun deleteGroup(id: Long) = Unit
 
+        override suspend fun setGroupPinned(id: Long, pinned: Boolean) = Unit
+
         override suspend fun defaultGroupId(): Long = 10L
 
         override suspend fun import(

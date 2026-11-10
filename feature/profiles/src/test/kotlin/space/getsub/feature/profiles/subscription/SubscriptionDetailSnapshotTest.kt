@@ -152,6 +152,23 @@ class SubscriptionDetailSnapshotTest {
 
     private val resolverSwitch = resolverRequest.copy(resolverTrust = ResolverTrust.Allowed)
 
+    // M10-C spec §3.5: the provider's automation directives, listed as not applied.
+    // Built on the never-fetched state so the last section lands above the 1000 px the harness keeps.
+    private val withIgnoredDirectives =
+        neverFetched.copy(
+            ignoredRows =
+            listOf(
+                IgnoredDirectiveRow(
+                    R.string.subscription_ignored_autoconnect_label,
+                    R.string.subscription_row_value_on,
+                ),
+                IgnoredDirectiveRow(
+                    R.string.subscription_ignored_autoconnect_type_label,
+                    R.string.subscription_ignored_value_lowest_delay,
+                ),
+            ),
+        )
+
     private fun shoot(
         name: String,
         state: SubscriptionDetailState,
@@ -177,6 +194,10 @@ class SubscriptionDetailSnapshotTest {
 
     @Test
     fun reachingTheSubscription() = shoot("subscription-reach", reach)
+
+    @Test
+    fun providerAutomationDirectivesAreNotApplied() =
+        shoot("subscription-ignored-directives", withIgnoredDirectives)
 
     @Test
     fun resolverRequest() = shoot("subscription-resolver-request", resolverRequest)

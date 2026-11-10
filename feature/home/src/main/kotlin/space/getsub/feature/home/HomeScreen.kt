@@ -3,6 +3,7 @@
 package space.getsub.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +13,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -25,7 +30,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import space.getsub.core.model.StartupStage
 import space.getsub.core.ui.component.FLOATING_NAV_CONTENT_BOTTOM_PADDING
+import space.getsub.core.ui.component.UndoSnackbarHost
 import space.getsub.core.ui.icon.SubspaceIcons
+import space.getsub.feature.home.launch.LaunchAutomationState
 
 /**
  * The connect screen: what M3 replaces M1's paste-a-link walking skeleton
@@ -72,11 +79,26 @@ fun HomeScreen(
     // and onHomeShown is a no-op for a profile that already has a reading.
     LaunchedEffect(state.activeProfile?.id) { viewModel.onHomeShown() }
 
+    // The automation's notes are shown once (M10-C spec §3.1). Cleared after the snackbar ends,
+    // not before: leaving Home mid-snackbar cancels it, and the note is then shown on return
+    // rather than lost unseen.
+    val snackbar = remember { SnackbarHostState() }
+    val resources = LocalResources.current
+    val note = state.launchAutomation.noteRes()
+    LaunchedEffect(note) {
+        if (note == null) return@LaunchedEffect
+        snackbar.showSnackbar(resources.getString(note), duration = SnackbarDuration.Long)
+        viewModel.onLaunchNoteShown()
+    }
+
     HomeScreenContent(
         state = state,
         actions =
         HomeActions(
-            onConnect = { onRequestConsent(viewModel::onConsentGranted) },
+            onConnect = {
+                viewModel.onConnectTapped()
+                onRequestConsent(viewModel::onConsentGranted)
+            },
             onDisconnect = viewModel::onDisconnect,
             onNavigateToServers = onNavigateToServers,
             onAddServer = onAddServer,
@@ -84,7 +106,9 @@ fun HomeScreen(
             onOpenRouting = onOpenRouting,
             onOpenPerApp = onOpenPerApp,
             onOpenSessionLog = onOpenSessionLog,
+            onCancelFinding = viewModel::onCancelFinding,
         ),
+        snackbar = snackbar,
         modifier = modifier,
     )
 }
@@ -113,6 +137,8 @@ internal data class HomeActions(
     val onOpenPerApp: () -> Unit,
     /** Opens the session log. */
     val onOpenSessionLog: () -> Unit,
+    /** Cancel on "Finding the fastest server…" (M10-C spec §3.1). */
+    val onCancelFinding: () -> Unit,
 )
 
 /**
@@ -127,11 +153,34 @@ internal fun HomeScreenContent(
     state: HomeState,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    snackbar: SnackbarHostState? = null,
     nowMillis: () -> Long = System::currentTimeMillis,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        HomeColumn(state, actions, nowMillis)
+        // Above the floating nav pill, as on Servers.
+        if (snackbar != null) {
+            UndoSnackbarHost(
+                state = snackbar,
+                modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = SNACKBAR_HORIZONTAL_PADDING)
+                    .padding(bottom = FLOATING_NAV_CONTENT_BOTTOM_PADDING),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeColumn(
+    state: HomeState,
+    actions: HomeActions,
+    nowMillis: () -> Long,
 ) {
     Column(
         modifier =
-        modifier
+        Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
@@ -168,3 +217,14 @@ internal fun HomeScreenContent(
         }
     }
 }
+
+/** The note string for the automation's transient states, or null when there is none to show. */
+private fun LaunchAutomationState.noteRes(): Int? =
+    when (this) {
+        LaunchAutomationState.NoServerAnswered -> R.string.home_launch_no_server_answered
+        LaunchAutomationState.ForeignVpnFallback -> R.string.home_launch_foreign_vpn_fallback
+        LaunchAutomationState.ForeignVpnNothingConnected -> R.string.home_launch_foreign_vpn_nothing_connected
+        LaunchAutomationState.Idle, LaunchAutomationState.Finding -> null
+    }
+
+private val SNACKBAR_HORIZONTAL_PADDING = 16.dp

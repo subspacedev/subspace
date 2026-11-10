@@ -44,6 +44,8 @@ object SubspaceIcons {
     val Home: Int = R.drawable.sym_home
     val HomeFilled: Int = R.drawable.sym_home_filled
     val Info: Int = R.drawable.sym_info
+    val Keep: Int = R.drawable.sym_keep
+    val KeepOff: Int = R.drawable.sym_keep_off
     val KeyboardArrowDown: Int = R.drawable.sym_keyboard_arrow_down
     val KeyboardArrowUp: Int = R.drawable.sym_keyboard_arrow_up
     val LightMode: Int = R.drawable.sym_light_mode
@@ -113,6 +115,8 @@ object SubspaceIcons {
             "home" to Home,
             "home_filled" to HomeFilled,
             "info" to Info,
+            "keep" to Keep,
+            "keep_off" to KeepOff,
             "keyboard_arrow_down" to KeyboardArrowDown,
             "keyboard_arrow_up" to KeyboardArrowUp,
             "light_mode" to LightMode,

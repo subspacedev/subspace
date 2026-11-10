@@ -2,11 +2,9 @@
 // Additional permission: see Stores Exception in LICENSE.
 package space.getsub.feature.profiles.list
 
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.PingMode
 
@@ -28,19 +26,6 @@ internal class FakeLatencyTester(
     private val _testing = MutableStateFlow<Set<Long>>(emptySet())
     override val testing: StateFlow<Set<Long>> = _testing.asStateFlow()
 
-    override val pingOnLaunch: Flow<Boolean> = MutableStateFlow(true)
-    override val pingOnLaunchMetered: Flow<Boolean> = MutableStateFlow(false)
-
-    /** Settable so a test can drive the metered gate without a real network. */
-    var metered: Boolean = false
-
-    /** Settable so a test can put a launch run behind an in-flight connect. */
-    var state: ConnectionState = ConnectionState.Disconnected
-
-    override fun isMetered(): Boolean = metered
-
-    override fun connectionState(): ConnectionState = state
-
     var resultFor: (Long) -> LatencyResult = { LatencyResult.ok(DEFAULT_DELAY_MS) }
 
     var testedIds: List<Long> = emptyList()
@@ -50,21 +35,11 @@ internal class FakeLatencyTester(
     var cancelCallCount: Int = 0
         private set
 
-    private val launchRunClaimed = mutableSetOf<Long>()
-
     var lastModes: Map<Long, PingMode> = emptyMap()
         private set
 
     /** Settable so a test can drive the not-bound path, which returns false. */
     var startSucceeds: Boolean = true
-
-    var releasedGroups: Collection<Long> = emptyList()
-        private set
-
-    override fun releaseLaunchRun(groupIds: Collection<Long>) {
-        releasedGroups = groupIds
-        launchRunClaimed.removeAll(groupIds.toSet())
-    }
 
     override suspend fun test(
         profileIds: List<Long>,
@@ -93,8 +68,6 @@ internal class FakeLatencyTester(
         cancelCallCount++
         _testing.value = emptySet()
     }
-
-    override fun claimLaunchRun(groupId: Long): Boolean = launchRunClaimed.add(groupId)
 
     private companion object {
         const val DEFAULT_DELAY_MS = 42

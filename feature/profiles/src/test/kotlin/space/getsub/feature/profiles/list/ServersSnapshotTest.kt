@@ -44,7 +44,6 @@ class ServersSnapshotTest {
             onTestGroup = {},
             onCancelTests = {},
             onGroupSortChanged = { _, _ -> },
-            onServersShown = {},
         )
 
     @Suppress("LongParameterList")
@@ -284,6 +283,13 @@ class ServersSnapshotTest {
                     infoButton = LinkButton("See what is new", "https://example.com/news"),
                 ),
             ),
+        )
+
+    @Test
+    fun pinnedGroupShowsAPinBesideItsName() =
+        shoot(
+            "servers-card-pinned",
+            populated().let { s -> s.copy(groups = listOf(s.groups[0].copy(pinned = true), s.groups[1])) },
         )
 
     @Test

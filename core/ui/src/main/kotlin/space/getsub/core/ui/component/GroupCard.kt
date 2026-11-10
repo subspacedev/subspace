@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +48,8 @@ private const val CARET_ROTATION_EXPANDED = 180f
  * A collapsible group of servers (M8.6 spec §4.1.1). The title row toggles it;
  * the overflow button opens [menuItems]. [header] stays visible whether the
  * group is open or not (a subscription's quota and last update go here);
- * [content] shows only when [expanded].
+ * [content] shows only when [expanded]. A [pinned] group shows a small pin beside its
+ * title (M10-C spec §3.4).
  */
 @Suppress("LongParameterList")
 @Composable
@@ -58,6 +60,7 @@ fun GroupCard(
     onToggle: () -> Unit,
     menuItems: List<MenuItem>,
     modifier: Modifier = Modifier,
+    pinned: Boolean = false,
     header: @Composable ColumnScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -67,7 +70,7 @@ fun GroupCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp)) {
-            GroupCardTitleRow(title, subtitle, expanded, onToggle, menuItems)
+            GroupCardTitleRow(title, subtitle, expanded, onToggle, menuItems, pinned)
             header()
             AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
                 Column(modifier = Modifier.padding(top = 8.dp), content = content)
@@ -76,6 +79,7 @@ fun GroupCard(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
 private fun GroupCardTitleRow(
     title: String,
@@ -83,6 +87,7 @@ private fun GroupCardTitleRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     menuItems: List<MenuItem>,
+    pinned: Boolean,
 ) {
     val toggleDescription =
         stringResource(
@@ -115,6 +120,14 @@ private fun GroupCardTitleRow(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (pinned) {
+                Icon(
+                    painter = painterResource(SubspaceIcons.Keep),
+                    contentDescription = stringResource(R.string.group_card_pinned_description),
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(

@@ -39,6 +39,8 @@ import space.getsub.core.model.failure
 import space.getsub.core.model.subscription.Expiry
 import space.getsub.core.model.subscription.SubscriptionInfo
 import space.getsub.core.model.subscription.Usage
+import space.getsub.feature.home.launch.LaunchAutomationState
+import space.getsub.feature.home.launch.LaunchProgress
 
 /**
  * Covers what Task 17 rewrote [HomeViewModel] to do: connect using the profile
@@ -151,6 +153,8 @@ class HomeViewModelTest {
         private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
         override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
+        override val bound: StateFlow<Boolean> = MutableStateFlow(true)
+
         var lastConnected: ConnectAttempt? = null
             private set
 
@@ -206,6 +210,19 @@ class HomeViewModelTest {
         var measuredIds: List<Long> = emptyList()
             private set
 
+        /** A result another run (the launch test) delivered. */
+        fun deliver(
+            profileId: Long,
+            result: LatencyResult,
+        ) {
+            _latencies.value = _latencies.value + (profileId to result)
+        }
+
+        /** Another run (Servers', or the launch test) has [profileId] in flight. */
+        fun markMeasuring(profileId: Long) {
+            _measuring.value = _measuring.value + profileId
+        }
+
         override suspend fun measure(profileId: Long) {
             measuredIds = measuredIds + profileId
             if (autoComplete) {
@@ -213,6 +230,25 @@ class HomeViewModelTest {
             } else {
                 _measuring.value = _measuring.value + profileId
             }
+        }
+    }
+
+    /** Records what Home asked of the fresh-open automation; its state is driven by the test. */
+    private class FakeLaunchProgress : LaunchProgress {
+        override val state = MutableStateFlow<LaunchAutomationState>(LaunchAutomationState.Idle)
+        override val running = MutableStateFlow(false)
+        val calls = mutableListOf<String>()
+
+        override fun cancel() {
+            calls += "cancel"
+        }
+
+        override fun onUserTookOver() {
+            calls += "tookOver"
+        }
+
+        override fun onNoteShown() {
+            calls += "noteShown"
         }
     }
 
@@ -238,7 +274,7 @@ class HomeViewModelTest {
                     profiles = listOf(firstProfile, secondProfile),
                     activeProfileId = settings.activeProfileId,
                 )
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             settings.setActiveProfile(secondProfile.id)
 
@@ -265,7 +301,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = listOf(profile), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
             settings.setActiveProfile(profile.id)
             tunnel.emit(failure(FailureReason.CoreStartFailed, "redacted"))
 
@@ -292,7 +328,7 @@ class HomeViewModelTest {
                 val tunnel = FakeTunnelConnection()
                 val profileSource =
                     FakeActiveProfileSource(profiles = listOf(profile), activeProfileId = settings.activeProfileId)
-                val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+                val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
                 settings.setActiveProfile(profile.id)
                 tunnel.emit(connection)
 
@@ -315,7 +351,7 @@ class HomeViewModelTest {
             val unsupported = supported.copy(outbound = unsupportedOutbound)
             val tunnel = FakeTunnelConnection()
             val profileSource = MutableActiveProfileSource(supported)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
             viewModel.state.value.canConnect shouldBe true
 
             profileSource.emit(unsupported)
@@ -332,7 +368,7 @@ class HomeViewModelTest {
             val profile = storedProfile(id = 6L, name = "deleted")
             val tunnel = FakeTunnelConnection()
             val profileSource = MutableActiveProfileSource(profile)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
             viewModel.state.value.canConnect shouldBe true
 
             profileSource.emit(null)
@@ -349,7 +385,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             viewModel.state.value.hasAnyProfile shouldBe false
             viewModel.state.value.canConnect shouldBe false
@@ -362,7 +398,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             tunnel.emit(ConnectionState.Connected(sinceEpochMillis = 1_000L, socksPort = 10808))
 
@@ -376,7 +412,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             val sample =
                 TrafficSample(uplinkBytes = 1_024, downlinkBytes = 2_048, uplinkPackets = 4, downlinkPackets = 8)
@@ -392,7 +428,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             viewModel.state.value.perTagBreakdownEnabled shouldBe false
         }
@@ -405,7 +441,7 @@ class HomeViewModelTest {
             tunnel.perTagBreakdownEnabled = true
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             viewModel.state.value.perTagBreakdownEnabled shouldBe true
         }
@@ -416,7 +452,13 @@ class HomeViewModelTest {
             val settings = FakeSettings()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(FakeTunnelConnection(), profileSource, FakeTrafficPolicySource())
+            val viewModel =
+                HomeViewModel(
+                    FakeTunnelConnection(),
+                    profileSource,
+                    FakeTrafficPolicySource(),
+                    FakeLaunchProgress(),
+                )
 
             viewModel.state.value.trafficHidden shouldBe false
         }
@@ -431,7 +473,7 @@ class HomeViewModelTest {
             tunnel.lightweightEnabled = true
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             viewModel.state.value.trafficHidden shouldBe true
             viewModel.state.value.perTagBreakdownEnabled shouldBe false
@@ -444,7 +486,7 @@ class HomeViewModelTest {
             val tunnel = FakeTunnelConnection()
             val profileSource =
                 FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, profileSource, FakeTrafficPolicySource(), FakeLaunchProgress())
 
             tunnel.emit(ConnectionState.Connecting(StartupStage.ValidatingConfig))
 
@@ -470,7 +512,7 @@ class HomeViewModelTest {
     fun `the latency tile is empty until a measurement is taken`() =
         runTest {
             val (_, tunnel, source) = latencyFixture()
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             // Nothing measures on connect and nothing measures periodically, so
@@ -483,7 +525,7 @@ class HomeViewModelTest {
     fun `testing the active profile fills the tile`() =
         runTest {
             val (_, tunnel, source) = latencyFixture()
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onTestLatency()
@@ -498,7 +540,7 @@ class HomeViewModelTest {
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.resultToReturn = LatencyResult.failed(LatencyOutcome.UNREACHABLE)
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onTestLatency()
@@ -513,7 +555,7 @@ class HomeViewModelTest {
             val settings = FakeSettings()
             val tunnel = FakeTunnelConnection()
             val source = FakeActiveProfileSource(profiles = emptyList(), activeProfileId = settings.activeProfileId)
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onTestLatency()
@@ -528,7 +570,7 @@ class HomeViewModelTest {
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.launchPingEnabled = true
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onHomeShown()
@@ -544,7 +586,7 @@ class HomeViewModelTest {
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.launchPingEnabled = true
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onHomeShown()
@@ -562,7 +604,7 @@ class HomeViewModelTest {
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.launchPingEnabled = false
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onHomeShown()
@@ -576,7 +618,7 @@ class HomeViewModelTest {
         runTest {
             val (_, tunnel, source) = latencyFixture()
             tunnel.autoComplete = false
-            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource())
+            val viewModel = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
 
             viewModel.onTestLatency()
@@ -590,7 +632,13 @@ class HomeViewModelTest {
     fun `the chips mirror the routing and per-app sources`() =
         runTest {
             val policy = FakeTrafficPolicySource()
-            val vm = HomeViewModel(FakeTunnelConnection(), FakeActiveProfileSource(emptyList(), flowOf(null)), policy)
+            val vm =
+                HomeViewModel(
+                    FakeTunnelConnection(),
+                    FakeActiveProfileSource(emptyList(), flowOf(null)),
+                    policy,
+                    FakeLaunchProgress(),
+                )
             policy.name.value = "Smart route"
             policy.selection.value = PerAppSelection(PerAppMode.AllowList, setOf("a", "b"))
             advanceUntilIdle()
@@ -602,7 +650,13 @@ class HomeViewModelTest {
     fun `no active rule set reads as null, not a stale name`() =
         runTest {
             val policy = FakeTrafficPolicySource()
-            val vm = HomeViewModel(FakeTunnelConnection(), FakeActiveProfileSource(emptyList(), flowOf(null)), policy)
+            val vm =
+                HomeViewModel(
+                    FakeTunnelConnection(),
+                    FakeActiveProfileSource(emptyList(), flowOf(null)),
+                    policy,
+                    FakeLaunchProgress(),
+                )
             policy.name.value = "Smart route"
             advanceUntilIdle()
             policy.name.value = null
@@ -630,7 +684,7 @@ class HomeViewModelTest {
     fun `the active subscription's limit and expiry reach the state, and clear for a manual server`() =
         runTest {
             val source = MutableActiveProfileSource(storedProfile(id = 1L, name = "a"))
-            val vm = HomeViewModel(FakeTunnelConnection(), source, FakeTrafficPolicySource())
+            val vm = HomeViewModel(FakeTunnelConnection(), source, FakeTrafficPolicySource(), FakeLaunchProgress())
             advanceUntilIdle()
             vm.state.value.activeSubscription shouldBe null
 
@@ -643,5 +697,156 @@ class HomeViewModelTest {
             source.subscription.value = null
             advanceUntilIdle()
             vm.state.value.activeSubscription shouldBe null
+        }
+    // ── M10-C spec §3.1: the fresh-open automation, as Home shows and steers it ──
+
+    @Test
+    fun `the automation's finding state reaches home`() =
+        runTest {
+            val launch = FakeLaunchProgress()
+            val vm =
+                HomeViewModel(
+                    FakeTunnelConnection(),
+                    FakeActiveProfileSource(emptyList(), flowOf(null)),
+                    FakeTrafficPolicySource(),
+                    launch,
+                )
+            advanceUntilIdle()
+            vm.state.value.launchAutomation shouldBe LaunchAutomationState.Idle
+
+            launch.state.value = LaunchAutomationState.Finding
+            advanceUntilIdle()
+            vm.state.value.launchAutomation shouldBe LaunchAutomationState.Finding
+
+            launch.state.value = LaunchAutomationState.NoServerAnswered
+            advanceUntilIdle()
+            vm.state.value.launchAutomation shouldBe LaunchAutomationState.NoServerAnswered
+        }
+
+    @Test
+    fun `cancel while finding stops the automation and connects nothing`() =
+        runTest {
+            val launch = FakeLaunchProgress()
+            val tunnel = FakeTunnelConnection()
+            val vm =
+                HomeViewModel(
+                    tunnel,
+                    FakeActiveProfileSource(emptyList(), flowOf(null)),
+                    FakeTrafficPolicySource(),
+                    launch,
+                )
+            launch.state.value = LaunchAutomationState.Finding
+            advanceUntilIdle()
+
+            vm.onCancelFinding()
+            advanceUntilIdle()
+
+            launch.calls shouldBe listOf("cancel")
+            tunnel.connectCount shouldBe 0
+        }
+
+    @Test
+    fun `a manual connect takes over from the automation before consent is asked`() =
+        runTest {
+            val launch = FakeLaunchProgress()
+            val settings = FakeSettings()
+            val profile = storedProfile(id = 1L, name = "a")
+            val tunnel = FakeTunnelConnection()
+            val source = FakeActiveProfileSource(listOf(profile), settings.activeProfileId)
+            val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), launch)
+            settings.setActiveProfile(1L)
+            launch.state.value = LaunchAutomationState.Finding
+            advanceUntilIdle()
+
+            vm.onConnectTapped()
+            // Taken over at the tap, not at the consent answer: the automation's own request
+            // must not connect while the user's consent dialog is open.
+            launch.calls shouldBe listOf("tookOver")
+            tunnel.connectCount shouldBe 0
+
+            vm.onConsentGranted()
+            advanceUntilIdle()
+            tunnel.lastConnected?.rowId shouldBe 1L
+            tunnel.connectCount shouldBe 1
+        }
+
+    @Test
+    fun `a note home has shown is cleared through the automation`() =
+        runTest {
+            val launch = FakeLaunchProgress()
+            val vm =
+                HomeViewModel(
+                    FakeTunnelConnection(),
+                    FakeActiveProfileSource(emptyList(), flowOf(null)),
+                    FakeTrafficPolicySource(),
+                    launch,
+                )
+            launch.state.value = LaunchAutomationState.ForeignVpnFallback
+            advanceUntilIdle()
+
+            vm.onLaunchNoteShown()
+
+            launch.calls shouldBe listOf("noteShown")
+        }
+
+    @Test
+    fun `home's own launch measure never supersedes a run already in flight`() =
+        runTest {
+            val (_, tunnel, source) = latencyFixture()
+            tunnel.launchPingEnabled = true
+            // Another server is being measured: the launch test, or a Servers "Test all".
+            tunnel.markMeasuring(99L)
+            val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), FakeLaunchProgress())
+            advanceUntilIdle()
+
+            vm.onHomeShown()
+            advanceUntilIdle()
+
+            // A one-server run would supersede that run and release its rows unmeasured.
+            tunnel.measuredIds shouldBe emptyList()
+        }
+
+    @Test
+    fun `home waits for the automation, then measures nothing the launch test covered`() =
+        runTest {
+            val (_, tunnel, source) = latencyFixture()
+            tunnel.launchPingEnabled = true
+            val launch = FakeLaunchProgress()
+            launch.running.value = true
+            val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), launch)
+            advanceUntilIdle()
+
+            vm.onHomeShown()
+            advanceUntilIdle()
+            // Both starts suspend before marking rows, so measuring now could race the launch test.
+            tunnel.measuredIds shouldBe emptyList()
+
+            // The launch test measured the active server, then the sequence ended.
+            tunnel.deliver(1L, LatencyResult.ok(30))
+            launch.running.value = false
+            advanceUntilIdle()
+
+            tunnel.measuredIds shouldBe emptyList()
+        }
+
+    @Test
+    fun `home measures the active server when the automation skipped it`() =
+        runTest {
+            val (_, tunnel, source) = latencyFixture()
+            tunnel.launchPingEnabled = true
+            val launch = FakeLaunchProgress()
+            launch.running.value = true
+            val vm = HomeViewModel(tunnel, source, FakeTrafficPolicySource(), launch)
+            advanceUntilIdle()
+
+            vm.onHomeShown()
+            advanceUntilIdle()
+            tunnel.measuredIds shouldBe emptyList()
+
+            // A metered network or a Last-picked connect: the launch test did not run.
+            launch.running.value = false
+            advanceUntilIdle()
+
+            tunnel.measuredIds shouldBe listOf(1L)
         }
 }

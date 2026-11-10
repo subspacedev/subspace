@@ -42,14 +42,12 @@ import space.getsub.core.data.preresolve.ResolverStatus
 import space.getsub.core.data.sync.SubscriptionSyncFailure
 import space.getsub.core.data.sync.SyncResult
 import space.getsub.core.model.CidrRange
-import space.getsub.core.model.ConnectionState
 import space.getsub.core.model.LatencyOutcome
 import space.getsub.core.model.LatencyResult
 import space.getsub.core.model.Outbound
 import space.getsub.core.model.PingMode
 import space.getsub.core.model.Profile
 import space.getsub.core.model.Security
-import space.getsub.core.model.StartupStage
 import space.getsub.core.model.StreamSettings
 import space.getsub.core.model.VlessOutbound
 import space.getsub.core.model.identity.DeviceHeader
@@ -192,7 +190,7 @@ class ServersViewModelTest {
      * `FakeActiveProfileSource` plays for `:feature:home`.
      */
     private class FakeProfileSource(
-        private val allGroups: List<ProfileGroup>,
+        allGroups: List<ProfileGroup>,
         private val subscriptions: List<StoredSubscription> = emptyList(),
         private val userInfoBySubscriptionId: Map<Long, String?> = emptyMap(),
     ) : ProfileSource {
@@ -211,6 +209,10 @@ class ServersViewModelTest {
             private set
         var lastDeletedGroup: Long? = null
             private set
+        val pinWrites = mutableListOf<Pair<Long, Boolean>>()
+
+        /** What the DAO's `ORDER BY pinned DESC, position, id` yields: a stable pinned-first order. */
+        private val groupsState = MutableStateFlow(allGroups)
 
         // Fix round, Important 1: what onUpdateSubscription's wiring is
         // verified against below.
@@ -229,11 +231,11 @@ class ServersViewModelTest {
             query: String,
             protocol: String?,
         ): Flow<List<ProfileGroup>> =
-            MutableStateFlow(
-                allGroups.map { g ->
+            groupsState.map { groups ->
+                groups.map { g ->
                     g.copy(profiles = g.profiles.filter { matchesQuery(it, query) && matchesProtocol(it, protocol) })
-                },
-            )
+                }
+            }
 
         private fun matchesQuery(
             profile: StoredProfile,
@@ -263,6 +265,15 @@ class ServersViewModelTest {
 
         override suspend fun deleteGroup(id: Long) {
             lastDeletedGroup = id
+        }
+
+        override suspend fun setGroupPinned(
+            id: Long,
+            pinned: Boolean,
+        ) {
+            pinWrites += id to pinned
+            groupsState.value = groupsState.value.map { if (it.id == id) it.copy(pinned = pinned) else it }
+                .sortedByDescending { it.pinned }
         }
 
         // Not exercised by this ViewModel — ServersViewModel never imports or
@@ -746,6 +757,75 @@ class ServersViewModelTest {
             val visibleGroup = subscribedViewModel.state.value.groups.single()
             visibleGroup.subscriptionId shouldBe 9L
             visibleGroup.lastFetchedAtEpochMillis shouldBe 1_700_000_000_000L
+        }
+
+    // M10-C spec §3.4: the order comes from the store (pinned first, then position); the view
+    // model passes it through and must not sort groups itself.
+    private val secondGroup = ProfileGroup(id = 2L, name = "Other", profiles = listOf(frankfurt))
+
+    @Test
+    fun `pinning a group persists it through the source`() =
+        runTest {
+            viewModel.onPinChanged(group.id, true)
+            advanceUntilIdle()
+
+            source.pinWrites shouldBe listOf(group.id to true)
+        }
+
+    @Test
+    fun `unpinning a group persists it through the source`() =
+        runTest {
+            viewModel.onPinChanged(group.id, false)
+            advanceUntilIdle()
+
+            source.pinWrites shouldBe listOf(group.id to false)
+        }
+
+    @Test
+    fun `pinned groups are listed first and carry their pinned flag`() =
+        runTest {
+            val twoGroups = FakeProfileSource(listOf(group, secondGroup))
+            val vm = ServersViewModel(twoGroups, tester)
+            advanceUntilIdle()
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
+
+            vm.onPinChanged(secondGroup.id, true)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(2L, 1L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(true, false)
+        }
+
+    @Test
+    fun `the view model keeps the order the store gives it`() =
+        runTest {
+            // The store hands a pinned group over second: a view model that sorted would flip this.
+            val unsorted = FakeProfileSource(listOf(group, secondGroup.copy(pinned = true)))
+            val vm = ServersViewModel(unsorted, tester)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, true)
+        }
+
+    @Test
+    fun `a provider's subscription-pin changes neither the order nor the pinned flag`() =
+        runTest {
+            val subscriptions = listOf(subscriptionOf(9L), subscriptionOf(10L).copy(groupId = secondGroup.id))
+            val pinSource = FakeProfileSource(listOf(group, secondGroup), subscriptions)
+            pinSource.directives[10L] = mutableMapOf("subscription-pin" to "true")
+            val vm = ServersViewModel(pinSource, tester)
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
+
+            pinSource.changeDirective(9L, "subscription-pin", "1")
+            advanceUntilIdle()
+
+            vm.state.value.groups.map { it.id } shouldBe listOf(1L, 2L)
+            vm.state.value.groups.map { it.pinned } shouldBe listOf(false, false)
         }
 
     @Test
@@ -1304,59 +1384,11 @@ class ServersViewModelTest {
             model.state.value.groups.single().profiles.take(2).map { it.id } shouldBe listOf(4L, 1L)
         }
 
-    @Test
-    fun `showing the list measures every group once, then not again`() =
-        runTest {
-            advanceUntilIdle()
-
-            viewModel.onServersShown()
-            advanceUntilIdle()
-            val afterFirst = tester.testCallCount
-
-            // Navigating away and back must not re-run it — the device checklist
-            // checks exactly this.
-            viewModel.onServersShown()
-            advanceUntilIdle()
-
-            afterFirst shouldBe 1
-            tester.testCallCount shouldBe 1
-        }
-
-    @Test
-    fun `showing the list measures a manual group with no provider at all`() =
-        runTest {
-            advanceUntilIdle()
-
-            viewModel.onServersShown()
-            advanceUntilIdle()
-
-            // The fixture group is MANUAL: no subscription, so no directive could
-            // ever have enabled this. Ours does.
-            tester.testedIds shouldBe listOf(1L, 2L, 3L, 4L)
-        }
-
     // ── Review findings: three defects the device run could not reach ───────
     //
     // The subscription used on device held one group, which hid the first two
     // entirely — a single-group launch has nothing to supersede and nothing left
     // marked. These are the regression guards.
-
-    @Test
-    fun `the launch run measures every eligible group in one run, not one run per group`() =
-        runTest {
-            val second = ProfileGroup(id = 2L, name = "Other", profiles = listOf(frankfurt.copy(id = 9L)))
-            val multi = FakeProfileSource(listOf(group, second))
-            val model = ServersViewModel(multi, tester)
-            advanceUntilIdle()
-
-            model.onServersShown()
-            advanceUntilIdle()
-
-            // One run. A loop of per-group starts left only the last group
-            // measured, because starting a run supersedes any run in flight.
-            tester.testCallCount shouldBe 1
-            tester.testedIds shouldBe listOf(1L, 2L, 3L, 4L, 9L)
-        }
 
     @Test
     fun `starting a run clears rows a superseded run had left marked`() =
@@ -1409,54 +1441,36 @@ class ServersViewModelTest {
             tester.lastModes shouldBe emptyMap()
         }
 
+    // ── M10-C spec §3.2: the launch test moved to the fresh open ───────────
+
     @Test
-    fun `a launch run dropped before the service is bound gives its claim back`() =
+    fun `showing the list starts no launch run`() =
         runTest {
-            tester.startSucceeds = false
             advanceUntilIdle()
 
-            viewModel.onServersShown()
-            advanceUntilIdle()
-            tester.releasedGroups shouldBe listOf(group.id)
-
-            // :bg binds asynchronously across a process fork, so the list can
-            // compose first. Without the release, that group's single launch run
-            // was spent on a measurement that never happened.
-            tester.startSucceeds = true
-            viewModel.onServersShown()
-            advanceUntilIdle()
-            tester.testCallCount shouldBe 2
+            // The list's groups have loaded; nothing on this screen measures them unasked.
+            // LaunchAutomation runs the launch test from MainActivity's fresh open instead.
+            viewModel.state.value.groups.single().profiles.size shouldBe 4
+            tester.testCallCount shouldBe 0
         }
 
     @Test
-    fun `a metered network suppresses the launch run but leaves the manual action`() =
+    fun `a provider's ping-on-open has no effect`() =
         runTest {
-            tester.metered = true
+            val subscription = subscriptionFor()
+            val subscribedSource =
+                FakeProfileSource(allGroups = listOf(group), subscriptions = listOf(subscription))
+            subscribedSource.directives[subscription.id] =
+                mutableMapOf("subscription-ping-onopen-enabled" to "true")
+            val model = ServersViewModel(subscribedSource, tester)
             advanceUntilIdle()
 
-            viewModel.onServersShown()
-            advanceUntilIdle()
             tester.testCallCount shouldBe 0
 
-            viewModel.onTestGroup(group.id)
+            // And it does not change how a run the user asks for is measured.
+            model.onTestGroup(group.id)
             advanceUntilIdle()
             tester.testCallCount shouldBe 1
-        }
-
-    @Test
-    fun `a connect in flight defers the launch run rather than cancelling it`() =
-        runTest {
-            tester.state = ConnectionState.Connecting(StartupStage.StartingCore)
-            advanceUntilIdle()
-
-            viewModel.onServersShown()
-            advanceUntilIdle()
-            tester.testCallCount shouldBe 0
-
-            // Once the connect settles, the group's one launch run is still available.
-            tester.state = ConnectionState.Connected(sinceEpochMillis = 1L, socksPort = 10800)
-            viewModel.onServersShown()
-            advanceUntilIdle()
-            tester.testCallCount shouldBe 1
+            tester.lastModes shouldBe emptyMap()
         }
 }

@@ -60,7 +60,6 @@ class ServersAddActionTest {
                         onTestGroup = {},
                         onCancelTests = {},
                         onGroupSortChanged = { _, _ -> },
-                        onServersShown = {},
                     ),
                 )
             }
